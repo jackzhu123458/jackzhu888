@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,6 +27,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 
 interface Product {
   id: string;
@@ -47,6 +54,13 @@ interface BomItem {
   child_product: Product;
 }
 
+interface ImportResult {
+  productsCreated: number;
+  productsSkipped: number;
+  bomCreated: number;
+  errors: string[];
+}
+
 export default function BomPage() {
   const [bomList, setBomList] = useState<BomItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -60,6 +74,15 @@ export default function BomPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [filterParent, setFilterParent] = useState<string>('all');
+
+  // Excel 导入相关状态
+  const [importOpen, setImportOpen] = useState(false);
+  const [importMode, setImportMode] = useState<'single' | 'multi'>('single');
+  const [importParentId, setImportParentId] = useState('');
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -125,6 +148,48 @@ export default function BomPage() {
     loadData();
   };
 
+  const handleImport = async () => {
+    if (!importFile) return;
+    if (importMode === 'single' && !importParentId) {
+      alert('请选择父级产品（成品）');
+      return;
+    }
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+      formData.append('mode', importMode);
+      if (importMode === 'single') {
+        formData.append('parentProductId', importParentId);
+      }
+      const res = await fetch('/api/bom/import', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setImportResult(data);
+        loadData();
+      } else {
+        alert(data.error || '导入失败');
+      }
+    } catch {
+      alert('导入失败，请检查文件格式');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const openImportDialog = () => {
+    setImportFile(null);
+    setImportParentId('');
+    setImportMode('single');
+    setImportResult(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    setImportOpen(true);
+  };
+
   // 按 parent_product 分组
   const groupedBom = bomList.reduce((acc, item) => {
     const key = item.parent_product_id;
@@ -148,7 +213,15 @@ export default function BomPage() {
       <div className="p-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-xl font-semibold text-gray-900">BOM 物料清单</h1>
-          <Button onClick={handleAdd}>新增 BOM</Button>
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={openImportDialog}>
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              Excel 导入
+            </Button>
+            <Button onClick={handleAdd}>新增 BOM</Button>
+          </div>
         </div>
 
         <div className="flex items-center gap-4 mb-4">
@@ -264,6 +337,157 @@ export default function BomPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Excel 导入对话框 */}
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>Excel 批量导入 BOM</DialogTitle>
+            <DialogDescription>
+              上传 Excel 文件批量导入产品物料和 BOM 关系。表头需包含：商品类别、商品编号、商品名称、单位、成本单价、商品售价一、商品描述
+            </DialogDescription>
+          </DialogHeader>
+
+          {!importResult ? (
+            <div className="space-y-5 mt-2">
+              {/* 导入模式选择 */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">导入模式</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setImportMode('single')}
+                    className={`p-3 rounded-lg border-2 text-left transition-colors ${
+                      importMode === 'single'
+                        ? 'border-blue-600 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="font-medium text-sm text-gray-900">单产品导入</div>
+                    <div className="text-xs text-gray-500 mt-1">将所有物料导入到指定成品下</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImportMode('multi')}
+                    className={`p-3 rounded-lg border-2 text-left transition-colors ${
+                      importMode === 'multi'
+                        ? 'border-blue-600 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="font-medium text-sm text-gray-900">按类别分组导入</div>
+                    <div className="text-xs text-gray-500 mt-1">按商品类别自动分组创建 BOM</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* 单产品模式：选择父产品 */}
+              {importMode === 'single' && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-1.5 block">目标成品 *</label>
+                  <Select value={importParentId} onValueChange={setImportParentId}>
+                    <SelectTrigger><SelectValue placeholder="选择成品" /></SelectTrigger>
+                    <SelectContent>
+                      {finishedProducts.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* 文件上传 */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1.5 block">选择 Excel 文件 *</label>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                    className="hidden"
+                    id="bom-file-input"
+                  />
+                  <label htmlFor="bom-file-input" className="cursor-pointer">
+                    {importFile ? (
+                      <div>
+                        <svg className="w-8 h-8 mx-auto text-green-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <p className="text-sm font-medium text-gray-900">{importFile.name}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {(importFile.size / 1024).toFixed(1)} KB - 点击更换文件
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <svg className="w-8 h-8 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <p className="text-sm text-gray-600">点击选择 Excel 文件</p>
+                        <p className="text-xs text-gray-400 mt-1">支持 .xlsx / .xls / .csv 格式</p>
+                      </div>
+                    )}
+                  </label>
+                </div>
+              </div>
+
+              {/* 格式说明 */}
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-xs font-medium text-amber-800 mb-1">Excel 表头格式要求</p>
+                <p className="text-xs text-amber-700">
+                  商品类别 | 商品编号 | 商品名称 | 单位 | 成本单价 | 商品售价一 | 商品描述
+                </p>
+                <p className="text-xs text-amber-600 mt-1">
+                  {importMode === 'multi'
+                    ? '商品类别非 0 的行将按类别分组，每组自动创建一个父产品及其 BOM'
+                    : '所有行将作为所选成品的子物料导入'}
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button
+                  onClick={handleImport}
+                  disabled={importing || !importFile || (importMode === 'single' && !importParentId)}
+                  className="flex-1"
+                >
+                  {importing ? '导入中...' : '开始导入'}
+                </Button>
+                <Button variant="outline" onClick={() => setImportOpen(false)} className="flex-1">取消</Button>
+              </div>
+            </div>
+          ) : (
+            /* 导入结果 */
+            <div className="space-y-4 mt-2">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-green-50 rounded-lg p-3 text-center">
+                  <div className="text-2xl font-bold text-green-700">{importResult.productsCreated}</div>
+                  <div className="text-xs text-green-600 mt-1">新建产品</div>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <div className="text-2xl font-bold text-gray-600">{importResult.productsSkipped}</div>
+                  <div className="text-xs text-gray-500 mt-1">已存在跳过</div>
+                </div>
+                <div className="bg-blue-50 rounded-lg p-3 text-center">
+                  <div className="text-2xl font-bold text-blue-700">{importResult.bomCreated}</div>
+                  <div className="text-xs text-blue-600 mt-1">新建 BOM</div>
+                </div>
+              </div>
+
+              {importResult.errors.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 max-h-40 overflow-y-auto">
+                  <p className="text-xs font-medium text-red-800 mb-1">错误信息</p>
+                  {importResult.errors.map((err, i) => (
+                    <p key={i} className="text-xs text-red-600">{err}</p>
+                  ))}
+                </div>
+              )}
+
+              <Button onClick={() => setImportOpen(false)} className="w-full">完成</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* 删除确认 */}
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
