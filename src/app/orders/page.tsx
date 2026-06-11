@@ -144,8 +144,18 @@ export default function OrdersPage() {
     schedules: { schedule_date: string; quantity: number }[];
   }[]>([]);
 
-  // 产品搜索
-  const [productSearch, setProductSearch] = useState('');
+  // 每个明细行的产品搜索状态
+  const [itemSearches, setItemSearches] = useState<Record<number, string>>({});
+
+  // BOM数据
+  const [bomData, setBomData] = useState<Array<{
+    id: string;
+    parent_product_id: string;
+    child_product_id: string;
+    quantity: number;
+    parent_product: Product;
+    child_product: Product;
+  }>>([]);
 
   // 下推相关
   const [pushDownOrderId, setPushDownOrderId] = useState<string | null>(null);
@@ -159,20 +169,23 @@ export default function OrdersPage() {
   const [warehouses, setWarehouses] = useState<Array<{ id: string; name: string }>>([]);
 
   const loadData = useCallback(async () => {
-    const [ordersRes, customersRes, productsRes, warehousesRes] = await Promise.all([
+    const [ordersRes, customersRes, productsRes, warehousesRes, bomRes] = await Promise.all([
       fetch('/api/orders'),
       fetch('/api/customers'),
       fetch('/api/products'),
       fetch('/api/warehouses'),
+      fetch('/api/bom'),
     ]);
     const ordersData = await ordersRes.json();
     const customersData = await customersRes.json();
     const productsData = await productsRes.json();
     const warehousesData = await warehousesRes.json();
+    const bomDataResult = await bomRes.json();
     setOrders(ordersData);
     setCustomers(customersData);
     setProducts(productsData);
     if (Array.isArray(warehousesData)) setWarehouses(warehousesData);
+    if (Array.isArray(bomDataResult)) setBomData(bomDataResult);
 
     // 默认展开所有客户
     const customerIds = [...new Set(ordersData.map((o: Order) => o.customer_id))] as string[];
@@ -276,6 +289,7 @@ export default function OrdersPage() {
     setFormDeadline('');
     setFormRemark('');
     setFormItems([]);
+    setItemSearches({});
     setIsFormOpen(true);
   };
 
@@ -422,11 +436,79 @@ export default function OrdersPage() {
     setPushDownLoading(false);
   };
 
-  const filteredProducts = products.filter((p) => {
-    if (!productSearch) return true;
-    const kw = productSearch.toLowerCase();
-    return p.code.toLowerCase().includes(kw) || p.name.toLowerCase().includes(kw);
-  });
+  // 获取BOM父产品ID集合（有BOM的成品）
+  const bomParentIds = new Set(bomData.map((b) => b.parent_product_id));
+
+  // 获取某BOM父产品的所有子物料
+  const getBomChildren = (parentId: string) => bomData.filter((b) => b.parent_product_id === parentId);
+
+  // 模糊搜索产品（也搜索BOM父产品名）
+  const searchProducts = (keyword: string): Array<Product & { is_bom_parent?: boolean; bom_children_count?: number }> => {
+    if (!keyword) return products.map((p) => ({
+      ...p,
+      is_bom_parent: bomParentIds.has(p.id),
+      bom_children_count: getBomChildren(p.id).length,
+    }));
+    const kw = keyword.toLowerCase();
+    return products
+      .filter((p) => {
+        const matchCode = p.code.toLowerCase().includes(kw);
+        const matchName = p.name.toLowerCase().includes(kw);
+        const matchSpec = p.spec?.toLowerCase().includes(kw) || false;
+        return matchCode || matchName || matchSpec;
+      })
+      .map((p) => ({
+        ...p,
+        is_bom_parent: bomParentIds.has(p.id),
+        bom_children_count: getBomChildren(p.id).length,
+      }));
+  };
+
+  // 选择物料 - 如果是BOM父产品，自动展开子物料
+  const selectProduct = (itemIdx: number, product: Product & { is_bom_parent?: boolean }) => {
+    if (product.is_bom_parent) {
+      // BOM父产品：自动展开子物料，替换当前行
+      const children = getBomChildren(product.id);
+      const newItems = children.map((bomItem) => ({
+        product_id: bomItem.child_product_id,
+        quantity: bomItem.quantity,
+        unit_price: null as number | null,
+        remark: '',
+        schedules: [] as { schedule_date: string; quantity: number }[],
+      }));
+      // 替换当前行
+      const updated = [...formItems];
+      updated.splice(itemIdx, 1, ...newItems);
+      setFormItems(updated);
+      // 清理搜索状态
+      const newSearches = { ...itemSearches };
+      delete newSearches[itemIdx];
+      // 重新索引后续搜索
+      const reindexed: Record<number, string> = {};
+      for (const [key, val] of Object.entries(newSearches)) {
+        const k = Number(key);
+        if (k > itemIdx) {
+          reindexed[k + children.length - 1] = val;
+        } else {
+          reindexed[k] = val;
+        }
+      }
+      setItemSearches(reindexed);
+    } else {
+      // 普通物料：直接选中
+      updateFormItem(itemIdx, 'product_id', product.id);
+      setItemSearches((prev) => {
+        const next = { ...prev };
+        delete next[itemIdx];
+        return next;
+      });
+    }
+  };
+
+  // 关闭所有搜索下拉
+  const closeAllSearches = () => {
+    setItemSearches({});
+  };
 
   return (
     <div className="p-8">
@@ -743,33 +825,62 @@ export default function OrdersPage() {
                           <div className="relative">
                             <Input
                               placeholder="搜索物料编码/名称"
-                              value={productSearch}
-                              onChange={(e) => setProductSearch(e.target.value)}
+                              value={item.product_id
+                                ? `${products.find((p) => p.id === item.product_id)?.code || ''} - ${products.find((p) => p.id === item.product_id)?.name || ''}`
+                                : (itemSearches[itemIdx] || '')
+                              }
+                              onChange={(e) => {
+                                setItemSearches((prev) => ({ ...prev, [itemIdx]: e.target.value }));
+                                if (item.product_id) {
+                                  updateFormItem(itemIdx, 'product_id', '');
+                                }
+                              }}
+                              onFocus={() => {
+                                if (item.product_id) {
+                                  // 已选物料时，清空让其重新搜索
+                                  updateFormItem(itemIdx, 'product_id', '');
+                                  setItemSearches((prev) => ({ ...prev, [itemIdx]: '' }));
+                                }
+                              }}
+                              onBlur={() => {
+                                // 延迟关闭，让点击事件先触发
+                                setTimeout(() => {
+                                  setItemSearches((prev) => {
+                                    const next = { ...prev };
+                                    delete next[itemIdx];
+                                    return next;
+                                  });
+                                }, 200);
+                              }}
                               className="text-xs"
                             />
-                            {productSearch && (
-                              <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-40 overflow-y-auto">
-                                {filteredProducts.slice(0, 20).map((p) => (
-                                  <button
-                                    key={p.id}
-                                    className="w-full text-left px-2 py-1 text-xs hover:bg-blue-50"
-                                    onClick={() => {
-                                      updateFormItem(itemIdx, 'product_id', p.id);
-                                      setProductSearch('');
-                                    }}
-                                  >
-                                    <span className="font-mono">{p.code}</span>
-                                    <span className="ml-1 text-gray-500">{p.name}</span>
-                                  </button>
-                                ))}
+                            {itemSearches[itemIdx] && !item.product_id && (
+                              <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto">
+                                {searchProducts(itemSearches[itemIdx]).length === 0 ? (
+                                  <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
+                                ) : (
+                                  searchProducts(itemSearches[itemIdx]).slice(0, 20).map((p) => (
+                                    <button
+                                      key={p.id}
+                                      className="w-full text-left px-2 py-1.5 text-xs hover:bg-blue-50 flex items-center justify-between"
+                                      onClick={() => selectProduct(itemIdx, p)}
+                                    >
+                                      <span>
+                                        <span className="font-mono">{p.code}</span>
+                                        <span className="ml-1 text-gray-500">{p.name}</span>
+                                        {p.spec && <span className="ml-1 text-gray-400">{p.spec}</span>}
+                                      </span>
+                                      {p.is_bom_parent && (
+                                        <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium whitespace-nowrap">
+                                          BOM({p.bom_children_count}项)
+                                        </span>
+                                      )}
+                                    </button>
+                                  ))
+                                )}
                               </div>
                             )}
                           </div>
-                          {item.product_id && (
-                            <span className="text-xs text-gray-500">
-                              {products.find((p) => p.id === item.product_id)?.code} - {products.find((p) => p.id === item.product_id)?.name}
-                            </span>
-                          )}
                         </div>
                         <div>
                           <label className="block text-xs text-gray-500 mb-1">数量</label>
