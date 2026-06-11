@@ -7,11 +7,11 @@ import { cn } from '@/lib/utils';
 const navItems = [
   { href: '/', label: '工作台', icon: '⊞' },
   { href: '/customers', label: '客户管理', icon: '◉' },
+  { href: '/orders', label: '客户订单', icon: '▤' },
   { href: '/inventory', label: '库存管理', icon: '▦' },
   { href: '/bom', label: 'BOM 表', icon: '☰' },
   { href: '/production', label: '生产订单', icon: '⚙' },
   { href: '/delivery', label: '送货单', icon: '→' },
-
 ];
 
 export function Sidebar() {

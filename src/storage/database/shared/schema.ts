@@ -147,6 +147,64 @@ export const productionOrderMaterials = pgTable(
   ]
 );
 
+// 客户订单
+export const customerOrders = pgTable(
+  "customer_orders",
+  {
+    id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+    order_no: varchar("order_no", { length: 50 }).notNull().unique(),
+    customer_id: varchar("customer_id", { length: 36 }).notNull().references(() => customers.id),
+    order_date: timestamp("order_date", { withTimezone: true }).defaultNow().notNull(),
+    deadline: varchar("deadline", { length: 100 }),
+    status: varchar("status", { length: 30 }).notNull().default("pending"),
+    remark: text("remark"),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("customer_orders_order_no_idx").on(table.order_no),
+    index("customer_orders_customer_id_idx").on(table.customer_id),
+    index("customer_orders_status_idx").on(table.status),
+  ]
+);
+
+// 客户订单明细
+export const customerOrderItems = pgTable(
+  "customer_order_items",
+  {
+    id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+    order_id: varchar("order_id", { length: 36 }).notNull().references(() => customerOrders.id, { onDelete: "cascade" }),
+    product_id: varchar("product_id", { length: 36 }).notNull().references(() => products.id),
+    quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull(),
+    delivered_qty: numeric("delivered_qty", { precision: 12, scale: 2 }).notNull().default("0"),
+    price: numeric("price", { precision: 12, scale: 2 }).default("0"),
+    deadline: varchar("deadline", { length: 100 }),
+    remark: text("remark"),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("customer_order_items_order_id_idx").on(table.order_id),
+    index("customer_order_items_product_id_idx").on(table.product_id),
+  ]
+);
+
+// 客户订单排程
+export const customerOrderSchedules = pgTable(
+  "customer_order_schedules",
+  {
+    id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+    item_id: varchar("item_id", { length: 36 }).notNull().references(() => customerOrderItems.id, { onDelete: "cascade" }),
+    schedule_date: timestamp("schedule_date", { withTimezone: true }).notNull(),
+    quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull(),
+    remark: text("remark"),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("customer_order_schedules_item_id_idx").on(table.item_id),
+    index("customer_order_schedules_date_idx").on(table.schedule_date),
+  ]
+);
+
 // 送货单
 export const deliveryNotes = pgTable(
   "delivery_notes",
