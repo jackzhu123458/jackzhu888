@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -293,9 +292,9 @@ export default function ProductionPage() {
   const finishedProducts = products.filter((p) => p.type === 'finished_product' || p.type === 'semi_finished');
 
   return (
-    <AppShell>
-      <div className="p-8">
-        <div className="flex items-center justify-between mb-6">
+    <>
+    <div className="p-8">
+      <div className="flex items-center justify-between mb-6">
           <h1 className="text-xl font-semibold text-gray-900">生产订单</h1>
           <Button onClick={handleAdd}>新建订单</Button>
         </div>
@@ -595,6 +594,6 @@ export default function ProductionPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </AppShell>
+    </>
   );
 }

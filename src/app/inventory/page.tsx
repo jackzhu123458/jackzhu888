@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { AppShell } from '@/components/app-shell';
 import { Input } from '@/components/ui/input';
 
 interface Product {
@@ -67,9 +66,8 @@ export default function InventoryPage() {
   });
 
   return (
-    <AppShell>
-      <div className="p-8">
-        <div className="flex items-center justify-between mb-6">
+    <div className="p-8">
+      <div className="flex items-center justify-between mb-6">
           <h1 className="text-xl font-semibold text-gray-900">库存管理</h1>
         </div>
 
@@ -116,7 +114,6 @@ export default function InventoryPage() {
             </tbody>
           </table>
         </div>
-      </div>
-    </AppShell>
+    </div>
   );
 }

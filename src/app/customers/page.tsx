@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -120,9 +119,9 @@ export default function CustomersPage() {
   );
 
   return (
-    <AppShell>
-      <div className="p-8">
-        <div className="flex items-center justify-between mb-6">
+    <>
+    <div className="p-8">
+      <div className="flex items-center justify-between mb-6">
           <h1 className="text-xl font-semibold text-gray-900">客户管理</h1>
           <Button onClick={handleAdd}>新建客户</Button>
         </div>
@@ -234,6 +233,6 @@ export default function CustomersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </AppShell>
+    </>
   );
 }
