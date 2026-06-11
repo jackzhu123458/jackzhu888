@@ -156,6 +156,7 @@ export default function DeliveryPage() {
   const [addingRowIdx, setAddingRowIdx] = useState(-1);
   const [searchQuery, setSearchQuery] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
   // Label printing
   const [labelOpen, setLabelOpen] = useState(false);
@@ -356,6 +357,7 @@ export default function DeliveryPage() {
       customer_phone: cust.phone || '',
     }));
     setCustomerSearch(cust.code || cust.name);
+    setShowCustomerDropdown(false);
     setIsFormDirty(true);
   };
 
@@ -669,12 +671,14 @@ export default function DeliveryPage() {
                       value={customerSearch}
                       onChange={(e) => {
                         setCustomerSearch(e.target.value);
+                        setShowCustomerDropdown(true);
                         setIsFormDirty(true);
                       }}
-                      onFocus={() => setCustomerSearch(customerSearch || form.customer_id || '')}
+                      onFocus={() => { setCustomerSearch(customerSearch || form.customer_id || ''); setShowCustomerDropdown(true); }}
+                      onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
                       placeholder="输入编号或名称搜索"
                     />
-                    {customerSearch && customers.filter(c => c.code.includes(customerSearch) || c.name.includes(customerSearch)).length > 0 && (
+                    {showCustomerDropdown && customerSearch && customers.filter(c => c.code.includes(customerSearch) || c.name.includes(customerSearch)).length > 0 && (
                       <div className="absolute z-50 top-7 left-0 bg-white border rounded shadow-lg max-h-32 overflow-auto w-full">
                         {customers.filter(c => c.code.includes(customerSearch) || c.name.includes(customerSearch)).slice(0, 5).map(c => (
                           <button key={c.id} className="w-full text-left px-2 py-1 hover:bg-gray-100 text-xs" onClick={() => { pickCustomer(c); setCustomerSearch(c.code); }}>
