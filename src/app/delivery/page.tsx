@@ -63,6 +63,22 @@ interface Customer {
   phone: string | null;
   address: string | null;
 }
+interface OrderItem {
+  id: string;
+  product_id: string;
+  quantity: number;
+  delivered_qty: number;
+  price: number | null;
+  remark: string | null;
+  products?: Product;
+}
+interface CustomerOrder {
+  id: string;
+  order_no: string;
+  customer_id: string;
+  status: string;
+  customer_order_items?: OrderItem[];
+}
 interface DeliveryItem {
   id?: string;
   product_id: string;
@@ -71,6 +87,7 @@ interface DeliveryItem {
   unit_price: number;
   per_box_qty: number;
   remark: string;
+  customer_order_item_id?: string | null;
 }
 interface DeliveryNote {
   id: string;
@@ -81,6 +98,7 @@ interface DeliveryNote {
   customer_contact?: string | null;
   customer_phone?: string | null;
   customer_order?: string | null;
+  customer_order_id?: string | null;
   delivery_date: string;
   status: string;
   remark: string | null;
@@ -113,6 +131,7 @@ const emptyNote = (): Omit<DeliveryNote, 'id' | 'created_at'> => ({
   customer_contact: '',
   customer_phone: '',
   customer_order: '',
+  customer_order_id: null,
   delivery_date: new Date().toISOString().split('T')[0],
   status: 'draft',
   remark: '',
@@ -144,6 +163,13 @@ export default function DeliveryPage() {
   const [labelBoxes, setLabelBoxes] = useState<number[][]>([]);
   const [labelPreview, setLabelPreview] = useState(false);
 
+  // Order picker
+  const [orderPickerOpen, setOrderPickerOpen] = useState(false);
+  const [customerOrders, setCustomerOrders] = useState<CustomerOrder[]>([]);
+  const [warehouses, setWarehouses] = useState<Array<{ id: string; name: string }>>([]);
+  const [shipDialogOpen, setShipDialogOpen] = useState(false);
+  const [shipWarehouseId, setShipWarehouseId] = useState('');
+
   const printRef = useRef<HTMLDivElement>(null);
   const labelPrintRef = useRef<HTMLDivElement>(null);
 
@@ -157,13 +183,19 @@ export default function DeliveryPage() {
   }, []);
 
   const fetchMeta = useCallback(async () => {
-    const [cRes, pRes] = await Promise.all([
+    const [cRes, pRes, oRes, whRes] = await Promise.all([
       fetch('/api/customers'),
       fetch('/api/bom?all=true'),
+      fetch('/api/orders?status=confirmed'),
+      fetch('/api/warehouses'),
     ]);
     const cData = await cRes.json();
     const pData = await pRes.json();
+    const oData = await oRes.json();
+    const whData = await whRes.json();
     setCustomers(Array.isArray(cData) ? cData : []);
+    if (Array.isArray(oData)) setCustomerOrders(oData.filter((o: CustomerOrder) => o.status === 'confirmed' || o.status === 'in_progress' || o.status === 'pending'));
+    if (Array.isArray(whData)) setWarehouses(whData);
     // Products come from BOM items — flatten all unique products
     const prods: Product[] = [];
     const seen = new Set<string>();
@@ -219,6 +251,7 @@ export default function DeliveryPage() {
       customer_contact: note.customer_contact || '',
       customer_phone: note.customer_phone || '',
       customer_order: note.customer_order || '',
+      customer_order_id: note.customer_order_id || null,
       delivery_date: formatDate(note.delivery_date),
       status: note.status,
       remark: note.remark || '',
@@ -226,6 +259,7 @@ export default function DeliveryPage() {
         ...it,
         per_box_qty: it.per_box_qty || it.quantity,
         remark: it.remark || '',
+        customer_order_item_id: it.customer_order_item_id || null,
       })),
     });
   };
@@ -264,6 +298,7 @@ export default function DeliveryPage() {
         unit_price: it.unit_price,
         per_box_qty: it.per_box_qty,
         remark: it.remark,
+        customer_order_item_id: it.customer_order_item_id || null,
       })),
     };
     // Remove extra fields
@@ -324,6 +359,30 @@ export default function DeliveryPage() {
     setIsFormDirty(true);
   };
 
+  /* ─── Import from customer order ─── */
+  const importFromOrder = (order: CustomerOrder) => {
+    const items: DeliveryItem[] = (order.customer_order_items || [])
+      .filter((item) => Number(item.quantity) - Number(item.delivered_qty) > 0)
+      .map((item) => ({
+        product_id: item.product_id,
+        product: item.products,
+        quantity: Number(item.quantity) - Number(item.delivered_qty),
+        unit_price: Number(item.price) || 0,
+        per_box_qty: Number(item.quantity) - Number(item.delivered_qty),
+        remark: item.remark || '',
+        customer_order_item_id: item.id,
+      }));
+
+    setForm((prev) => ({
+      ...prev,
+      customer_order_id: order.id,
+      customer_order: order.order_no,
+      delivery_note_items: items,
+    }));
+    setOrderPickerOpen(false);
+    setIsFormDirty(true);
+  };
+
   /* ─── Items manipulation ─── */
   const addItem = (product: Product) => {
     setForm((prev) => ({
@@ -368,6 +427,32 @@ export default function DeliveryPage() {
   /* ─── Print delivery note ─── */
   const handlePrintDelivery = () => {
     window.print();
+  };
+
+  /* ─── Ship (confirm delivery → deduct inventory) ─── */
+  const handleShip = async () => {
+    if (!form.id || !shipWarehouseId) return;
+    try {
+      const res = await fetch('/api/delivery', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: form.id,
+          status: 'shipped',
+          warehouse_id: shipWarehouseId,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setShipDialogOpen(false);
+        setEditMode(false);
+        await fetchNotes();
+      } else {
+        alert(data.error || '出货失败');
+      }
+    } catch (e) {
+      alert('出货失败: ' + String(e));
+    }
   };
 
   /* ─── Label printing ─── */
@@ -503,9 +588,17 @@ export default function DeliveryPage() {
               <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={handleCancel}>
                 <X className="h-3.5 w-3.5" /> 取消
               </Button>
+              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => setOrderPickerOpen(true)}>
+                <ArrowRight className="h-3.5 w-3.5" /> 从订单导入
+              </Button>
             </>
           ) : (
             <>
+              {form.status === 'draft' && (
+                <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => { setShipWarehouseId(warehouses[0]?.id || ''); setShipDialogOpen(true); }} disabled={!form.id}>
+                  <ArrowRight className="h-3.5 w-3.5 text-green-600" /> 确认出货
+                </Button>
+              )}
               <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={handlePrintDelivery} disabled={!current}>
                 <Printer className="h-3.5 w-3.5" /> 打印送货单
               </Button>
@@ -922,6 +1015,92 @@ export default function DeliveryPage() {
               </DialogFooter>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Ship Dialog ─── */}
+      <Dialog open={shipDialogOpen} onOpenChange={setShipDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认出货</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            出货后将扣减对应仓库库存，并更新客户订单已交量。此操作不可撤销。
+          </p>
+          <div className="mt-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">出库仓库 *</label>
+            <Select value={shipWarehouseId} onValueChange={setShipWarehouseId}>
+              <SelectTrigger>
+                <SelectValue placeholder="选择仓库" />
+              </SelectTrigger>
+              <SelectContent>
+                {warehouses.map((w) => (
+                  <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShipDialogOpen(false)}>取消</Button>
+            <Button className="bg-green-600 hover:bg-green-700" onClick={handleShip} disabled={!shipWarehouseId}>
+              确认出货
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Order Picker Dialog ─── */}
+      <Dialog open={orderPickerOpen} onOpenChange={setOrderPickerOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>从客户订单导入</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-96 overflow-auto">
+            {customerOrders.length === 0 ? (
+              <p className="text-sm text-gray-400 py-8 text-center">暂无可导入的客户订单，请先在客户订单中下推</p>
+            ) : (
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b bg-gray-50">
+                    <th className="py-2 px-2 text-left">订单号</th>
+                    <th className="py-2 px-2 text-left">客户</th>
+                    <th className="py-2 px-2 text-left">物料</th>
+                    <th className="py-2 px-2 text-right">未交数量</th>
+                    <th className="py-2 px-2 w-20"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customerOrders.map((order) => (
+                    (order.customer_order_items || []).map((item, idx) => {
+                      const undelivered = Number(item.quantity) - Number(item.delivered_qty);
+                      if (undelivered <= 0) return null;
+                      return (
+                        <tr key={`${order.id}-${idx}`} className="border-b hover:bg-gray-50">
+                          {idx === 0 ? (
+                            <>
+                              <td className="py-2 px-2 font-mono" rowSpan={order.customer_order_items?.filter(i => Number(i.quantity) - Number(i.delivered_qty) > 0).length || 1}>{order.order_no}</td>
+                              <td className="py-2 px-2" rowSpan={order.customer_order_items?.filter(i => Number(i.quantity) - Number(i.delivered_qty) > 0).length || 1}>
+                                {customers.find(c => c.id === order.customer_id)?.name || '-'}
+                              </td>
+                            </>
+                          ) : null}
+                          <td className="py-2 px-2">{item.products?.name || '-'} <span className="text-gray-400">{item.products?.code || ''}</span></td>
+                          <td className="py-2 px-2 text-right font-mono">{undelivered}</td>
+                          {idx === 0 ? (
+                            <td className="py-2 px-2 text-center" rowSpan={order.customer_order_items?.filter(i => Number(i.quantity) - Number(i.delivered_qty) > 0).length || 1}>
+                              <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => importFromOrder(order)}>
+                                导入
+                              </Button>
+                            </td>
+                          ) : null}
+                        </tr>
+                      );
+                    })
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 

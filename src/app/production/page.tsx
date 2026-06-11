@@ -27,6 +27,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 
 interface Product {
   id: string;
@@ -41,6 +48,11 @@ interface Customer {
   id: string;
   name: string;
   code: string | null;
+}
+
+interface Warehouse {
+  id: string;
+  name: string;
 }
 
 interface Material {
@@ -88,6 +100,10 @@ export default function ProductionPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [detailOrder, setDetailOrder] = useState<ProductionOrder | null>(null);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [completeOrderId, setCompleteOrderId] = useState<string | null>(null);
+  const [completeWarehouseId, setCompleteWarehouseId] = useState('');
+  const [completing, setCompleting] = useState(false);
 
   // 表单
   const [formCustomerId, setFormCustomerId] = useState('');
@@ -100,17 +116,20 @@ export default function ProductionPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [orderRes, prodRes, custRes] = await Promise.all([
+    const [orderRes, prodRes, custRes, whRes] = await Promise.all([
       fetch('/api/production'),
       fetch('/api/products'),
       fetch('/api/customers'),
+      fetch('/api/warehouses'),
     ]);
     const orderData = await orderRes.json();
     const prodData = await prodRes.json();
     const custData = await custRes.json();
+    const whData = await whRes.json();
     if (Array.isArray(orderData)) setOrders(orderData);
     if (Array.isArray(prodData)) setProducts(prodData);
     if (Array.isArray(custData)) setCustomers(custData);
+    if (Array.isArray(whData)) setWarehouses(whData);
     setLoading(false);
   }, []);
 
@@ -241,6 +260,31 @@ export default function ProductionPage() {
     await fetch(`/api/production?id=${deleteId}`, { method: 'DELETE' });
     setDeleteId(null);
     loadData();
+  };
+
+  // 完成生产 → 自动入库
+  const handleCompleteInbound = async () => {
+    if (!completeOrderId || !completeWarehouseId) return;
+    setCompleting(true);
+    try {
+      const res = await fetch('/api/production/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: completeOrderId, warehouse_id: completeWarehouseId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`生产完成！已自动入库: ${data.product?.name || ''} × ${data.quantity}`);
+        setCompleteOrderId(null);
+        setDetailOrder(null);
+        loadData();
+      } else {
+        alert(data.error || '完成入库失败');
+      }
+    } catch (e) {
+      alert('请求失败: ' + String(e));
+    }
+    setCompleting(false);
   };
 
   const addMaterialRow = () => {
@@ -447,7 +491,16 @@ export default function ProductionPage() {
                       <Button size="sm" onClick={() => handleStatusChange(detailOrder.id, 'in_progress')}>开始生产</Button>
                     )}
                     {detailOrder.status === 'in_progress' && (
-                      <Button size="sm" onClick={() => handleStatusChange(detailOrder.id, 'completed')}>完成生产</Button>
+                      <Button
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700"
+                        onClick={() => {
+                          setCompleteOrderId(detailOrder.id);
+                          setCompleteWarehouseId(warehouses[0]?.id || '');
+                        }}
+                      >
+                        完成入库
+                      </Button>
                     )}
                     <Button size="sm" variant="outline" onClick={() => handleStatusChange(detailOrder.id, 'cancelled')}>取消订单</Button>
                   </div>
@@ -594,6 +647,41 @@ export default function ProductionPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* 完成入库对话框 */}
+      <Dialog open={!!completeOrderId} onOpenChange={(open) => { if (!open) setCompleteOrderId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>完成生产 - 自动入库</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            完成生产后将自动创建入库单，成品入库到指定仓库，并扣减原材料库存。
+          </p>
+          <div className="mt-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">入库仓库 *</label>
+            <Select value={completeWarehouseId} onValueChange={setCompleteWarehouseId}>
+              <SelectTrigger>
+                <SelectValue placeholder="选择仓库" />
+              </SelectTrigger>
+              <SelectContent>
+                {warehouses.map((w) => (
+                  <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCompleteOrderId(null)}>取消</Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700"
+              onClick={handleCompleteInbound}
+              disabled={completing || !completeWarehouseId}
+            >
+              {completing ? '处理中...' : '确认完成入库'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

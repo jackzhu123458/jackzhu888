@@ -22,6 +22,7 @@ interface InventoryItem {
   product_id: string;
   warehouse_id: string;
   quantity: string;
+  reserved_qty: string;
   products: Product;
   warehouses: Warehouse;
 }
@@ -50,19 +51,21 @@ export default function InventoryPage() {
     : inventory;
 
   // 按产品汇总库存
-  const summaryMap = new Map<string, { product: Product; totalQty: number; warehouses: Array<{ name: string; qty: string }> }>();
+  const summaryMap = new Map<string, { product: Product; totalQty: number; totalReserved: number; warehouses: Array<{ name: string; qty: string; reserved: string }> }>();
   filteredInventory.forEach((item) => {
     const key = item.product_id;
     if (!summaryMap.has(key)) {
       summaryMap.set(key, {
         product: item.products,
         totalQty: 0,
+        totalReserved: 0,
         warehouses: [],
       });
     }
     const entry = summaryMap.get(key)!;
     entry.totalQty += parseFloat(item.quantity) || 0;
-    entry.warehouses.push({ name: item.warehouses?.name || '默认', qty: item.quantity });
+    entry.totalReserved += parseFloat(item.reserved_qty) || 0;
+    entry.warehouses.push({ name: item.warehouses?.name || '默认', qty: item.quantity, reserved: item.reserved_qty || '0' });
   });
 
   return (
@@ -88,15 +91,17 @@ export default function InventoryPage() {
                 <th className="text-left px-5 py-3 font-medium text-gray-500">物料名称</th>
                 <th className="text-left px-5 py-3 font-medium text-gray-500">规格</th>
                 <th className="text-right px-5 py-3 font-medium text-gray-500">总库存</th>
+                <th className="text-right px-5 py-3 font-medium text-gray-500">预留量</th>
+                <th className="text-right px-5 py-3 font-medium text-gray-500">可用量</th>
                 <th className="text-left px-5 py-3 font-medium text-gray-500">单位</th>
                 <th className="text-left px-5 py-3 font-medium text-gray-500">仓库明细</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6} className="px-5 py-12 text-center text-gray-400">加载中...</td></tr>
+                <tr><td colSpan={8} className="px-5 py-12 text-center text-gray-400">加载中...</td></tr>
               ) : filteredInventory.length === 0 ? (
-                <tr><td colSpan={6} className="px-5 py-12 text-center text-gray-400">暂无库存数据</td></tr>
+                <tr><td colSpan={8} className="px-5 py-12 text-center text-gray-400">暂无库存数据</td></tr>
               ) : (
                 Array.from(summaryMap.entries()).map(([productId, summary]) => (
                   <tr key={productId} className="border-b border-gray-50 hover:bg-gray-50/50">
@@ -104,9 +109,11 @@ export default function InventoryPage() {
                     <td className="px-5 py-3 text-gray-900">{summary.product.name}</td>
                     <td className="px-5 py-3 text-gray-600">{summary.product.spec || '-'}</td>
                     <td className="px-5 py-3 text-right font-mono font-medium text-gray-900">{summary.totalQty.toFixed(2)}</td>
+                    <td className="px-5 py-3 text-right font-mono text-amber-600">{summary.totalReserved.toFixed(2)}</td>
+                    <td className="px-5 py-3 text-right font-mono font-medium text-green-700">{(summary.totalQty - summary.totalReserved).toFixed(2)}</td>
                     <td className="px-5 py-3 text-gray-600">{summary.product.unit}</td>
                     <td className="px-5 py-3 text-gray-600 text-xs">
-                      {summary.warehouses.map((w) => `${w.name}: ${w.qty}`).join(' | ')}
+                      {summary.warehouses.map((w) => `${w.name}: ${w.qty}(预留${w.reserved})`).join(' | ')}
                     </td>
                   </tr>
                 ))

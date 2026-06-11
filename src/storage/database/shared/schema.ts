@@ -48,7 +48,7 @@ export const warehouses = pgTable(
   ]
 );
 
-// 库存
+// 库存（quantity=可用量，reserved_qty=预扣量，实际可用=quantity-reserved_qty）
 export const inventory = pgTable(
   "inventory",
   {
@@ -56,6 +56,7 @@ export const inventory = pgTable(
     product_id: varchar("product_id", { length: 36 }).notNull().references(() => products.id),
     warehouse_id: varchar("warehouse_id", { length: 36 }).notNull().references(() => warehouses.id),
     quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull().default("0"),
+    reserved_qty: numeric("reserved_qty", { precision: 12, scale: 2 }).notNull().default("0"),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp("updated_at", { withTimezone: true }),
   },
@@ -111,6 +112,8 @@ export const productionOrders = pgTable(
     id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
     order_no: varchar("order_no", { length: 50 }).notNull().unique(),
     customer_id: varchar("customer_id", { length: 36 }).references(() => customers.id),
+    customer_order_id: varchar("customer_order_id", { length: 36 }).references(() => customerOrders.id),
+    customer_order_item_id: varchar("customer_order_item_id", { length: 36 }).references(() => customerOrderItems.id),
     product_id: varchar("product_id", { length: 36 }).notNull().references(() => products.id),
     quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull(),
     status: varchar("status", { length: 30 }).notNull().default("pending"),
@@ -156,6 +159,7 @@ export const customerOrders = pgTable(
     customer_id: varchar("customer_id", { length: 36 }).notNull().references(() => customers.id),
     order_date: timestamp("order_date", { withTimezone: true }).defaultNow().notNull(),
     deadline: varchar("deadline", { length: 100 }),
+    delivery_deadline: varchar("delivery_deadline", { length: 100 }),
     status: varchar("status", { length: 30 }).notNull().default("pending"),
     remark: text("remark"),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -177,6 +181,7 @@ export const customerOrderItems = pgTable(
     product_id: varchar("product_id", { length: 36 }).notNull().references(() => products.id),
     quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull(),
     delivered_qty: numeric("delivered_qty", { precision: 12, scale: 2 }).notNull().default("0"),
+    reserved_qty: numeric("reserved_qty", { precision: 12, scale: 2 }).notNull().default("0"),
     price: numeric("price", { precision: 12, scale: 2 }).default("0"),
     deadline: varchar("deadline", { length: 100 }),
     remark: text("remark"),
@@ -211,10 +216,13 @@ export const deliveryNotes = pgTable(
   {
     id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
     note_no: varchar("note_no", { length: 50 }).notNull().unique(),
+    customer_id: varchar("customer_id", { length: 36 }).references(() => customers.id),
+    customer_order_id: varchar("customer_order_id", { length: 36 }).references(() => customerOrders.id),
     customer_name: varchar("customer_name", { length: 200 }).notNull(),
     customer_address: varchar("customer_address", { length: 500 }),
     customer_contact: varchar("customer_contact", { length: 100 }),
     customer_phone: varchar("customer_phone", { length: 30 }),
+    warehouse_id: varchar("warehouse_id", { length: 36 }).references(() => warehouses.id),
     delivery_date: timestamp("delivery_date", { withTimezone: true }),
     status: varchar("status", { length: 30 }).notNull().default("draft"),
     remark: text("remark"),
@@ -225,6 +233,7 @@ export const deliveryNotes = pgTable(
     index("delivery_notes_note_no_idx").on(table.note_no),
     index("delivery_notes_customer_name_idx").on(table.customer_name),
     index("delivery_notes_status_idx").on(table.status),
+    index("delivery_notes_customer_id_idx").on(table.customer_id),
   ]
 );
 
@@ -235,7 +244,9 @@ export const deliveryNoteItems = pgTable(
     id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
     note_id: varchar("note_id", { length: 36 }).notNull().references(() => deliveryNotes.id, { onDelete: "cascade" }),
     product_id: varchar("product_id", { length: 36 }).notNull().references(() => products.id),
+    customer_order_item_id: varchar("customer_order_item_id", { length: 36 }).references(() => customerOrderItems.id),
     quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull(),
+    per_box_qty: numeric("per_box_qty", { precision: 12, scale: 2 }).default("0"),
     unit_price: numeric("unit_price", { precision: 12, scale: 2 }),
     remark: text("remark"),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -243,5 +254,43 @@ export const deliveryNoteItems = pgTable(
   (table) => [
     index("delivery_note_items_note_id_idx").on(table.note_id),
     index("delivery_note_items_product_id_idx").on(table.product_id),
+  ]
+);
+
+// 入库单
+export const inboundNotes = pgTable(
+  "inbound_notes",
+  {
+    id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+    note_no: varchar("note_no", { length: 50 }).notNull().unique(),
+    type: varchar("type", { length: 30 }).notNull().default("production"), // production=生产入库, purchase=采购入库
+    production_order_id: varchar("production_order_id", { length: 36 }).references(() => productionOrders.id),
+    warehouse_id: varchar("warehouse_id", { length: 36 }).notNull().references(() => warehouses.id),
+    operator: varchar("operator", { length: 50 }),
+    status: varchar("status", { length: 30 }).notNull().default("draft"), // draft, confirmed
+    remark: text("remark"),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("inbound_notes_production_order_id_idx").on(table.production_order_id),
+    index("inbound_notes_warehouse_id_idx").on(table.warehouse_id),
+  ]
+);
+
+// 入库单明细
+export const inboundNoteItems = pgTable(
+  "inbound_note_items",
+  {
+    id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+    note_id: varchar("note_id", { length: 36 }).notNull().references(() => inboundNotes.id, { onDelete: "cascade" }),
+    product_id: varchar("product_id", { length: 36 }).notNull().references(() => products.id),
+    quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull(),
+    remark: text("remark"),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("inbound_note_items_note_id_idx").on(table.note_id),
+    index("inbound_note_items_product_id_idx").on(table.product_id),
   ]
 );
