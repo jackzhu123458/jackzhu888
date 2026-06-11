@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import JsBarcode from 'jsbarcode';
 import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +11,12 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,6 +60,24 @@ interface DeliveryNote {
   item_count?: number;
 }
 
+// 每箱数量分配
+interface BoxAllocation {
+  boxIndex: number;
+  quantity: number;
+}
+
+// 每个送货明细项的箱数配置
+interface ItemBoxConfig {
+  itemIndex: number;
+  productCode: string;
+  productName: string;
+  spec: string;
+  unit: string;
+  totalQuantity: number;
+  boxCount: number;
+  allocations: BoxAllocation[];
+}
+
 export default function DeliveryPage() {
   const [notes, setNotes] = useState<DeliveryNote[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -62,6 +87,13 @@ export default function DeliveryPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [printNote, setPrintNote] = useState<DeliveryNote | null>(null);
+
+  // 标签打印状态
+  const [labelNote, setLabelNote] = useState<DeliveryNote | null>(null);
+  const [labelDialogOpen, setLabelDialogOpen] = useState(false);
+  const [boxConfigs, setBoxConfigs] = useState<ItemBoxConfig[]>([]);
+  const [labelPreviewOpen, setLabelPreviewOpen] = useState(false);
+  const barcodeRefs = useRef<Map<string, SVGSVGElement>>(new Map());
 
   // 表单
   const [formCustomer, setFormCustomer] = useState('');
@@ -109,7 +141,6 @@ export default function DeliveryPage() {
   };
 
   const handleEdit = async (note: DeliveryNote) => {
-    // 获取完整数据
     const res = await fetch(`/api/delivery?id=${note.id}`);
     const full = await res.json();
     setEditNote(full);
@@ -183,6 +214,133 @@ export default function DeliveryPage() {
     window.print();
   };
 
+  // ===== 标签打印逻辑 =====
+
+  // 均分分配算法：总数分成 n 箱，余数分给前几箱
+  const distributeEvenly = (total: number, boxCount: number): BoxAllocation[] => {
+    if (boxCount <= 0) return [];
+    const base = Math.floor(total / boxCount);
+    const remainder = total % boxCount;
+    const allocations: BoxAllocation[] = [];
+    for (let i = 0; i < boxCount; i++) {
+      allocations.push({
+        boxIndex: i + 1,
+        quantity: base + (i < remainder ? 1 : 0),
+      });
+    }
+    return allocations;
+  };
+
+  // 打开标签打印对话框
+  const handleLabelPrint = async (note: DeliveryNote) => {
+    const res = await fetch(`/api/delivery?id=${note.id}`);
+    const full = await res.json();
+    setLabelNote(full);
+
+    // 初始化每个明细项的箱数配置，默认1箱装全部
+    const configs: ItemBoxConfig[] = (full.delivery_note_items || []).map((item: DeliveryItem, idx: number) => {
+      const totalQty = parseInt(item.quantity) || 0;
+      return {
+        itemIndex: idx,
+        productCode: item.products?.code || '',
+        productName: item.products?.name || '',
+        spec: item.products?.spec || '',
+        unit: item.products?.unit || '',
+        totalQuantity: totalQty,
+        boxCount: 1,
+        allocations: [{ boxIndex: 1, quantity: totalQty }],
+      };
+    });
+    setBoxConfigs(configs);
+    setLabelDialogOpen(true);
+  };
+
+  // 更新某项的箱数，自动均分
+  const updateBoxCount = (itemIdx: number, boxCount: number) => {
+    setBoxConfigs(prev => prev.map((config, i) => {
+      if (i !== itemIdx) return config;
+      const bc = Math.max(1, Math.min(boxCount, config.totalQuantity));
+      return {
+        ...config,
+        boxCount: bc,
+        allocations: distributeEvenly(config.totalQuantity, bc),
+      };
+    }));
+  };
+
+  // 手动修改某箱数量，自动调整同项其他箱
+  const updateBoxQuantity = (itemIdx: number, boxIdx: number, newQty: number) => {
+    setBoxConfigs(prev => prev.map((config, i) => {
+      if (i !== itemIdx) return config;
+      const allocations = [...config.allocations];
+      const oldQty = allocations[boxIdx].quantity;
+      const diff = newQty - oldQty;
+      allocations[boxIdx] = { ...allocations[boxIdx], quantity: newQty };
+
+      // 将差值分摊到其他箱（从最后一箱开始调整）
+      let remaining = diff;
+      for (let j = allocations.length - 1; j >= 0 && remaining !== 0; j--) {
+        if (j === boxIdx) continue;
+        if (remaining > 0) {
+          // 需要从其他箱扣除
+          const canDeduct = Math.min(remaining, allocations[j].quantity - 1);
+          allocations[j] = { ...allocations[j], quantity: allocations[j].quantity - canDeduct };
+          remaining -= canDeduct;
+        } else {
+          // 需要加到其他箱
+          allocations[j] = { ...allocations[j], quantity: allocations[j].quantity - remaining };
+          remaining = 0;
+        }
+      }
+      return { ...config, allocations };
+    }));
+  };
+
+  // 增减某项的箱数
+  const addBox = (itemIdx: number) => {
+    const config = boxConfigs[itemIdx];
+    if (!config) return;
+    const newBoxCount = config.boxCount + 1;
+    updateBoxCount(itemIdx, newBoxCount);
+  };
+
+  const removeBox = (itemIdx: number) => {
+    const config = boxConfigs[itemIdx];
+    if (!config || config.boxCount <= 1) return;
+    updateBoxCount(itemIdx, config.boxCount - 1);
+  };
+
+  // 生成标签预览
+  const handleGenerateLabels = () => {
+    setLabelPreviewOpen(true);
+  };
+
+  // 渲染条形码
+  useEffect(() => {
+    if (labelPreviewOpen && boxConfigs.length > 0) {
+      setTimeout(() => {
+        barcodeRefs.current.forEach((svg, key) => {
+          try {
+            JsBarcode(svg, key, {
+              format: 'CODE128',
+              width: 1.5,
+              height: 40,
+              displayValue: true,
+              fontSize: 10,
+              margin: 4,
+            });
+          } catch {
+            // 条形码生成失败时忽略
+          }
+        });
+      }, 100);
+    }
+  }, [labelPreviewOpen, boxConfigs]);
+
+  const handleLabelPrintAction = () => {
+    window.print();
+  };
+
   const addItemRow = () => {
     setFormItems([...formItems, { product_id: '', quantity: '', unit_price: '', remark: '' }]);
   };
@@ -236,6 +394,7 @@ export default function DeliveryPage() {
                     </td>
                     <td className="px-5 py-3 text-center">
                       <button onClick={() => handlePrint(note)} className="text-green-600 hover:text-green-800 text-xs mr-2">打印</button>
+                      <button onClick={() => handleLabelPrint(note)} className="text-purple-600 hover:text-purple-800 text-xs mr-2">标签</button>
                       <button onClick={() => handleEdit(note)} className="text-blue-600 hover:text-blue-800 text-xs mr-2">编辑</button>
                       <button onClick={() => setDeleteId(note.id)} className="text-red-500 hover:text-red-700 text-xs">删除</button>
                     </td>
@@ -318,7 +477,7 @@ export default function DeliveryPage() {
         </SheetContent>
       </Sheet>
 
-      {/* 打印预览 */}
+      {/* 送货单打印预览 */}
       <Sheet open={!!printNote} onOpenChange={() => setPrintNote(null)}>
         <SheetContent className="w-[800px] print:w-full">
           {printNote && (
@@ -329,7 +488,6 @@ export default function DeliveryPage() {
               <div className="mt-4 print:mt-0">
                 <Button onClick={handlePrintAction} className="mb-4 no-print">打印</Button>
                 
-                {/* 打印内容 */}
                 <div className="bg-white p-8 border border-gray-200 rounded shadow-sm" id="print-area">
                   <div className="text-center mb-6">
                     <h1 className="text-2xl font-bold">送 货 单</h1>
@@ -414,6 +572,165 @@ export default function DeliveryPage() {
               </div>
             </>
           )}
+        </SheetContent>
+      </Sheet>
+
+      {/* ===== 标签打印：箱数分配对话框 ===== */}
+      <Dialog open={labelDialogOpen} onOpenChange={setLabelDialogOpen}>
+        <DialogContent className="max-w-[720px] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>标签打印 - 箱数配置</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4 space-y-1 text-sm text-gray-500">
+            <p>为每个产品配置分箱方案。修改箱数后系统会自动均分，你也可以手动调整每箱数量。</p>
+            <p>示例：100个分5箱 → 默认每箱20个，你可以改为4箱x8 + 1箱x68，或任意组合。</p>
+          </div>
+
+          <div className="mt-4 space-y-4">
+            {boxConfigs.map((config, itemIdx) => (
+              <div key={itemIdx} className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <span className="font-medium text-gray-900">{config.productName}</span>
+                    <span className="ml-2 text-xs text-gray-500 font-mono">{config.productCode}</span>
+                    {config.spec && <span className="ml-2 text-xs text-gray-400">({config.spec})</span>}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    总数：<span className="font-mono font-medium">{config.totalQuantity}</span> {config.unit}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="text-sm text-gray-600">箱数：</span>
+                  <button
+                    onClick={() => removeBox(itemIdx)}
+                    className="w-7 h-7 rounded border border-gray-300 flex items-center justify-center text-gray-500 hover:bg-gray-100"
+                  >-</button>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={config.totalQuantity}
+                    value={config.boxCount}
+                    onChange={(e) => updateBoxCount(itemIdx, parseInt(e.target.value) || 1)}
+                    className="w-16 h-7 text-center text-sm font-mono"
+                  />
+                  <button
+                    onClick={() => addBox(itemIdx)}
+                    className="w-7 h-7 rounded border border-gray-300 flex items-center justify-center text-gray-500 hover:bg-gray-100"
+                  >+</button>
+                  <span className="text-xs text-gray-400 ml-2">
+                    (共 {config.allocations.length} 箱)
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  {config.allocations.map((alloc, boxIdx) => (
+                    <div key={boxIdx} className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-16 shrink-0">第 {alloc.boxIndex} 箱</span>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={config.totalQuantity}
+                        value={alloc.quantity}
+                        onChange={(e) => updateBoxQuantity(itemIdx, boxIdx, parseInt(e.target.value) || 1)}
+                        className="w-20 h-7 text-sm font-mono"
+                      />
+                      <span className="text-xs text-gray-400">{config.unit}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 分配总量校验 */}
+                {(() => {
+                  const allocated = config.allocations.reduce((s, a) => s + a.quantity, 0);
+                  const diff = allocated - config.totalQuantity;
+                  if (diff !== 0) {
+                    return (
+                      <div className={`mt-2 text-xs ${diff > 0 ? 'text-red-500' : 'text-amber-500'}`}>
+                        {diff > 0 ? `多出 ${diff} 个，请减少部分箱数` : `还差 ${-diff} 个，请增加部分箱数`}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 flex gap-3">
+            <Button
+              onClick={handleGenerateLabels}
+              disabled={boxConfigs.some(c => c.allocations.reduce((s, a) => s + a.quantity, 0) !== c.totalQuantity)}
+              className="flex-1"
+            >
+              生成标签预览
+            </Button>
+            <Button variant="outline" onClick={() => setLabelDialogOpen(false)} className="flex-1">取消</Button>
+          </div>
+
+          {/* 标签统计 */}
+          <div className="mt-3 text-xs text-gray-400 text-right">
+            共 {boxConfigs.reduce((s, c) => s + c.allocations.length, 0)} 个标签
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== 标签打印预览 ===== */}
+      <Sheet open={labelPreviewOpen} onOpenChange={() => setLabelPreviewOpen(false)}>
+        <SheetContent className="w-[800px] print:w-full">
+          <SheetHeader className="no-print">
+            <SheetTitle>标签打印预览</SheetTitle>
+          </SheetHeader>
+          <div className="mt-4 print:mt-0">
+            <Button onClick={handleLabelPrintAction} className="mb-4 no-print">打印标签</Button>
+
+            <div className="bg-white p-6 border border-gray-200 rounded shadow-sm" id="label-print-area">
+              {labelNote && (
+                <div className="grid grid-cols-2 gap-3">
+                  {boxConfigs.map((config, itemIdx) =>
+                    config.allocations.map((alloc, boxIdx) => {
+                      const barcodeValue = `${labelNote.note_no}-${config.productCode}-${alloc.boxIndex}`;
+                      const refKey = `${itemIdx}-${boxIdx}`;
+                      return (
+                        <div
+                          key={refKey}
+                          className="border border-gray-300 rounded p-3 break-inside-avoid"
+                          style={{ minHeight: '120px' }}
+                        >
+                          <div className="flex justify-between items-start mb-1">
+                            <div className="text-xs font-bold text-gray-900">{labelNote.customer_name}</div>
+                            <div className="text-[10px] text-gray-400">{labelNote.note_no}</div>
+                          </div>
+                          <div className="flex justify-between items-center mb-1">
+                            <div className="text-xs text-gray-700">
+                              <span className="font-medium">{config.productName}</span>
+                              {config.spec && <span className="text-gray-400 ml-1">({config.spec})</span>}
+                            </div>
+                            <div className="text-[10px] text-gray-400 font-mono">{config.productCode}</div>
+                          </div>
+                          <div className="flex items-center justify-center my-1">
+                            <svg
+                              ref={(el) => {
+                                if (el) barcodeRefs.current.set(refKey, el);
+                              }}
+                            />
+                          </div>
+                          <div className="flex justify-between items-end">
+                            <div className="text-xs text-gray-500">
+                              第 <span className="font-mono font-bold text-gray-900">{alloc.boxIndex}</span> / {config.boxCount} 箱
+                            </div>
+                            <div className="text-sm font-mono font-bold text-gray-900">
+                              {alloc.quantity} <span className="text-xs font-normal text-gray-500">{config.unit}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </SheetContent>
       </Sheet>
 

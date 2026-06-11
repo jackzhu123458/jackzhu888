@@ -11,7 +11,7 @@ const navItems = [
   { href: '/bom', label: 'BOM 表', icon: '☰' },
   { href: '/production', label: '生产订单', icon: '⚙' },
   { href: '/delivery', label: '送货单', icon: '→' },
-  { href: '/labels', label: '标签打印', icon: '▦' },
+
 ];
 
 export function Sidebar() {
