@@ -88,6 +88,7 @@ interface DeliveryItem {
   per_box_qty: number;
   remark: string;
   customer_order_item_id?: string | null;
+  customer_order?: string;
 }
 interface DeliveryNote {
   id: string;
@@ -373,6 +374,7 @@ export default function DeliveryPage() {
         per_box_qty: Number(item.quantity) - Number(item.delivered_qty),
         remark: item.remark || '',
         customer_order_item_id: item.id,
+        customer_order: order.order_no,
       }));
 
     setForm((prev) => ({
@@ -796,9 +798,9 @@ export default function DeliveryPage() {
                     <td className="py-2 px-2 text-gray-500">{idx + 1}</td>
                     <td className="py-2 px-2">
                       {editMode ? (
-                        <Input className="h-6 text-xs" value={form.customer_order || ''} readOnly />
+                        <Input className="h-6 text-xs" value={item.customer_order || ''} onChange={(e) => updateItem(idx, 'customer_order', e.target.value)} placeholder="输入订单号" />
                       ) : (
-                        <span className="text-gray-500">{form.customer_order || '-'}</span>
+                        <span className="text-gray-500 font-mono">{item.customer_order || '-'}</span>
                       )}
                     </td>
                     <td className="py-2 px-2 font-mono text-[#111827]">{item.product?.code || '-'}</td>
