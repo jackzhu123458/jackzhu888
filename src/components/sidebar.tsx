@@ -12,6 +12,7 @@ const navItems = [
   { href: '/production', label: '生产订单', icon: '⚙' },
   { href: '/inbound', label: '入库单', icon: '↓' },
   { href: '/delivery', label: '送货单', icon: '→' },
+  { href: '/reconciliation', label: '对账管理', icon: '⇌' },
   { href: '/inventory', label: '库存管理', icon: '▦' },
 ];
 
