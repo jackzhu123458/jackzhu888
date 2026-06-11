@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
+import iconv from 'iconv-lite';
 
 interface ImportRow {
   category: string | number | null;
@@ -19,6 +20,31 @@ interface ImportResult {
   errors: string[];
 }
 
+/**
+ * 修复 GBK 编码乱码：
+ * xlsx 库在 ESM/Next.js 环境下可能无法正确应用 codepage，
+ * 导致 GBK 字节被当作 latin1 解码。此函数将错误解码的字符串
+ * 还原为原始字节，再用 GBK 重新解码。
+ */
+function fixGbkEncoding(str: string): string {
+  if (!str) return str;
+  let hasHighBytes = false;
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if (code >= 0x80 && code <= 0xff) {
+      hasHighBytes = true;
+      break;
+    }
+  }
+  if (!hasHighBytes) return str;
+  try {
+    const bytes = Buffer.from(str, 'latin1');
+    return iconv.decode(bytes, 'gbk');
+  } catch {
+    return str;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -30,8 +56,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '请上传 Excel 文件' }, { status: 400 });
     }
 
-    // 动态导入 xlsx（仅服务端使用）
-    const XLSX = await import('xlsx');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const XLSX = require('xlsx') as typeof import('xlsx');
     const arrayBuffer = await file.arrayBuffer();
     const uint8 = new Uint8Array(arrayBuffer);
     const workbook = XLSX.read(uint8, { type: 'array', codepage: 936 });
@@ -44,8 +70,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Excel 文件为空或只有表头' }, { status: 400 });
     }
 
-    const headerRow = rawRows[0].map((h) => String(h).trim());
-    const dataRows = rawRows.slice(1);
+    // 修复所有行的 GBK 编码问题
+    const fixedRows = rawRows.map(row =>
+      row.map(cell => typeof cell === 'string' ? fixGbkEncoding(cell) : cell)
+    );
+
+    const headerRow = fixedRows[0].map((h) => String(h).trim());
+    const dataRows = fixedRows.slice(1);
 
     // 通过列名模糊匹配列索引
     const colIdx = (candidates: string[]): number => {
