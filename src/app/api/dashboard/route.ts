@@ -16,6 +16,12 @@ export async function GET() {
     .select('*', { count: 'exact', head: true });
   if (bErr) return NextResponse.json({ error: bErr.message }, { status: 500 });
 
+  // 客户统计
+  const { count: customerCount, error: cErr } = await client
+    .from('customers')
+    .select('*', { count: 'exact', head: true });
+  if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
+
   // 生产订单统计
   const { data: orders, error: oErr } = await client
     .from('production_orders')
@@ -39,7 +45,7 @@ export async function GET() {
   // 最近生产订单
   const { data: recentOrders, error: roErr } = await client
     .from('production_orders')
-    .select('id, order_no, status, quantity, created_at, products(name)')
+    .select('id, order_no, status, quantity, created_at, products(name), customers(name)')
     .order('created_at', { ascending: false })
     .limit(5);
   if (roErr) return NextResponse.json({ error: roErr.message }, { status: 500 });
@@ -55,6 +61,7 @@ export async function GET() {
   return NextResponse.json({
     productCount: productCount || 0,
     bomCount: bomCount || 0,
+    customerCount: customerCount || 0,
     orderStats,
     deliveryCount: deliveryCount || 0,
     recentOrders: recentOrders || [],

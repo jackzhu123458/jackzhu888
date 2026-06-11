@@ -1,19 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
 
+const ORDER_SELECT = '*, products(id, code, name, spec, unit), customers(id, name, code), production_order_materials(*, products(id, code, name, spec, unit))';
+
 export async function GET(request: NextRequest) {
   const client = getSupabaseClient();
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status');
+  const customerId = searchParams.get('customer_id');
 
   let query = client
     .from('production_orders')
-    .select('*, products(id, code, name, spec, unit), production_order_materials(*, products(id, code, name, spec, unit))')
+    .select(ORDER_SELECT)
     .order('created_at', { ascending: false });
 
   if (status) query = query.eq('status', status);
+  if (customerId) query = query.eq('customer_id', customerId);
 
-  const { data, error } = await query.limit(200);
+  const { data, error } = await query.limit(500);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
 }
@@ -45,7 +49,7 @@ export async function POST(request: NextRequest) {
   // 返回完整订单
   const { data: fullOrder, error: fErr } = await client
     .from('production_orders')
-    .select('*, products(id, code, name, spec, unit), production_order_materials(*, products(id, code, name, spec, unit))')
+    .select(ORDER_SELECT)
     .eq('id', order.id)
     .maybeSingle();
   if (fErr) return NextResponse.json({ error: fErr.message }, { status: 500 });
@@ -81,7 +85,7 @@ export async function PUT(request: NextRequest) {
 
   const { data: fullOrder, error: fErr } = await client
     .from('production_orders')
-    .select('*, products(id, code, name, spec, unit), production_order_materials(*, products(id, code, name, spec, unit))')
+    .select(ORDER_SELECT)
     .eq('id', id)
     .maybeSingle();
   if (fErr) return NextResponse.json({ error: fErr.message }, { status: 500 });

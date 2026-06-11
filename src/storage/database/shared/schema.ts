@@ -83,12 +83,34 @@ export const bom = pgTable(
   ]
 );
 
+// 客户
+export const customers = pgTable(
+  "customers",
+  {
+    id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+    name: varchar("name", { length: 200 }).notNull(),
+    code: varchar("code", { length: 50 }),
+    contact: varchar("contact", { length: 100 }),
+    phone: varchar("phone", { length: 30 }),
+    address: varchar("address", { length: 500 }),
+    remark: text("remark"),
+    is_active: boolean("is_active").default(true).notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("customers_name_idx").on(table.name),
+    index("customers_code_idx").on(table.code),
+  ]
+);
+
 // 生产订单
 export const productionOrders = pgTable(
   "production_orders",
   {
     id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
     order_no: varchar("order_no", { length: 50 }).notNull().unique(),
+    customer_id: varchar("customer_id", { length: 36 }).references(() => customers.id),
     product_id: varchar("product_id", { length: 36 }).notNull().references(() => products.id),
     quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull(),
     status: varchar("status", { length: 30 }).notNull().default("pending"),
@@ -101,6 +123,7 @@ export const productionOrders = pgTable(
   },
   (table) => [
     index("production_orders_order_no_idx").on(table.order_no),
+    index("production_orders_customer_id_idx").on(table.customer_id),
     index("production_orders_product_id_idx").on(table.product_id),
     index("production_orders_status_idx").on(table.status),
   ]

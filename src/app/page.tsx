@@ -6,6 +6,7 @@ import { AppShell } from '@/components/app-shell';
 interface DashboardData {
   productCount: number;
   bomCount: number;
+  customerCount: number;
   deliveryCount: number;
   orderStats: Record<string, number>;
   recentOrders: Array<{
@@ -15,6 +16,7 @@ interface DashboardData {
     quantity: string;
     created_at: string;
     products: { name: string } | null;
+    customers: { name: string } | null;
   }>;
   recentDelivery: Array<{
     id: string;
@@ -73,8 +75,8 @@ export default function DashboardPage() {
         <div className="grid grid-cols-4 gap-6 mb-8">
           <StatCard label="物料总数" value={data.productCount} />
           <StatCard label="BOM 配方数" value={data.bomCount} />
+          <StatCard label="客户数" value={data.customerCount} />
           <StatCard label="生产订单" value={totalOrders} />
-          <StatCard label="送货单" value={data.deliveryCount} />
         </div>
 
         {totalOrders > 0 && (
@@ -104,7 +106,7 @@ export default function DashboardPage() {
                     <div>
                       <span className="text-sm font-mono text-gray-900">{order.order_no}</span>
                       <span className="text-sm text-gray-500 ml-3">
-                        {order.products?.name || '-'}
+                        {order.customers?.name || ''}{order.customers?.name && order.products?.name ? ' - ' : ''}{order.products?.name || '-'}
                       </span>
                     </div>
                     <div className="flex items-center gap-3">

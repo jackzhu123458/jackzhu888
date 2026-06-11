@@ -38,6 +38,12 @@ interface Product {
   type: string;
 }
 
+interface Customer {
+  id: string;
+  name: string;
+  code: string | null;
+}
+
 interface Material {
   product_id: string;
   required_qty: string;
@@ -49,6 +55,7 @@ interface Material {
 interface ProductionOrder {
   id: string;
   order_no: string;
+  customer_id: string | null;
   product_id: string;
   quantity: string;
   status: string;
@@ -58,6 +65,7 @@ interface ProductionOrder {
   remark: string | null;
   created_at: string;
   products: Product;
+  customers: Customer | null;
   production_order_materials: Material[];
 }
 
@@ -71,8 +79,11 @@ const statusMap: Record<string, { label: string; color: string }> = {
 export default function ProductionPage() {
   const [orders, setOrders] = useState<ProductionOrder[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterCustomerId, setFilterCustomerId] = useState<string>('all');
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editOrder, setEditOrder] = useState<ProductionOrder | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -80,6 +91,7 @@ export default function ProductionPage() {
   const [detailOrder, setDetailOrder] = useState<ProductionOrder | null>(null);
 
   // 表单
+  const [formCustomerId, setFormCustomerId] = useState('');
   const [formProductId, setFormProductId] = useState('');
   const [formQuantity, setFormQuantity] = useState('');
   const [formStartDate, setFormStartDate] = useState('');
@@ -89,18 +101,33 @@ export default function ProductionPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [orderRes, prodRes] = await Promise.all([
+    const [orderRes, prodRes, custRes] = await Promise.all([
       fetch('/api/production'),
       fetch('/api/products'),
+      fetch('/api/customers'),
     ]);
     const orderData = await orderRes.json();
     const prodData = await prodRes.json();
+    const custData = await custRes.json();
     if (Array.isArray(orderData)) setOrders(orderData);
     if (Array.isArray(prodData)) setProducts(prodData);
+    if (Array.isArray(custData)) setCustomers(custData);
     setLoading(false);
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // 初始化展开所有客户组
+  useEffect(() => {
+    if (orders.length > 0) {
+      const groupIds = new Set<string>();
+      orders.forEach((o) => {
+        const key = o.customer_id || '__no_customer__';
+        groupIds.add(key);
+      });
+      setExpandedGroups(groupIds);
+    }
+  }, [orders.length]);
 
   const generateOrderNo = () => {
     const now = new Date();
@@ -113,6 +140,7 @@ export default function ProductionPage() {
 
   const handleAdd = () => {
     setEditOrder(null);
+    setFormCustomerId('');
     setFormProductId('');
     setFormQuantity('');
     setFormStartDate('');
@@ -145,6 +173,7 @@ export default function ProductionPage() {
 
   const handleEdit = (order: ProductionOrder) => {
     setEditOrder(order);
+    setFormCustomerId(order.customer_id || '');
     setFormProductId(order.product_id);
     setFormQuantity(order.quantity);
     setFormStartDate(order.start_date ? order.start_date.slice(0, 10) : '');
@@ -164,6 +193,7 @@ export default function ProductionPage() {
     setSaving(true);
     const body = {
       order_no: editOrder ? editOrder.order_no : generateOrderNo(),
+      customer_id: formCustomerId || null,
       product_id: formProductId,
       quantity: formQuantity,
       status: editOrder ? editOrder.status : 'pending',
@@ -228,7 +258,38 @@ export default function ProductionPage() {
     setFormMaterials(updated);
   };
 
-  const filteredOrders = filterStatus === 'all' ? orders : orders.filter((o) => o.status === filterStatus);
+  const toggleGroup = (key: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const expandAll = () => {
+    const allKeys = new Set<string>();
+    filteredOrders.forEach((o) => allKeys.add(o.customer_id || '__no_customer__'));
+    setExpandedGroups(allKeys);
+  };
+
+  const collapseAll = () => setExpandedGroups(new Set());
+
+  // 过滤
+  let filteredOrders = orders;
+  if (filterStatus !== 'all') filteredOrders = filteredOrders.filter((o) => o.status === filterStatus);
+  if (filterCustomerId !== 'all') filteredOrders = filteredOrders.filter((o) => o.customer_id === filterCustomerId);
+
+  // 按客户分组
+  const grouped = new Map<string, { customer: Customer | null; orders: ProductionOrder[] }>();
+  filteredOrders.forEach((o) => {
+    const key = o.customer_id || '__no_customer__';
+    if (!grouped.has(key)) {
+      grouped.set(key, { customer: o.customers, orders: [] });
+    }
+    grouped.get(key)!.orders.push(o);
+  });
+
   const finishedProducts = products.filter((p) => p.type === 'finished_product' || p.type === 'semi_finished');
 
   return (
@@ -239,7 +300,7 @@ export default function ProductionPage() {
           <Button onClick={handleAdd}>新建订单</Button>
         </div>
 
-        <div className="flex items-center gap-4 mb-4">
+        <div className="flex items-center gap-4 mb-4 flex-wrap">
           <Select value={filterStatus} onValueChange={setFilterStatus}>
             <SelectTrigger className="w-36">
               <SelectValue />
@@ -252,53 +313,112 @@ export default function ProductionPage() {
               <SelectItem value="cancelled">已取消</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={filterCustomerId} onValueChange={setFilterCustomerId}>
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部客户</SelectItem>
+              {customers.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex gap-2 ml-auto">
+            <Button variant="outline" size="sm" onClick={expandAll}>全部展开</Button>
+            <Button variant="outline" size="sm" onClick={collapseAll}>全部收缩</Button>
+          </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 bg-gray-50/50">
-                <th className="text-left px-5 py-3 font-medium text-gray-500">订单号</th>
-                <th className="text-left px-5 py-3 font-medium text-gray-500">产品</th>
-                <th className="text-right px-5 py-3 font-medium text-gray-500">数量</th>
-                <th className="text-left px-5 py-3 font-medium text-gray-500">状态</th>
-                <th className="text-left px-5 py-3 font-medium text-gray-500">计划开始</th>
-                <th className="text-left px-5 py-3 font-medium text-gray-500">计划完成</th>
-                <th className="text-center px-5 py-3 font-medium text-gray-500">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={7} className="px-5 py-12 text-center text-gray-400">加载中...</td></tr>
-              ) : filteredOrders.length === 0 ? (
-                <tr><td colSpan={7} className="px-5 py-12 text-center text-gray-400">暂无数据</td></tr>
-              ) : (
-                filteredOrders.map((order) => (
-                  <tr key={order.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                    <td className="px-5 py-3 font-mono text-gray-900">{order.order_no}</td>
-                    <td className="px-5 py-3 text-gray-900">
-                      {order.products?.name || '-'}
-                      <span className="text-xs text-gray-400 ml-1">{order.products?.spec || ''}</span>
-                    </td>
-                    <td className="px-5 py-3 text-right font-mono text-gray-900">{order.quantity} {order.products?.unit || ''}</td>
-                    <td className="px-5 py-3">
-                      <Badge variant="outline" className={statusMap[order.status]?.color || ''}>
-                        {statusMap[order.status]?.label || order.status}
-                      </Badge>
-                    </td>
-                    <td className="px-5 py-3 text-gray-600">{order.start_date ? order.start_date.slice(0, 10) : '-'}</td>
-                    <td className="px-5 py-3 text-gray-600">{order.due_date ? order.due_date.slice(0, 10) : '-'}</td>
-                    <td className="px-5 py-3 text-center">
-                      <button onClick={() => setDetailOrder(order)} className="text-blue-600 hover:text-blue-800 text-xs mr-2">查看</button>
-                      <button onClick={() => handleEdit(order)} className="text-blue-600 hover:text-blue-800 text-xs mr-2">编辑</button>
-                      <button onClick={() => setDeleteId(order.id)} className="text-red-500 hover:text-red-700 text-xs">删除</button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        {/* 按客户分组展示 */}
+        {loading ? (
+          <div className="py-12 text-center text-gray-400">加载中...</div>
+        ) : grouped.size === 0 ? (
+          <div className="py-12 text-center text-gray-400">暂无数据</div>
+        ) : (
+          <div className="space-y-4">
+            {Array.from(grouped.entries()).map(([key, group]) => {
+              const isExpanded = expandedGroups.has(key);
+              const customerName = group.customer?.name || '未分配客户';
+              const customerCode = group.customer?.code || '';
+              const orderCount = group.orders.length;
+              const statusCounts: Record<string, number> = {};
+              group.orders.forEach((o) => { statusCounts[o.status] = (statusCounts[o.status] || 0) + 1; });
+
+              return (
+                <div key={key} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                  {/* 客户组标题 */}
+                  <button
+                    onClick={() => toggleGroup(key)}
+                    className="w-full flex items-center justify-between px-5 py-3.5 bg-gray-50/80 hover:bg-gray-100/80 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <svg
+                        className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                      <span className="font-medium text-gray-900">{customerName}</span>
+                      {customerCode && <span className="text-xs text-gray-400 font-mono">{customerCode}</span>}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {Object.entries(statusCounts).map(([s, c]) => (
+                        <Badge key={s} variant="outline" className={statusMap[s]?.color || ''}>
+                          {statusMap[s]?.label || s} {c}
+                        </Badge>
+                      ))}
+                      <span className="text-xs text-gray-400">共 {orderCount} 单</span>
+                    </div>
+                  </button>
+
+                  {/* 订单列表 */}
+                  {isExpanded && (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-t border-b border-gray-200 bg-gray-50/30">
+                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">订单号</th>
+                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">产品</th>
+                          <th className="text-right px-5 py-2.5 font-medium text-gray-500">数量</th>
+                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">状态</th>
+                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">计划开始</th>
+                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">计划完成</th>
+                          <th className="text-center px-5 py-2.5 font-medium text-gray-500">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.orders.map((order) => (
+                          <tr key={order.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                            <td className="px-5 py-3 font-mono text-gray-900">{order.order_no}</td>
+                            <td className="px-5 py-3 text-gray-900">
+                              {order.products?.name || '-'}
+                              <span className="text-xs text-gray-400 ml-1">{order.products?.spec || ''}</span>
+                            </td>
+                            <td className="px-5 py-3 text-right font-mono text-gray-900">{order.quantity} {order.products?.unit || ''}</td>
+                            <td className="px-5 py-3">
+                              <Badge variant="outline" className={statusMap[order.status]?.color || ''}>
+                                {statusMap[order.status]?.label || order.status}
+                              </Badge>
+                            </td>
+                            <td className="px-5 py-3 text-gray-600">{order.start_date ? order.start_date.slice(0, 10) : '-'}</td>
+                            <td className="px-5 py-3 text-gray-600">{order.due_date ? order.due_date.slice(0, 10) : '-'}</td>
+                            <td className="px-5 py-3 text-center">
+                              <button onClick={() => setDetailOrder(order)} className="text-blue-600 hover:text-blue-800 text-xs mr-2">查看</button>
+                              <button onClick={() => handleEdit(order)} className="text-blue-600 hover:text-blue-800 text-xs mr-2">编辑</button>
+                              <button onClick={() => setDeleteId(order.id)} className="text-red-500 hover:text-red-700 text-xs">删除</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="mt-3 text-xs text-gray-400">共 {filteredOrders.length} 条生产订单</div>
       </div>
 
       {/* 订单详情 */}
@@ -311,6 +431,7 @@ export default function ProductionPage() {
               </SheetHeader>
               <div className="mt-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div><span className="text-gray-500">客户：</span>{detailOrder.customers?.name || '未分配'}</div>
                   <div><span className="text-gray-500">产品：</span>{detailOrder.products?.name}</div>
                   <div><span className="text-gray-500">数量：</span><span className="font-mono">{detailOrder.quantity}</span></div>
                   <div><span className="text-gray-500">状态：</span>
@@ -371,6 +492,17 @@ export default function ProductionPage() {
             <SheetTitle>{editOrder ? '编辑生产订单' : '新建生产订单'}</SheetTitle>
           </SheetHeader>
           <div className="mt-6 space-y-4 px-1">
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">客户</label>
+              <Select value={formCustomerId} onValueChange={setFormCustomerId}>
+                <SelectTrigger><SelectValue placeholder="选择客户（可选）" /></SelectTrigger>
+                <SelectContent>
+                  {customers.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}{c.code ? ` (${c.code})` : ''}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1.5 block">生产产品 *</label>
               <Select value={formProductId} onValueChange={handleSelectProduct}>
@@ -459,7 +591,7 @@ export default function ProductionPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">删除</AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete}>确认删除</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
