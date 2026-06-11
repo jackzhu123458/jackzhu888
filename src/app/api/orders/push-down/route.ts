@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     // 2. 检查是否为成品（有BOM的）还是原材料
     const { data: bomRecords } = await supabase
       .from('bom')
-      .select('*, child_product:products!bom_child_product_id_fk(id, code, name, spec, unit, type)')
+      .select('*, child_product:products!bom_child_product_id_products_id_fk(id, code, name, spec, unit, type)')
       .eq('parent_product_id', product.id);
 
     if (bomRecords && bomRecords.length > 0) {
@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
           quantity: requiredQty,
           status: 'pending',
           due_date: item.deadline || order.deadline || null,
+          customer_id: order.customer_id,
           customer_order_id: order_id,
           customer_order_item_id: item.id,
         })
