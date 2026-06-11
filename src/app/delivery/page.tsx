@@ -416,6 +416,19 @@ export default function DeliveryPage() {
     setIsFormDirty(true);
   };
 
+  const addEmptyItem = () => {
+    setForm((prev) => ({
+      ...prev,
+      delivery_note_items: [...prev.delivery_note_items, {
+        product_id: '',
+        quantity: 0,
+        unit_price: 0,
+        per_box_qty: 0,
+        remark: '',
+      }],
+    }));
+  };
+
   const updateItem = (idx: number, field: keyof DeliveryItem, value: string | number) => {
     setForm((prev) => {
       const items = [...prev.delivery_note_items];
@@ -937,20 +950,76 @@ export default function DeliveryPage() {
                     )}
                   </tr>
                 ))}
-                {/* Empty rows for filling */}
-                {editMode && Array.from({ length: Math.max(3, 8 - form.delivery_note_items.length) }).map((_, i) => (
-                  <tr key={`empty-${i}`} className="border-b border-[#E5E7EB] h-8">
-                    <td className="py-1 px-2 text-gray-300">{form.delivery_note_items.length + i + 1}</td>
-                    <td />
-                    <td />
-                    <td />
-                    <td />
-                    <td />
-                    <td />
-                    <td />
+                {/* Auto new-row for continuous input */}
+                {editMode && (
+                  <tr key="new-row" className="border-b border-[#E5E7EB] h-8">
+                    <td className="py-1 px-2 text-gray-300">{form.delivery_note_items.length + 1}</td>
+                    <td className="py-2 px-2">
+                      <Input className="h-6 text-xs" placeholder="输入订单号" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEmptyItem(); } }} />
+                    </td>
+                    <td className="py-2 px-2">
+                      <div className="relative">
+                        <Input
+                          className="h-6 text-xs font-mono"
+                          placeholder="搜索编号/名称"
+                          value={itemSearches[-1] || ''}
+                          onChange={(e) => setItemSearches((prev) => ({ ...prev, [-1]: e.target.value }))}
+                          onBlur={() => {
+                            setTimeout(() => {
+                              setItemSearches((prev) => {
+                                const next = { ...prev };
+                                delete next[-1];
+                                return next;
+                              });
+                            }, 200);
+                          }}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !itemSearches[-1]) { e.preventDefault(); addEmptyItem(); } }}
+                        />
+                        {itemSearches[-1] && (
+                          <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto">
+                            {searchDeliveryProducts(itemSearches[-1]).length === 0 ? (
+                              <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
+                            ) : (
+                              searchDeliveryProducts(itemSearches[-1]).map((p) => (
+                                <button
+                                  key={p.id}
+                                  className="w-full text-left px-2 py-1.5 text-xs hover:bg-blue-50 flex items-center justify-between"
+                                  onClick={() => {
+                                    setForm((prev) => ({
+                                      ...prev,
+                                      delivery_note_items: [...prev.delivery_note_items, {
+                                        product_id: p.id,
+                                        product: p,
+                                        quantity: 0,
+                                        unit_price: 0,
+                                        per_box_qty: 0,
+                                        remark: '',
+                                      }],
+                                    }));
+                                    setItemSearches((prev) => {
+                                      const next = { ...prev };
+                                      delete next[-1];
+                                      return next;
+                                    });
+                                    setIsFormDirty(true);
+                                  }}
+                                >
+                                  <span>
+                                    <span className="font-mono">{p.code}</span>
+                                    <span className="ml-1 text-gray-500">{p.name}</span>
+                                    {p.spec && <span className="ml-1 text-gray-400">{p.spec}</span>}
+                                  </span>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td /><td /><td /><td /><td />
                     <td />
                   </tr>
-                ))}
+                )}
                 {!editMode && form.delivery_note_items.length === 0 && (
                   <tr>
                     <td colSpan={8} className="py-8 text-center text-gray-400">暂无明细</td>
@@ -958,13 +1027,7 @@ export default function DeliveryPage() {
                 )}
               </tbody>
             </table>
-            {editMode && (
-              <div className="mt-2">
-                <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setProductPickerOpen(true)}>
-                  <Plus className="h-3 w-3" /> 添加商品
-                </Button>
-              </div>
-            )}
+
           </div>
 
           {/* Footer / Remark */}
