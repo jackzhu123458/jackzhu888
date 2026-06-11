@@ -45,6 +45,59 @@ function fixGbkEncoding(str: string): string {
   }
 }
 
+/**
+ * 从一组子物料名称中提取公共名称作为 BOM 组名。
+ * 策略：取所有名称的最长公共前缀（以 "/" 或常见分隔符截断），
+ * 如果公共前缀过短则取出现频率最高的关键词。
+ */
+function extractCommonName(names: string[]): string {
+  if (names.length === 0) return '未命名BOM组';
+  if (names.length === 1) return names[0];
+
+  // 策略1：找到最长公共前缀，然后以 "/" 截断
+  let prefix = names[0];
+  for (let i = 1; i < names.length; i++) {
+    while (!names[i].startsWith(prefix)) {
+      prefix = prefix.slice(0, -1);
+      if (prefix.length === 0) break;
+    }
+    if (prefix.length === 0) break;
+  }
+
+  // 以 "/" 截断到最近的关键词边界
+  if (prefix.length > 0) {
+    const lastSlash = prefix.lastIndexOf('/');
+    if (lastSlash > 0) {
+      prefix = prefix.slice(0, lastSlash);
+    }
+    // 去掉尾部的空格和标点
+    prefix = prefix.replace(/[\s/·、，,]+$/, '');
+  }
+
+  if (prefix.length >= 2) return prefix;
+
+  // 策略2：提取每个名称中 "/" 之前的关键词，取出现最多的
+  const keywords = names.map(n => {
+    const slashIdx = n.indexOf('/');
+    return slashIdx > 0 ? n.slice(0, slashIdx) : n;
+  });
+
+  // 按出现频率排序
+  const freq = new Map<string, number>();
+  for (const kw of keywords) {
+    freq.set(kw, (freq.get(kw) || 0) + 1);
+  }
+  const sorted = [...freq.entries()].sort((a, b) => b[1] - a[1]);
+  if (sorted.length > 0 && sorted[0][1] >= 2) {
+    return sorted[0][0];
+  }
+
+  // 策略3：返回第一个名称中 "/" 之前的部分
+  const firstName = names[0];
+  const slashIdx = firstName.indexOf('/');
+  return slashIdx > 0 ? firstName.slice(0, slashIdx) : firstName;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -181,7 +234,8 @@ export async function POST(request: NextRequest) {
 
         // 为该类别创建或查找一个父产品
         const parentCode = `BOM-${cat}`;
-        const parentName = `BOM组-${cat}`;
+        // 从子物料名称中提取公共名称作为组名
+        const parentName = extractCommonName(catRows.map(r => r.name));
         let pId = await findProductByCode(client, parentCode);
 
         if (!pId) {
@@ -203,6 +257,9 @@ export async function POST(request: NextRequest) {
           }
           pId = newParent.id;
           results.productsCreated++;
+        } else {
+          // 已存在则更新名称为最新的公共名称
+          await client.from('products').update({ name: parentName }).eq('id', pId);
         }
 
         if (!pId) continue;

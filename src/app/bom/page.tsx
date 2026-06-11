@@ -73,7 +73,11 @@ export default function BomPage() {
   const [remark, setRemark] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [filterParent, setFilterParent] = useState<string>('all');
+  const [searchText, setSearchText] = useState('');
+
+  // 树状展开/收缩状态
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [allExpanded, setAllExpanded] = useState(false);
 
   // Excel 导入相关状态
   const [importOpen, setImportOpen] = useState(false);
@@ -98,6 +102,16 @@ export default function BomPage() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // 首次加载时默认全部展开
+  useEffect(() => {
+    if (bomList.length > 0 && expandedGroups.size === 0) {
+      const allParentIds = new Set(bomList.map(b => b.parent_product_id));
+      setExpandedGroups(allParentIds);
+      setAllExpanded(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bomList.length]);
 
   const handleAdd = () => {
     setEditItem(null);
@@ -200,13 +214,51 @@ export default function BomPage() {
     return acc;
   }, {} as Record<string, { product: Product; items: BomItem[] }>);
 
-  const filteredGroups = filterParent === 'all'
-    ? groupedBom
-    : Object.fromEntries(
-        Object.entries(groupedBom).filter(([key]) => key === filterParent)
-      );
+  // 搜索过滤
+  const filteredGroups = searchText.trim()
+    ? Object.fromEntries(
+        Object.entries(groupedBom).filter(([, group]) => {
+          const q = searchText.toLowerCase();
+          // 父产品匹配
+          if (group.product.name.toLowerCase().includes(q) || group.product.code.toLowerCase().includes(q)) return true;
+          // 子物料匹配
+          return group.items.some(item =>
+            item.child_product.name.toLowerCase().includes(q) ||
+            item.child_product.code.toLowerCase().includes(q)
+          );
+        })
+      )
+    : groupedBom;
+
+  // 排序：按父产品编码排序
+  const sortedGroupEntries = Object.entries(filteredGroups).sort((a, b) =>
+    a[1].product.code.localeCompare(b[1].product.code)
+  );
 
   const finishedProducts = products.filter((p) => p.type === 'finished_product' || p.type === 'semi_finished');
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (allExpanded) {
+      setExpandedGroups(new Set());
+      setAllExpanded(false);
+    } else {
+      const allIds = new Set(Object.keys(filteredGroups));
+      setExpandedGroups(allIds);
+      setAllExpanded(true);
+    }
+  };
 
   return (
     <AppShell>
@@ -224,69 +276,128 @@ export default function BomPage() {
           </div>
         </div>
 
+        {/* 搜索和操作栏 */}
         <div className="flex items-center gap-4 mb-4">
-          <Select value={filterParent} onValueChange={setFilterParent}>
-            <SelectTrigger className="w-64">
-              <SelectValue placeholder="筛选成品..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部成品</SelectItem>
-              {finishedProducts.map((p) => (
-                <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="relative flex-1 max-w-md">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <Input
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="搜索物料编码或名称..."
+              className="pl-10"
+            />
+          </div>
+          <Button variant="outline" size="sm" onClick={toggleAll}>
+            <svg className={`w-4 h-4 mr-1.5 transition-transform ${allExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            {allExpanded ? '全部收缩' : '全部展开'}
+          </Button>
+          <span className="text-sm text-gray-500">
+            共 {sortedGroupEntries.length} 个 BOM 组，{bomList.length} 条物料
+          </span>
         </div>
 
         {loading ? (
           <div className="text-center py-12 text-gray-400">加载中...</div>
-        ) : Object.keys(filteredGroups).length === 0 ? (
+        ) : sortedGroupEntries.length === 0 ? (
           <div className="text-center py-12 text-gray-400">暂无 BOM 数据</div>
         ) : (
-          <div className="space-y-6">
-            {Object.entries(filteredGroups).map(([key, group]) => (
-              <div key={key} className="bg-white rounded-lg border border-gray-200">
-                <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-                  <div>
-                    <span className="font-medium text-gray-900">{group.product.name}</span>
-                    <span className="text-sm text-gray-500 ml-3 font-mono">{group.product.code}</span>
-                    {group.product.spec && (
-                      <span className="text-sm text-gray-400 ml-2">{group.product.spec}</span>
-                    )}
+          <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
+            {/* 表头 */}
+            <div className="grid grid-cols-[36px_1fr_120px_120px_1fr_100px_80px_60px_80px] border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-500">
+              <div className="px-2 py-3"></div>
+              <div className="px-4 py-3">物料编码</div>
+              <div className="px-4 py-3">物料名称</div>
+              <div className="px-4 py-3">规格</div>
+              <div className="px-4 py-3">类型</div>
+              <div className="px-4 py-3 text-right">用量</div>
+              <div className="px-4 py-3">单位</div>
+              <div className="px-4 py-3">备注</div>
+              <div className="px-4 py-3 text-center">操作</div>
+            </div>
+
+            {/* 树状列表 */}
+            {sortedGroupEntries.map(([key, group]) => {
+              const isExpanded = expandedGroups.has(key);
+              return (
+                <div key={key} className={isExpanded ? '' : 'border-b border-gray-100'}>
+                  {/* 父级行（BOM 组） */}
+                  <div
+                    className="grid grid-cols-[36px_1fr_120px_120px_1fr_100px_80px_60px_80px] items-center bg-gray-50/60 hover:bg-gray-100/60 cursor-pointer border-b border-gray-50 transition-colors"
+                    onClick={() => toggleGroup(key)}
+                  >
+                    <div className="px-2 py-3 flex items-center justify-center">
+                      <svg
+                        className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="px-4 py-3 font-mono text-sm font-medium text-gray-900">
+                      {group.product.code}
+                    </div>
+                    <div className="px-4 py-3 text-sm font-semibold text-blue-800">
+                      {group.product.name}
+                    </div>
+                    <div className="px-4 py-3 text-xs text-gray-500">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                        成品组
+                      </span>
+                    </div>
+                    <div className="px-4 py-3 text-right text-sm text-gray-600">
+                      {group.items.length} 项
+                    </div>
+                    <div className="px-4 py-3 text-xs text-gray-400">套</div>
+                    <div className="px-4 py-3"></div>
+                    <div className="px-4 py-3"></div>
                   </div>
-                  <span className="text-xs text-gray-400">{group.items.length} 项子料</span>
+
+                  {/* 子物料行 */}
+                  {isExpanded && group.items.map((item, idx) => (
+                    <div
+                      key={item.id}
+                      className={`grid grid-cols-[36px_1fr_120px_120px_1fr_100px_80px_60px_80px] items-center border-b border-gray-50 hover:bg-gray-50/80 transition-colors ${idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}
+                    >
+                      <div className="px-2 py-2.5 flex items-center justify-center">
+                        <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
+                      </div>
+                      <div className="px-4 py-2.5 font-mono text-sm text-gray-700">
+                        {item.child_product.code}
+                      </div>
+                      <div className="px-4 py-2.5 text-sm text-gray-900">
+                        {item.child_product.name}
+                      </div>
+                      <div className="px-4 py-2.5 text-sm text-gray-500">
+                        {item.child_product.spec || '-'}
+                      </div>
+                      <div className="px-4 py-2.5 text-xs text-gray-500">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                          {item.child_product.type === 'raw_material' ? '原材料' : item.child_product.type === 'semi_finished' ? '半成品' : '其他'}
+                        </span>
+                      </div>
+                      <div className="px-4 py-2.5 text-right font-mono text-sm text-gray-900">
+                        {item.quantity}
+                      </div>
+                      <div className="px-4 py-2.5 text-sm text-gray-500">
+                        {item.child_product.unit}
+                      </div>
+                      <div className="px-4 py-2.5 text-xs text-gray-400">
+                        {item.remark || '-'}
+                      </div>
+                      <div className="px-4 py-2.5 text-center">
+                        <button onClick={(e) => { e.stopPropagation(); handleEdit(item); }} className="text-blue-600 hover:text-blue-800 text-xs mr-2">编辑</button>
+                        <button onClick={(e) => { e.stopPropagation(); setDeleteId(item.id); }} className="text-red-500 hover:text-red-700 text-xs">删除</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50/30">
-                      <th className="text-left px-5 py-2.5 font-medium text-gray-500">子料编码</th>
-                      <th className="text-left px-5 py-2.5 font-medium text-gray-500">子料名称</th>
-                      <th className="text-left px-5 py-2.5 font-medium text-gray-500">规格</th>
-                      <th className="text-right px-5 py-2.5 font-medium text-gray-500">用量</th>
-                      <th className="text-left px-5 py-2.5 font-medium text-gray-500">单位</th>
-                      <th className="text-left px-5 py-2.5 font-medium text-gray-500">备注</th>
-                      <th className="text-center px-5 py-2.5 font-medium text-gray-500">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {group.items.map((item) => (
-                      <tr key={item.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                        <td className="px-5 py-2.5 font-mono text-gray-900">{item.child_product.code}</td>
-                        <td className="px-5 py-2.5 text-gray-900">{item.child_product.name}</td>
-                        <td className="px-5 py-2.5 text-gray-600">{item.child_product.spec || '-'}</td>
-                        <td className="px-5 py-2.5 text-right font-mono text-gray-900">{item.quantity}</td>
-                        <td className="px-5 py-2.5 text-gray-600">{item.child_product.unit}</td>
-                        <td className="px-5 py-2.5 text-gray-500">{item.remark || '-'}</td>
-                        <td className="px-5 py-2.5 text-center">
-                          <button onClick={() => handleEdit(item)} className="text-blue-600 hover:text-blue-800 text-xs mr-3">编辑</button>
-                          <button onClick={() => setDeleteId(item.id)} className="text-red-500 hover:text-red-700 text-xs">删除</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -440,7 +551,7 @@ export default function BomPage() {
                 </p>
                 <p className="text-xs text-amber-600 mt-1">
                   {importMode === 'multi'
-                    ? '商品类别非 0 的行将按类别分组，每组自动创建一个父产品及其 BOM'
+                    ? '商品类别非 0 的行将按类别分组，每组自动提取公共名称创建 BOM 组'
                     : '所有行将作为所选成品的子物料导入'}
                 </p>
               </div>
