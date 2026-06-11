@@ -135,3 +135,23 @@
 body {
   @apply font-sans;
 }
+
+/* 打印样式 */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #print-area, #print-area *,
+  #label-print-area, #label-print-area * {
+    visibility: visible;
+  }
+  #print-area, #label-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  aside, .no-print {
+    display: none !important;
+  }
+}
