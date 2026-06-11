@@ -171,6 +171,7 @@ export default function DeliveryPage() {
   const [warehouses, setWarehouses] = useState<Array<{ id: string; name: string }>>([]);
   const [shipDialogOpen, setShipDialogOpen] = useState(false);
   const [shipWarehouseId, setShipWarehouseId] = useState('');
+  const [itemSearches, setItemSearches] = useState<Record<number, string>>({});
 
   const printRef = useRef<HTMLDivElement>(null);
   const labelPrintRef = useRef<HTMLDivElement>(null);
@@ -424,6 +425,34 @@ export default function DeliveryPage() {
         items[idx].per_box_qty = Number(value);
       }
       return { ...prev, delivery_note_items: items };
+    });
+    setIsFormDirty(true);
+  };
+
+  /* ─── Search products for inline item picker ─── */
+  const searchDeliveryProducts = (query: string) => {
+    if (!query.trim()) return [];
+    const q = query.toLowerCase();
+    return products.filter(
+      (p) => p.code?.toLowerCase().includes(q) || p.name?.toLowerCase().includes(q) || p.spec?.toLowerCase().includes(q)
+    ).slice(0, 20);
+  };
+
+  const selectProductForItem = (idx: number, p: Product) => {
+    setForm((prev) => {
+      const items = [...prev.delivery_note_items];
+      items[idx] = {
+        ...items[idx],
+        product_id: p.id,
+        product: p,
+        per_box_qty: items[idx].quantity || 0,
+      };
+      return { ...prev, delivery_note_items: items };
+    });
+    setItemSearches((prev) => {
+      const next = { ...prev };
+      delete next[idx];
+      return next;
     });
     setIsFormDirty(true);
   };
@@ -803,7 +832,74 @@ export default function DeliveryPage() {
                         <span className="text-gray-500 font-mono">{item.customer_order || '-'}</span>
                       )}
                     </td>
-                    <td className="py-2 px-2 font-mono text-[#111827]">{item.product?.code || '-'}</td>
+                    <td className="py-2 px-2">
+                      {editMode ? (
+                        <div className="relative">
+                          <Input
+                            className="h-6 text-xs font-mono"
+                            placeholder="搜索编号/名称"
+                            value={item.product_id
+                              ? (item.product?.code || '')
+                              : (itemSearches[idx] || '')
+                            }
+                            onChange={(e) => {
+                              setItemSearches((prev) => ({ ...prev, [idx]: e.target.value }));
+                              if (item.product_id) {
+                                setForm((prev) => {
+                                  const items = [...prev.delivery_note_items];
+                                  items[idx] = { ...items[idx], product_id: '', product: undefined };
+                                  return { ...prev, delivery_note_items: items };
+                                });
+                                setIsFormDirty(true);
+                              }
+                            }}
+                            onFocus={() => {
+                              if (item.product_id) {
+                                setForm((prev) => {
+                                  const items = [...prev.delivery_note_items];
+                                  items[idx] = { ...items[idx], product_id: '', product: undefined };
+                                  return { ...prev, delivery_note_items: items };
+                                });
+                                setItemSearches((prev) => ({ ...prev, [idx]: '' }));
+                                setIsFormDirty(true);
+                              }
+                            }}
+                            onBlur={() => {
+                              setTimeout(() => {
+                                setItemSearches((prev) => {
+                                  const next = { ...prev };
+                                  delete next[idx];
+                                  return next;
+                                });
+                              }, 200);
+                            }}
+                          />
+                          {itemSearches[idx] && !item.product_id && (
+                            <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto">
+                              {searchDeliveryProducts(itemSearches[idx]).length === 0 ? (
+                                <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
+                              ) : (
+                                searchDeliveryProducts(itemSearches[idx]).map((p) => (
+                                  <button
+                                    key={p.id}
+                                    className="w-full text-left px-2 py-1.5 text-xs hover:bg-blue-50 flex items-center justify-between"
+                                    onClick={() => selectProductForItem(idx, p)}
+                                  >
+                                    <span>
+                                      <span className="font-mono">{p.code}</span>
+                                      <span className="ml-1 text-gray-500">{p.name}</span>
+                                      {p.spec && <span className="ml-1 text-gray-400">{p.spec}</span>}
+                                    </span>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="font-mono text-[#111827]">{item.product?.code || '-'}</span>
+                      )}
+                    </td>
                     <td className="py-2 px-2 text-[#111827]">{item.product?.name || '-'}</td>
                     <td className="py-2 px-2 text-gray-500">{item.product?.unit || '-'}</td>
                     <td className="py-2 px-2 text-right font-mono">
