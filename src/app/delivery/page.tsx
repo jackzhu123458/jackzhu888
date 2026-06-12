@@ -1217,9 +1217,9 @@ export default function DeliveryPage() {
                     <th style={{ border: '1px solid #000', padding: '2px 4px', width: '32px', fontWeight: 'bold', fontSize: '10px' }}>单位</th>
                     <th style={{ border: '1px solid #000', padding: '2px 4px', width: '56px', fontWeight: 'bold', fontSize: '10px' }}>数量</th>
                     <th style={{ border: '1px solid #000', padding: '2px 4px', width: '60px', fontWeight: 'bold', fontSize: '10px' }}>备注</th>
-                    <th rowSpan={8} style={{ border: '1px solid #000', padding: '4px 0', width: '20px', fontSize: '8px', textAlign: 'center', letterSpacing: '1px' }}>
-                      <div style={{ color: '#333', marginBottom: '8px' }}>(一)存根白</div>
-                      <div style={{ color: '#cc0000', marginBottom: '8px' }}>(二)客户红</div>
+                    <th rowSpan={8} style={{ border: '1px solid #000', padding: '6px 2px', width: '20px', fontSize: '9px', writingMode: 'vertical-rl', letterSpacing: '2px' }}>
+                      <div style={{ color: '#333', marginBottom: '10px' }}>(一)存根白</div>
+                      <div style={{ color: '#cc0000', marginBottom: '10px' }}>(二)客户红</div>
                       <div style={{ color: '#cc8800' }}>(三)回单黄</div>
                     </th>
                   </tr>
