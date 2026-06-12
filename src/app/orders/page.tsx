@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +28,7 @@ import {
   Calendar,
   Package,
   ArrowDownToLine,
+  ScanLine,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -147,6 +148,10 @@ export default function OrdersPage() {
   // 每个明细行的产品搜索状态
   const [itemSearches, setItemSearches] = useState<Record<number, string>>({});
   const [itemNameSearches, setItemNameSearches] = useState<Record<number, string>>({});
+
+  // 图片识别
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const ocrFileRef = useRef<HTMLInputElement>(null);
 
   // BOM数据
   const [bomData, setBomData] = useState<Array<{
@@ -293,6 +298,96 @@ export default function OrdersPage() {
     setItemSearches({});
     setItemNameSearches({});
     setIsFormOpen(true);
+  };
+
+  // 图片识别订单
+  const handleOcr = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setOcrLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const res = await fetch('/api/orders/ocr', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await res.json();
+      if (result.error) {
+        alert(result.error);
+        return;
+      }
+
+      const data = result.data;
+
+      // 自动填充订单基本信息
+      if (data.order_no && !formOrderNo) {
+        setFormOrderNo(data.order_no);
+      }
+      if (data.order_date && !formOrderDate) {
+        setFormOrderDate(data.order_date);
+      }
+
+      // 将识别到的物料匹配系统产品并填充明细
+      if (data.items && data.items.length > 0) {
+        const newItems = data.items.map((item: {
+          material_code: string;
+          material_name: string;
+          quantity: number;
+          unit: string;
+          delivery_date: string;
+        }) => {
+          // 尝试按物料编号匹配系统产品
+          const matchedProduct = products.find(
+            (p) => p.code === item.material_code || p.code === item.material_code.replace(/\./g, '')
+          );
+
+          return {
+            product_id: matchedProduct?.id || '',
+            quantity: item.quantity,
+            unit_price: matchedProduct?.price || null,
+            delivery_date: item.delivery_date || data.delivery_deadline || '',
+            remark: matchedProduct ? '' : `${item.material_code} ${item.material_name}`,
+            schedules: [],
+          };
+        });
+
+        setFormItems((prev) => [...prev, ...newItems]);
+
+        // 设置产品搜索关键字（用于显示未匹配的产品编号）
+        const newSearches: Record<number, string> = {};
+        const newNameSearches: Record<number, string> = {};
+        const startIndex = formItems.length;
+        data.items.forEach((item: { material_code: string; material_name: string }, idx: number) => {
+          const matchedProduct = products.find(
+            (p) => p.code === item.material_code || p.code === item.material_code.replace(/\./g, '')
+          );
+          if (!matchedProduct) {
+            newSearches[startIndex + idx] = item.material_code;
+            newNameSearches[startIndex + idx] = item.material_name;
+          }
+        });
+        setItemSearches((prev) => ({ ...prev, ...newSearches }));
+        setItemNameSearches((prev) => ({ ...prev, ...newNameSearches }));
+      }
+
+      // 如果没有打开表单，打开它
+      if (!isFormOpen) {
+        setIsFormOpen(true);
+      }
+    } catch (error) {
+      console.error('OCR error:', error);
+      alert('图片识别失败，请重试');
+    } finally {
+      setOcrLoading(false);
+      // 重置 file input
+      if (ocrFileRef.current) {
+        ocrFileRef.current.value = '';
+      }
+    }
   };
 
   // 编辑订单
@@ -568,6 +663,30 @@ export default function OrdersPage() {
             <Plus className="w-4 h-4 mr-1" />
             新增订单
           </Button>
+          <Button
+            onClick={() => ocrFileRef.current?.click()}
+            disabled={ocrLoading}
+            className="bg-[#1E40AF] hover:bg-[#1D4ED8]"
+          >
+            {ocrLoading ? (
+              <>
+                <span className="w-4 h-4 mr-1 inline-block animate-spin rounded-full border-2 border-white border-t-transparent" />
+                识别中...
+              </>
+            ) : (
+              <>
+                <ScanLine className="w-4 h-4 mr-1" />
+                图片识别
+              </>
+            )}
+          </Button>
+          <input
+            ref={ocrFileRef}
+            type="file"
+            accept="image/*"
+            onChange={handleOcr}
+            className="hidden"
+          />
         </div>
       </div>
 
@@ -806,7 +925,24 @@ export default function OrdersPage() {
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="sm:max-w-[1400px] w-[95vw] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingOrder ? '编辑订单' : '新增订单'}</DialogTitle>
+            <DialogTitle className="flex items-center gap-3">
+              {editingOrder ? '编辑订单' : '新增订单'}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => ocrFileRef.current?.click()}
+                disabled={ocrLoading}
+                className="text-[#1E40AF] border-[#1E40AF] hover:bg-blue-50"
+              >
+                {ocrLoading ? '识别中...' : (
+                  <>
+                    <ScanLine className="w-3.5 h-3.5 mr-1" />
+                    图片识别
+                  </>
+                )}
+              </Button>
+            </DialogTitle>
           </DialogHeader>
           <div className="mt-2 space-y-4">
             {/* 基础信息 */}
