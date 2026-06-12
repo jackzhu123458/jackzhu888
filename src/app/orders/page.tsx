@@ -830,14 +830,14 @@ export default function OrdersPage() {
                 <div key={itemIdx} className="border border-gray-200 rounded-lg p-3 mb-3">
                   <div className="flex items-start gap-2">
                     <div className="flex-1 space-y-2">
-                      <div className="grid grid-cols-5 gap-2">
-                        <div className="col-span-2">
-                          <label className="block text-xs text-gray-500 mb-1">物料</label>
+                      <div className="grid grid-cols-6 gap-2">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">物料编码</label>
                           <div className="relative">
                             <Input
-                              placeholder="搜索物料编码/名称"
+                              placeholder="搜索物料编码"
                               value={item.product_id
-                                ? `${products.find((p) => p.id === item.product_id)?.code || ''} - ${products.find((p) => p.id === item.product_id)?.name || ''}`
+                                ? (products.find((p) => p.id === item.product_id)?.code || '')
                                 : (itemSearches[itemIdx] || '')
                               }
                               onChange={(e) => {
@@ -848,13 +848,11 @@ export default function OrdersPage() {
                               }}
                               onFocus={() => {
                                 if (item.product_id) {
-                                  // 已选物料时，清空让其重新搜索
                                   updateFormItem(itemIdx, 'product_id', '');
                                   setItemSearches((prev) => ({ ...prev, [itemIdx]: '' }));
                                 }
                               }}
                               onBlur={() => {
-                                // 延迟关闭，让点击事件先触发
                                 setTimeout(() => {
                                   setItemSearches((prev) => {
                                     const next = { ...prev };
@@ -863,7 +861,7 @@ export default function OrdersPage() {
                                   });
                                 }, 200);
                               }}
-                              className="text-xs"
+                              className="text-xs font-mono"
                             />
                             {itemSearches[itemIdx] && !item.product_id && (
                               <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto">
@@ -894,6 +892,15 @@ export default function OrdersPage() {
                           </div>
                         </div>
                         <div>
+                          <label className="block text-xs text-gray-500 mb-1">物料名称</label>
+                          <Input
+                            value={item.product_id ? (products.find((p) => p.id === item.product_id)?.name || '') : ''}
+                            readOnly
+                            className="text-xs bg-gray-50"
+                            placeholder="选择物料后显示"
+                          />
+                        </div>
+                        <div>
                           <label className="block text-xs text-gray-500 mb-1">数量</label>
                           <Input
                             type="number"
@@ -919,6 +926,16 @@ export default function OrdersPage() {
                             onChange={(e) => updateFormItem(itemIdx, 'delivery_date', e.target.value)}
                             className="text-xs"
                           />
+                        </div>
+                        <div className="flex items-end">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-red-400 hover:text-red-600"
+                            onClick={() => removeFormItem(itemIdx)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
                         </div>
                       </div>
                       <div>
@@ -964,12 +981,6 @@ export default function OrdersPage() {
                         ))}
                       </div>
                     </div>
-                    <button
-                      onClick={() => removeFormItem(itemIdx)}
-                      className="text-gray-400 hover:text-red-500 mt-1"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
                   </div>
                 </div>
               ))}
