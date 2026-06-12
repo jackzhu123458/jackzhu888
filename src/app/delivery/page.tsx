@@ -78,6 +78,7 @@ interface CustomerOrder {
   customer_id: string;
   status: string;
   customer_order_items?: OrderItem[];
+  customers?: Customer;
 }
 interface DeliveryItem {
   id?: string;
@@ -384,12 +385,19 @@ export default function DeliveryPage() {
         customer_order: order.order_no,
       }));
 
+    const cust = order.customers as Record<string, string> | undefined;
     setForm((prev) => ({
       ...prev,
+      customer_id: order.customer_id || '',
+      customer_name: cust?.name || '',
+      customer_address: cust?.address || prev.customer_address || '',
+      customer_contact: cust?.contact || '',
+      customer_phone: cust?.phone || '',
       customer_order_id: order.id,
       customer_order: order.order_no,
       delivery_note_items: items,
     }));
+    setCustomerSearch(cust?.code || cust?.name || '');
     setOrderPickerOpen(false);
     setIsFormDirty(true);
   };
