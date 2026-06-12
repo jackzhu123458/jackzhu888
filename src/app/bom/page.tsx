@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Upload, FileText, Eye, Printer, Trash2, Paperclip } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -81,6 +82,95 @@ export default function BomPage() {
 
   // 选中行状态
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+
+  // 图纸管理对话框
+  const [drawingDialogOpen, setDrawingDialogOpen] = useState(false);
+  const [drawingProductId, setDrawingProductId] = useState<string | null>(null);
+  const [drawingProductName, setDrawingProductName] = useState('');
+  const [drawings, setDrawings] = useState<Array<{id: string; file_name: string; file_type: string; file_size: number; file_key: string; remark: string | null; created_at: string}>>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadingDrawing, setUploadingDrawing] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [previewName, setPreviewName] = useState('');
+
+  // 加载图纸列表
+  const loadDrawings = useCallback(async (productId: string) => {
+    try {
+      const res = await fetch(`/api/drawings?product_id=${productId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDrawings(data);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // 打开图纸管理
+  const openDrawingDialog = (productId: string, productName: string) => {
+    setDrawingProductId(productId);
+    setDrawingProductName(productName);
+    setDrawingDialogOpen(true);
+    loadDrawings(productId);
+  };
+
+  // 上传图纸
+  const handleUploadDrawingFile = async (file: File) => {
+    if (!drawingProductId) return;
+    setUploadingDrawing(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('product_id', drawingProductId);
+      formData.append('file_name', file.name);
+      const res = await fetch('/api/drawings', { method: 'POST', body: formData });
+      if (res.ok) {
+        await loadDrawings(drawingProductId);
+      } else {
+        const err = await res.json();
+        alert(err.error || '上传失败');
+      }
+    } catch { alert('上传失败'); }
+    finally { setUploadingDrawing(false); }
+  };
+
+  // 删除图纸
+  const handleDeleteDrawing = async (drawingId: string, fileKey: string) => {
+    if (!confirm('确定删除该图纸？')) return;
+    try {
+      const res = await fetch(`/api/drawings?id=${drawingId}&file_key=${encodeURIComponent(fileKey)}`, { method: 'DELETE' });
+      if (res.ok && drawingProductId) {
+        await loadDrawings(drawingProductId);
+      } else {
+        const err = await res.json();
+        alert(err.error || '删除失败');
+      }
+    } catch { alert('删除失败'); }
+  };
+
+  // 预览图纸
+  const handlePreviewDrawing = async (fileKey: string, fileName: string) => {
+    try {
+      const res = await fetch(`/api/drawings?file_key=${encodeURIComponent(fileKey)}`);
+      if (res.ok) {
+        const { url } = await res.json();
+        setPreviewUrl(url);
+        setPreviewName(fileName);
+      }
+    } catch { alert('获取预览地址失败'); }
+  };
+
+  // 打印图纸
+  const handlePrintDrawing = async (fileKey: string, fileName: string) => {
+    try {
+      const res = await fetch(`/api/drawings?file_key=${encodeURIComponent(fileKey)}`);
+      if (res.ok) {
+        const { url } = await res.json();
+        const printWindow = window.open(url, '_blank');
+        if (printWindow) {
+          printWindow.onload = () => { printWindow.print(); };
+        }
+      }
+    } catch { alert('打印失败'); }
+  };
 
   // 新增/编辑商品抽屉
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -720,7 +810,7 @@ export default function BomPage() {
           {/* 右侧数据表格 */}
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
             {/* 表头 */}
-            <div className="grid grid-cols-[50px_100px_120px_1fr_60px_100px_100px_1fr] bg-[#E8EBF0] border-b border-gray-300 shrink-0">
+            <div className="grid grid-cols-[50px_80px_120px_1fr_50px_90px_90px_1fr_60px_50px] bg-[#E8EBF0] border-b border-gray-300 shrink-0">
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">序号</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品类别</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品编号</div>
@@ -728,7 +818,9 @@ export default function BomPage() {
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">单位</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-right border-r border-gray-300">成本单价</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-right border-r border-gray-300">商品售价一</div>
-              <div className="px-2 py-2 text-xs font-semibold text-gray-700">商品描述</div>
+              <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品描述</div>
+              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">图纸</div>
+              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center">操作</div>
             </div>
 
             {/* 表体 */}
@@ -746,7 +838,7 @@ export default function BomPage() {
                   return (
                     <div
                       key={product.id}
-                      className={`grid grid-cols-[50px_100px_120px_1fr_60px_100px_100px_1fr] items-center border-b border-gray-200 cursor-pointer transition-colors ${
+                      className={`grid grid-cols-[50px_80px_120px_1fr_50px_90px_90px_1fr_60px_50px] items-center border-b border-gray-200 cursor-pointer transition-colors ${
                         isSelected
                           ? 'bg-[#1E40AF]/10 border-l-2 border-l-[#1E40AF]'
                           : idx % 2 === 0
@@ -782,8 +874,21 @@ export default function BomPage() {
                       <div className="px-2 py-2.5 text-xs text-gray-900 text-right font-mono border-r border-gray-100">
                         {Number(product.price || 0).toFixed(2)}
                       </div>
-                      <div className="px-2 py-2.5 text-xs text-gray-500 truncate">
+                      <div className="px-2 py-2.5 text-xs text-gray-500 truncate border-r border-gray-100">
                         {product.spec || product.remark || '-'}
+                      </div>
+                      <div className="px-2 py-2.5 text-xs text-center">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openDrawingDialog(product.id, product.name); }}
+                          className="text-blue-600 hover:text-blue-800 hover:underline"
+                          title="查看图纸"
+                        >
+                          图纸
+                        </button>
+                      </div>
+                      <div className="px-1 py-2.5 text-xs text-center flex items-center justify-center gap-1">
+                        <button onClick={(e) => { e.stopPropagation(); handleEditProduct(product); }} className="p-1 text-gray-400 hover:text-blue-600" title="编辑">✎</button>
+                        <button onClick={(e) => { e.stopPropagation(); setDeleteType('product'); setDeleteId(product.id); }} className="p-1 text-gray-400 hover:text-red-600" title="删除">✕</button>
                       </div>
                     </div>
                   );
@@ -1290,6 +1395,114 @@ export default function BomPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* 图纸管理弹窗 */}
+      <Dialog open={!!drawingProductId} onOpenChange={(open) => { if (!open) { setDrawingProductId(''); setDrawingProductName(''); } }}>
+        <DialogContent className="sm:max-w-none max-w-[900px] w-[90vw]">
+          <DialogHeader>
+            <DialogTitle>图纸管理 - {drawingProductName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* 上传区域 */}
+            <div className="flex items-center gap-2">
+              <label className="cursor-pointer inline-flex items-center gap-1 px-3 py-2 bg-[#1E40AF] text-white rounded text-sm hover:bg-[#1D4ED8]">
+                <Upload className="w-4 h-4" />
+                上传图纸
+                <input
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.dwg,.dxf,.step,.stp"
+                  multiple
+                  className="hidden"
+                  onChange={async (e) => {
+                    const files = e.target.files;
+                    if (!files || !drawingProductId) return;
+                    for (const file of Array.from(files)) {
+                      await handleUploadDrawingFile(file);
+                    }
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              {uploadingDrawing && <span className="text-sm text-gray-500">上传中...</span>}
+            </div>
+
+            {/* 图纸列表 */}
+            {drawings.length === 0 ? (
+              <div className="text-center py-8 text-gray-400">暂无图纸</div>
+            ) : (
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {drawings.map((d) => (
+                  <div key={d.id} className="flex items-center justify-between p-3 bg-gray-50 rounded border">
+                    <div className="flex items-center gap-3">
+                      <FileText className="w-5 h-5 text-gray-400" />
+                      <div>
+                        <div className="text-sm font-medium">{d.file_name}</div>
+                        <div className="text-xs text-gray-400">
+                          {d.file_type} · {d.file_size ? `${(d.file_size / 1024).toFixed(1)}KB` : ''}
+                          {d.remark && ` · ${d.remark}`}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handlePreviewDrawing(d.file_key, d.file_name)}
+                        title="预览"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handlePrintDrawing(d.file_key, d.file_name)}
+                        title="打印"
+                      >
+                        <Printer className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteDrawing(d.id, d.file_key)}
+                        title="删除"
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 图纸预览弹窗 */}
+      <Dialog open={!!previewUrl} onOpenChange={(open) => { if (!open) { setPreviewUrl(''); setPreviewName(''); } }}>
+        <DialogContent className="sm:max-w-none max-w-[1200px] w-[95vw]">
+          <DialogHeader>
+            <DialogTitle>{previewName}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center">
+            {previewUrl && (
+              previewUrl.toLowerCase().endsWith('.pdf') ? (
+                <iframe src={previewUrl} className="w-full h-[70vh] border rounded" title={previewName} />
+              ) : (
+                <img src={previewUrl} alt={previewName} className="max-w-full max-h-[70vh] object-contain" />
+              )
+            )}
+            <div className="flex gap-2 mt-4">
+              <Button onClick={() => window.print()} variant="outline">
+                <Printer className="w-4 h-4 mr-1" /> 打印
+              </Button>
+              <Button onClick={() => { setPreviewUrl(''); setPreviewName(''); }} variant="outline">
+                关闭
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -295,3 +295,22 @@ export const inboundNoteItems = pgTable(
     index("inbound_note_items_product_id_idx").on(table.product_id),
   ]
 );
+
+// 产品图纸
+export const productDrawings = pgTable(
+  "product_drawings",
+  {
+    id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+    product_id: varchar("product_id", { length: 36 }).notNull(),
+    file_key: text("file_key").notNull(),
+    file_name: text("file_name").notNull(),
+    file_type: varchar("file_type", { length: 50 }),
+    file_size: numeric("file_size", { precision: 12 }).default("0"),
+    remark: text("remark"),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("product_drawings_product_id_idx").on(table.product_id),
+  ]
+);
