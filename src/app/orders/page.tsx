@@ -130,7 +130,6 @@ export default function OrdersPage() {
   const [formCustomerId, setFormCustomerId] = useState('');
   const [formOrderNo, setFormOrderNo] = useState('');
   const [formOrderDate, setFormOrderDate] = useState('');
-  const [formDeadline, setFormDeadline] = useState('');
   const [formRemark, setFormRemark] = useState('');
   const [formItems, setFormItems] = useState<{
     product_id: string;
@@ -284,7 +283,6 @@ export default function OrdersPage() {
     setFormCustomerId('');
     setFormOrderNo('');
     setFormOrderDate(new Date().toISOString().split('T')[0]);
-    setFormDeadline('');
     setFormRemark('');
     setFormItems([]);
     setItemSearches({});
@@ -298,7 +296,6 @@ export default function OrdersPage() {
     setFormCustomerId(order.customer_id);
     setFormOrderNo(order.order_no);
     setFormOrderDate(order.order_date);
-    setFormDeadline(order.delivery_deadline || '');
     setFormRemark(order.remark || '');
     setFormItems(
       order.customer_order_items?.map((item) => ({
@@ -318,14 +315,16 @@ export default function OrdersPage() {
 
   // 保存订单
   const handleSave = async () => {
-    if (!formCustomerId || !formOrderNo) return;
+    if (!formCustomerId || !formOrderNo) {
+      alert('请填写客户和订单号');
+      return;
+    }
 
     const payload = {
       id: editingOrder?.id,
       customer_id: formCustomerId,
       order_no: formOrderNo,
       order_date: formOrderDate,
-      delivery_deadline: formDeadline || null,
       remark: formRemark,
       status: editingOrder?.status || 'pending',
       items: formItems.map((item) => {
@@ -337,7 +336,7 @@ export default function OrdersPage() {
         return {
           product_id: item.product_id,
           quantity: item.quantity,
-          unit_price: item.unit_price,
+          price: item.unit_price,
           remark: item.remark,
           schedules,
         };
@@ -354,6 +353,9 @@ export default function OrdersPage() {
     if (res.ok) {
       setIsFormOpen(false);
       loadData();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || '保存失败，请检查数据后重试');
     }
   };
 
@@ -378,7 +380,7 @@ export default function OrdersPage() {
 
   // 表单：添加明细行
   const addFormItem = () => {
-    setFormItems([...formItems, { product_id: '', quantity: 0, unit_price: null, delivery_date: formDeadline || '', remark: '', schedules: [] }]);
+    setFormItems([...formItems, { product_id: '', quantity: 0, unit_price: null, delivery_date: '', remark: '', schedules: [] }]);
   };
 
   // 表单：删除明细行
@@ -827,14 +829,7 @@ export default function OrdersPage() {
                   onChange={(e) => setFormOrderDate(e.target.value)}
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">交货期限</label>
-                <Input
-                  type="date"
-                  value={formDeadline}
-                  onChange={(e) => setFormDeadline(e.target.value)}
-                />
-              </div>
+
             </div>
             <div>
               <Input
