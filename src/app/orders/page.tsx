@@ -523,8 +523,13 @@ export default function OrdersPage() {
       setItemSearches(reindexed);
     } else {
       // 普通物料：直接选中，自动填充单价
-      updateFormItem(itemIdx, 'product_id', product.id);
-      updateFormItem(itemIdx, 'unit_price', product.price ?? null);
+      const updated = [...formItems];
+      updated[itemIdx] = {
+        ...updated[itemIdx],
+        product_id: product.id,
+        unit_price: product.price ?? null,
+      };
+      setFormItems(updated);
       setItemSearches((prev) => {
         const next = { ...prev };
         delete next[itemIdx];
@@ -786,7 +791,7 @@ export default function OrdersPage() {
 
       {/* 新增/编辑订单抽屉 */}
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-[1200px] w-[95vw] max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-[1400px] w-[95vw] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingOrder ? '编辑订单' : '新增订单'}</DialogTitle>
           </DialogHeader>
@@ -848,173 +853,174 @@ export default function OrdersPage() {
                 </Button>
               </div>
 
-              {/* 表头 - 第一行 */}
-              <div className="grid grid-cols-2 gap-3 mb-1 px-1">
+              {/* 表头 */}
+              <div className="grid grid-cols-[1.2fr_1.5fr_90px_100px_140px_36px] gap-2 mb-1 px-1">
                 <span className="text-xs text-gray-500 font-medium">物料编码</span>
                 <span className="text-xs text-gray-500 font-medium">物料名称</span>
+                <span className="text-xs text-gray-500 font-medium">数量</span>
+                <span className="text-xs text-gray-500 font-medium">单价</span>
+                <span className="text-xs text-gray-500 font-medium">交货日期</span>
+                <span></span>
               </div>
 
               {formItems.map((item, itemIdx) => (
-                <div key={itemIdx} className="border border-gray-200 rounded-lg p-3 mb-3 bg-gray-50/50">
-                  {/* 第一行：物料编码 + 物料名称 */}
-                  <div className="grid grid-cols-2 gap-3 mb-2">
-                    {/* 物料编码搜索 */}
-                    <div className="relative">
-                      <Input
-                        placeholder="输入编码搜索"
-                        value={item.product_id
-                          ? (products.find((p) => p.id === item.product_id)?.code || '')
-                          : (itemSearches[itemIdx] || '')
+                <div key={itemIdx} className="grid grid-cols-[1.2fr_1.5fr_90px_100px_140px_36px] gap-2 items-center mb-2">
+                  {/* 物料编码搜索 */}
+                  <div className="relative">
+                    <Input
+                      placeholder="输入编码搜索"
+                      value={item.product_id
+                        ? (products.find((p) => p.id === item.product_id)?.code || '')
+                        : (itemSearches[itemIdx] || '')
+                      }
+                      onChange={(e) => {
+                        setItemSearches((prev) => ({ ...prev, [itemIdx]: e.target.value }));
+                        if (item.product_id) {
+                          const updated = [...formItems];
+                          updated[itemIdx] = { ...updated[itemIdx], product_id: '', unit_price: null };
+                          setFormItems(updated);
                         }
-                        onChange={(e) => {
-                          setItemSearches((prev) => ({ ...prev, [itemIdx]: e.target.value }));
-                          if (item.product_id) {
-                            updateFormItem(itemIdx, 'product_id', '');
-                          }
-                        }}
-                        onFocus={() => {
-                          if (item.product_id) {
-                            updateFormItem(itemIdx, 'product_id', '');
-                            setItemSearches((prev) => ({ ...prev, [itemIdx]: '' }));
-                          }
-                        }}
-                        onBlur={() => {
-                          setTimeout(() => {
-                            setItemSearches((prev) => {
-                              const next = { ...prev };
-                              delete next[itemIdx];
-                              return next;
-                            });
-                          }, 200);
-                        }}
-                        className="text-sm font-mono h-9"
-                      />
-                      {itemSearches[itemIdx] && !item.product_id && (
-                        <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto mt-0.5">
-                          {searchProducts(itemSearches[itemIdx]).length === 0 ? (
-                            <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
-                          ) : (
-                            searchProducts(itemSearches[itemIdx]).slice(0, 20).map((p) => (
-                              <button
-                                key={p.id}
-                                className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 flex items-center justify-between"
-                                onClick={() => selectProduct(itemIdx, p)}
-                              >
-                                <span>
-                                  <span className="font-mono">{p.code}</span>
-                                  <span className="ml-2 text-gray-500">{p.name}</span>
-                                  {p.spec && <span className="ml-1 text-gray-400">{p.spec}</span>}
-                                </span>
-                                {p.is_bom_parent && (
-                                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium whitespace-nowrap">
-                                    BOM({p.bom_children_count}项)
-                                  </span>
-                                )}
-                              </button>
-                            ))
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    {/* 物料名称 - 支持模糊搜索 */}
-                    <div className="relative">
-                      <Input
-                        placeholder="输入名称搜索"
-                        value={item.product_id
-                          ? (products.find((p) => p.id === item.product_id)?.name || '')
-                          : (itemNameSearches[itemIdx] || '')
+                      }}
+                      onFocus={() => {
+                        if (item.product_id) {
+                          const updated = [...formItems];
+                          updated[itemIdx] = { ...updated[itemIdx], product_id: '', unit_price: null };
+                          setFormItems(updated);
+                          setItemSearches((prev) => ({ ...prev, [itemIdx]: '' }));
                         }
-                        onChange={(e) => {
-                          setItemNameSearches((prev) => ({ ...prev, [itemIdx]: e.target.value }));
-                          if (item.product_id) {
-                            updateFormItem(itemIdx, 'product_id', '');
-                          }
-                        }}
-                        onFocus={() => {
-                          if (item.product_id) {
-                            updateFormItem(itemIdx, 'product_id', '');
-                            setItemNameSearches((prev) => ({ ...prev, [itemIdx]: '' }));
-                          }
-                        }}
-                        onBlur={() => {
-                          setTimeout(() => {
-                            setItemNameSearches((prev) => {
-                              const next = { ...prev };
-                              delete next[itemIdx];
-                              return next;
-                            });
-                          }, 200);
-                        }}
-                        className="text-sm h-9"
-                      />
-                      {itemNameSearches[itemIdx] && !item.product_id && (
-                        <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto mt-0.5">
-                          {searchProducts(itemNameSearches[itemIdx]).length === 0 ? (
-                            <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
-                          ) : (
-                            searchProducts(itemNameSearches[itemIdx]).slice(0, 20).map((p) => (
-                              <button
-                                key={p.id}
-                                className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 flex items-center justify-between"
-                                onClick={() => selectProduct(itemIdx, p)}
-                              >
-                                <span>
-                                  <span className="font-mono">{p.code}</span>
-                                  <span className="ml-2 text-gray-500">{p.name}</span>
-                                  {p.spec && <span className="ml-1 text-gray-400">{p.spec}</span>}
+                      }}
+                      onBlur={() => {
+                        setTimeout(() => {
+                          setItemSearches((prev) => {
+                            const next = { ...prev };
+                            delete next[itemIdx];
+                            return next;
+                          });
+                        }, 200);
+                      }}
+                      className="text-sm font-mono h-9"
+                    />
+                    {itemSearches[itemIdx] && !item.product_id && (
+                      <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto mt-0.5">
+                        {searchProducts(itemSearches[itemIdx]).length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
+                        ) : (
+                          searchProducts(itemSearches[itemIdx]).slice(0, 20).map((p) => (
+                            <button
+                              key={p.id}
+                              className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 flex items-center justify-between"
+                              onClick={() => selectProduct(itemIdx, p)}
+                            >
+                              <span>
+                                <span className="font-mono">{p.code}</span>
+                                <span className="ml-2 text-gray-500">{p.name}</span>
+                                {p.spec && <span className="ml-1 text-gray-400">{p.spec}</span>}
+                              </span>
+                              {p.is_bom_parent && (
+                                <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium whitespace-nowrap">
+                                  BOM({p.bom_children_count}项)
                                 </span>
-                                {p.is_bom_parent && (
-                                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium whitespace-nowrap">
-                                    BOM({p.bom_children_count}项)
-                                  </span>
-                                )}
-                              </button>
-                            ))
-                          )}
-                        </div>
-                      )}
-                    </div>
+                              )}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
-                  {/* 第二行：数量 + 单价 + 交货日期 + 删除 */}
-                  <div className="grid grid-cols-[100px_120px_160px_36px] gap-3 items-center">
-                    <div>
-                      <label className="text-xs text-gray-400 mb-0.5 block">数量</label>
-                      <Input
-                        type="number"
-                        value={item.quantity || ''}
-                        onChange={(e) => updateFormItem(itemIdx, 'quantity', Number(e.target.value))}
-                        className="text-sm h-9 text-right"
-                        placeholder="0"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-400 mb-0.5 block">单价</label>
-                      <Input
-                        type="number"
-                        value={item.unit_price ?? ''}
-                        readOnly
-                        className="text-sm h-9 bg-gray-100 text-right"
-                        placeholder="自动"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-400 mb-0.5 block">交货日期</label>
-                      <Input
-                        type="date"
-                        value={item.delivery_date}
-                        onChange={(e) => updateFormItem(itemIdx, 'delivery_date', e.target.value)}
-                        className="text-sm h-9"
-                      />
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-9 w-9 p-0 text-red-400 hover:text-red-600 self-end"
-                      onClick={() => removeFormItem(itemIdx)}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+                  {/* 物料名称 - 支持模糊搜索 */}
+                  <div className="relative">
+                    <Input
+                      placeholder="输入名称搜索"
+                      value={item.product_id
+                        ? (products.find((p) => p.id === item.product_id)?.name || '')
+                        : (itemNameSearches[itemIdx] || '')
+                      }
+                      onChange={(e) => {
+                        setItemNameSearches((prev) => ({ ...prev, [itemIdx]: e.target.value }));
+                        if (item.product_id) {
+                          const updated = [...formItems];
+                          updated[itemIdx] = { ...updated[itemIdx], product_id: '', unit_price: null };
+                          setFormItems(updated);
+                        }
+                      }}
+                      onFocus={() => {
+                        if (item.product_id) {
+                          const updated = [...formItems];
+                          updated[itemIdx] = { ...updated[itemIdx], product_id: '', unit_price: null };
+                          setFormItems(updated);
+                          setItemNameSearches((prev) => ({ ...prev, [itemIdx]: '' }));
+                        }
+                      }}
+                      onBlur={() => {
+                        setTimeout(() => {
+                          setItemNameSearches((prev) => {
+                            const next = { ...prev };
+                            delete next[itemIdx];
+                            return next;
+                          });
+                        }, 200);
+                      }}
+                      className="text-sm h-9"
+                    />
+                    {itemNameSearches[itemIdx] && !item.product_id && (
+                      <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto mt-0.5">
+                        {searchProducts(itemNameSearches[itemIdx]).length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
+                        ) : (
+                          searchProducts(itemNameSearches[itemIdx]).slice(0, 20).map((p) => (
+                            <button
+                              key={p.id}
+                              className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 flex items-center justify-between"
+                              onClick={() => selectProduct(itemIdx, p)}
+                            >
+                              <span>
+                                <span className="font-mono">{p.code}</span>
+                                <span className="ml-2 text-gray-500">{p.name}</span>
+                                {p.spec && <span className="ml-1 text-gray-400">{p.spec}</span>}
+                              </span>
+                              {p.is_bom_parent && (
+                                <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium whitespace-nowrap">
+                                  BOM({p.bom_children_count}项)
+                                </span>
+                              )}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
+                  {/* 数量 */}
+                  <Input
+                    type="number"
+                    value={item.quantity || ''}
+                    onChange={(e) => updateFormItem(itemIdx, 'quantity', Number(e.target.value))}
+                    className="text-sm h-9 text-right"
+                    placeholder="0"
+                  />
+                  {/* 单价 - 只读自动填充 */}
+                  <Input
+                    type="number"
+                    value={item.unit_price ?? ''}
+                    readOnly
+                    className="text-sm h-9 bg-gray-100 text-right"
+                    placeholder="自动"
+                  />
+                  {/* 交货日期 */}
+                  <Input
+                    type="date"
+                    value={item.delivery_date}
+                    onChange={(e) => updateFormItem(itemIdx, 'delivery_date', e.target.value)}
+                    className="text-sm h-9"
+                  />
+                  {/* 删除 */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 w-9 p-0 text-red-400 hover:text-red-600"
+                    onClick={() => removeFormItem(itemIdx)}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
                 </div>
               ))}
             </div>
