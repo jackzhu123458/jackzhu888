@@ -1208,7 +1208,7 @@ export default function DeliveryPage() {
 
               {/* 明细表格（含右侧三联标识列） */}
               <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #000' }}>
-                <thead>
+                <tbody>
                   <tr style={{ background: '#f0f0f0' }}>
                     <th style={{ border: '1px solid #000', padding: '2px 4px', width: '32px', fontWeight: 'bold', fontSize: '10px' }}>项次</th>
                     <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px' }}>订单编号</th>
@@ -1223,8 +1223,6 @@ export default function DeliveryPage() {
                       <div style={{ color: '#cc8800' }}>(三)回单黄</div>
                     </th>
                   </tr>
-                </thead>
-                <tbody>
                   {(printData?.delivery_note_items || []).map((item, idx) => (
                     <tr key={idx}>
                       <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'center', fontSize: '10px' }}>{idx + 1}</td>
@@ -1248,8 +1246,8 @@ export default function DeliveryPage() {
                       </td>
                     </tr>
                   ))}
-                  {/* 补空行至6行（与rowSpan=8匹配：1表头+7数据行，已有数据行之外的补空行） */}
-                  {Array.from({ length: Math.max(0, 6 - (printData?.delivery_note_items?.length || 0)) }).map((_, i) => (
+                  {/* 补空行至7行（与rowSpan=8匹配：1表头+7数据行） */}
+                  {Array.from({ length: Math.max(0, 7 - (printData?.delivery_note_items?.length || 0)) }).map((_, i) => (
                     <tr key={`empty-${i}`}>
                       <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'center', height: '16px', fontSize: '10px' }}>&nbsp;</td>
                       <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
