@@ -226,15 +226,20 @@ export default function BomPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [bomRes, prodRes] = await Promise.all([
-      fetch('/api/bom'),
-      fetch('/api/products'),
-    ]);
-    const bomData = await bomRes.json();
-    const prodData = await prodRes.json();
-    if (Array.isArray(bomData)) setBomList(bomData);
-    if (Array.isArray(prodData)) setProducts(prodData);
-    setLoading(false);
+    try {
+      const [bomRes, prodRes] = await Promise.all([
+        fetch('/api/bom'),
+        fetch('/api/products'),
+      ]);
+      const bomData = await bomRes.json();
+      const prodData = await prodRes.json();
+      if (Array.isArray(bomData)) setBomList(bomData);
+      if (Array.isArray(prodData)) setProducts(prodData);
+    } catch (err) {
+      console.error('Failed to load data:', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -585,8 +590,7 @@ export default function BomPage() {
 
   return (
     <>
-      <div className="flex flex-col h-[calc(100vh-0px)] bg-[#F8F9FA] overflow-hidden">
-        {/* 顶部工具栏 */}
+      <div className="flex flex-col h-screen bg-[#F8F9FA] overflow-hidden">        {/* 顶部工具栏 */}
         <div className="bg-[#E8EBF0] border-b border-gray-300 px-2 py-1 flex items-center gap-1 shrink-0">
           <Button variant="ghost" size="sm" className="h-7 text-xs px-2.5 bg-[#F0F1F3] hover:bg-[#D8DAE0] border border-gray-300 rounded-sm" onClick={handleCategoryAdd}>
             新增类别
@@ -714,7 +718,7 @@ export default function BomPage() {
           </div>
 
           {/* 右侧数据表格 */}
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
             {/* 表头 */}
             <div className="grid grid-cols-[50px_100px_120px_1fr_60px_100px_100px_1fr] bg-[#E8EBF0] border-b border-gray-300 shrink-0">
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">序号</div>
@@ -732,7 +736,9 @@ export default function BomPage() {
               {loading ? (
                 <div className="text-center py-12 text-gray-400 text-sm">加载中...</div>
               ) : filteredProducts.length === 0 ? (
-                <div className="text-center py-12 text-gray-400 text-sm">暂无商品数据</div>
+                <div className="text-center py-12 text-gray-400 text-sm">
+                  {products.length === 0 ? '数据加载失败，请刷新页面' : '当前类目暂无商品数据'}
+                </div>
               ) : (
                 filteredProducts.map((product, idx) => {
                   const isSelected = selectedProductId === product.id;
