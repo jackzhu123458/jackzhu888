@@ -186,28 +186,42 @@ export default function BomPage() {
   };
 
   // 从产品数据提取类目列表（含中文描述名称），排除BOM占位产品
+  // 只保留纯数字编号的类目（如001、002），中文类目（如"五金"、"成品"）和"0"归入"未分类"
   const categories = useMemo(() => {
     const catMap = new Map<string, { count: number; names: string[] }>();
+    let unclassifiedCount = 0;
     products
       .filter(p => !p.code.startsWith('BOM-'))
       .forEach(p => {
         if (p.category) {
-          const existing = catMap.get(p.category);
-          if (existing) {
-            existing.count++;
-            existing.names.push(p.name);
+          // 判断是否为数字编号类目（如001、002等）
+          const isNumericCategory = /^\d{2,3}$/.test(p.category) && p.category !== '0';
+          if (isNumericCategory) {
+            const existing = catMap.get(p.category);
+            if (existing) {
+              existing.count++;
+              existing.names.push(p.name);
+            } else {
+              catMap.set(p.category, { count: 1, names: [p.name] });
+            }
           } else {
-            catMap.set(p.category, { count: 1, names: [p.name] });
+            // 非数字编号类目归入未分类
+            unclassifiedCount++;
           }
         }
       });
-    return Array.from(catMap.entries())
+    const result = Array.from(catMap.entries())
       .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))
       .map(([cat, { count, names }]) => ({
         name: cat,
         count,
         label: extractCommonLabel(names),
       }));
+    // 添加"未分类"类目（包含中文类目和"0"类目的产品）
+    if (unclassifiedCount > 0) {
+      result.push({ name: 'unclassified', count: unclassifiedCount, label: '未分类' });
+    }
+    return result;
   }, [products]);
 
   const loadData = useCallback(async () => {
@@ -231,7 +245,13 @@ export default function BomPage() {
     let result = products.filter(p => !p.code.startsWith('BOM-'));
 
     // 按类目筛选
-    if (selectedCategory !== '0') {
+    if (selectedCategory === 'unclassified') {
+      // 未分类：显示非数字编号类目（中文类目、"0"类目）的产品
+      result = result.filter(p => {
+        if (!p.category) return true;
+        return !/^\d{2,3}$/.test(p.category) || p.category === '0';
+      });
+    } else if (selectedCategory !== '0') {
       result = result.filter(p => p.category === selectedCategory);
     }
 
@@ -676,8 +696,14 @@ export default function BomPage() {
                   onClick={() => handleCategoryClick(cat.name)}
                 >
                   <span className="truncate flex-1">
-                    <span className="font-mono text-xs">{cat.name}</span>
-                    {cat.label && <span className={`${selectedCategory === cat.name ? 'text-blue-200' : 'text-gray-500'}`}> - {cat.label}</span>}
+                    {cat.name === 'unclassified' ? (
+                      <span className="text-sm">未分类</span>
+                    ) : (
+                      <>
+                        <span className="font-mono text-xs">{cat.name}</span>
+                        {cat.label && <span className={`${selectedCategory === cat.name ? 'text-blue-200' : 'text-gray-500'}`}> - {cat.label}</span>}
+                      </>
+                    )}
                   </span>
                   <span className={`ml-1 text-xs shrink-0 ${selectedCategory === cat.name ? 'text-blue-200' : 'text-gray-400'}`}>
                     {cat.count}
