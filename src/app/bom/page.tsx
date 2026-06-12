@@ -166,7 +166,7 @@ export default function BomPage() {
   const handleImport = async () => {
     if (!importFile) return;
     if (importMode === 'single' && !importParentId) {
-      alert('请选择父级产品（成品）');
+      alert('请选择归属大类');
       return;
     }
     setImporting(true);
@@ -326,7 +326,7 @@ export default function BomPage() {
               const isExpanded = expandedGroups.has(key);
               return (
                 <div key={key} className={isExpanded ? '' : 'border-b border-gray-100'}>
-                  {/* 父级行（BOM 组） */}
+                  {/* 归属大类行（BOM 组） */}
                   <div
                     className="grid grid-cols-[36px_1fr_120px_120px_1fr_100px_100px_80px_60px_80px] items-center bg-gray-50/60 hover:bg-gray-100/60 cursor-pointer border-b border-gray-50 transition-colors"
                     onClick={() => toggleGroup(key)}
@@ -421,9 +421,9 @@ export default function BomPage() {
           </SheetHeader>
           <div className="mt-6 space-y-4 px-1">
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-1.5 block">父级产品（成品） *</label>
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">归属大类 *</label>
               <Select value={parentId} onValueChange={setParentId}>
-                <SelectTrigger><SelectValue placeholder="选择成品" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="选择归属大类" /></SelectTrigger>
                 <SelectContent>
                   {finishedProducts.map((p) => (
                     <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
@@ -432,9 +432,9 @@ export default function BomPage() {
               </Select>
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-1.5 block">子级物料（原材料/半成品） *</label>
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">物料明细 *</label>
               <Select value={childId} onValueChange={setChildId}>
-                <SelectTrigger><SelectValue placeholder="选择子料" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="选择物料" /></SelectTrigger>
                 <SelectContent>
                   {products.filter((p) => p.id !== parentId).map((p) => (
                     <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
@@ -486,7 +486,7 @@ export default function BomPage() {
                     }`}
                   >
                     <div className="font-medium text-sm text-gray-900">单产品导入</div>
-                    <div className="text-xs text-gray-500 mt-1">将所有物料导入到指定成品下</div>
+                    <div className="text-xs text-gray-500 mt-1">将所有物料导入到指定归属大类下</div>
                   </button>
                   <button
                     type="button"
@@ -506,9 +506,9 @@ export default function BomPage() {
               {/* 单产品模式：选择父产品 */}
               {importMode === 'single' && (
                 <div>
-                  <label className="text-sm font-medium text-gray-700 mb-1.5 block">目标成品 *</label>
+                  <label className="text-sm font-medium text-gray-700 mb-1.5 block">目标归属大类 *</label>
                   <Select value={importParentId} onValueChange={setImportParentId}>
-                    <SelectTrigger><SelectValue placeholder="选择成品" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="选择归属大类" /></SelectTrigger>
                     <SelectContent>
                       {finishedProducts.map((p) => (
                         <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
@@ -563,7 +563,7 @@ export default function BomPage() {
                 <p className="text-xs text-amber-600 mt-1">
                   {importMode === 'multi'
                     ? '商品类别非 0 的行将按类别分组，每组自动提取公共名称创建 BOM 组'
-                    : '所有行将作为所选成品的子物料导入'}
+                    : '所有行将作为所选归属大类的子物料导入'}
                 </p>
               </div>
 
