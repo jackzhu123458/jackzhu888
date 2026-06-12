@@ -346,19 +346,22 @@ export default function BomPage() {
                     <div className="px-4 py-3 text-sm font-semibold text-blue-800">
                       {group.product.name}
                     </div>
+                    <div className="px-4 py-3 text-sm text-gray-500">
+                      {group.product.spec || '-'}
+                    </div>
                     <div className="px-4 py-3 text-xs text-gray-500">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
                         {group.product.category || '-'}
                       </span>
                     </div>
-                    <div className="px-4 py-3 text-right text-sm text-gray-600">
+                    <div className="px-4 py-3 text-right text-sm text-gray-500">
                       {group.items.length} 项
                     </div>
                     <div className="px-4 py-3 text-right font-mono text-sm text-gray-900">
                       ¥{Number(group.product.price || 0).toFixed(2)}
                     </div>
                     <div className="px-4 py-3 text-xs text-gray-500">{group.product.unit}</div>
-                    <div className="px-4 py-3"></div>
+                    <div className="px-4 py-3 text-xs text-gray-400">{group.product.spec ? '' : ''}</div>
                     <div className="px-4 py-3"></div>
                   </div>
 
