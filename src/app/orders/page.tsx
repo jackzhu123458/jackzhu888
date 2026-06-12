@@ -71,6 +71,8 @@ interface OrderItem {
   product_id: string;
   quantity: number;
   unit_price: number | null;
+  delivered_qty: number;
+  reserved_qty: number;
   remark: string | null;
   products?: Product;
   customer_order_schedules?: Schedule[];
@@ -661,7 +663,8 @@ export default function OrdersPage() {
                           <th className="px-3 py-2 text-left font-medium text-gray-600 w-36 sticky left-24 bg-gray-50 z-10">物料编码</th>
                           <th className="px-3 py-2 text-left font-medium text-gray-600 w-48 sticky left-60 bg-gray-50 z-10">物料描述</th>
                           <th className="px-3 py-2 text-center font-medium text-gray-600 w-16 sticky left-[324px] bg-gray-50 z-10">单位</th>
-                          <th className="px-3 py-2 text-center font-medium text-yellow-700 bg-yellow-50 w-20 sticky left-[388px] bg-yellow-50 z-10">未清数量</th>
+                          <th className="px-3 py-2 text-center font-medium text-blue-700 bg-blue-50 w-16 sticky left-[340px] bg-blue-50 z-10">数量</th>
+                          <th className="px-3 py-2 text-center font-medium text-yellow-700 bg-yellow-50 w-16 sticky left-[356px] bg-yellow-50 z-10">未交</th>
                           {dateRange.map((date) => (
                             <th key={date} className="px-1 py-2 text-center font-medium text-gray-500 w-14 text-xs whitespace-nowrap">
                               {formatDateShort(date)}
@@ -700,10 +703,13 @@ export default function OrdersPage() {
                                 <td className="px-3 py-2 text-center text-xs sticky left-[324px] bg-white z-[5]">
                                   {item.products?.unit || '-'}
                                 </td>
-                                <td className={`px-3 py-2 text-center font-mono text-xs font-medium sticky left-[388px] z-[5] ${
-                                  unscheduledQty > 0 ? 'bg-yellow-50 text-yellow-700' : 'bg-green-50 text-green-700'
+                                <td className="px-3 py-2 text-center font-mono text-xs font-medium sticky left-[340px] bg-blue-50 text-blue-700 z-[5]">
+                                  {item.quantity || 0}
+                                </td>
+                                <td className={`px-3 py-2 text-center font-mono text-xs font-medium sticky left-[356px] z-[5] ${
+                                  (item.quantity - (item.delivered_qty || 0)) > 0 ? 'bg-yellow-50 text-yellow-700' : 'bg-green-50 text-green-700'
                                 }`}>
-                                  {unscheduledQty > 0 ? unscheduledQty : 0}
+                                  {item.quantity - (item.delivered_qty || 0)}
                                 </td>
                                 {dateRange.map((date) => {
                                   const qty = getScheduleQty(item, date);
