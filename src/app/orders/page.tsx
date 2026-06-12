@@ -1129,9 +1129,8 @@ export default function OrdersPage() {
             <div className="space-y-4">
               <p className="text-sm text-gray-600">
                 下推将自动检查订单物料的BOM和库存情况：
-                <br />- 有BOM的成品 → 自动生成生产订单
-                <br />- 无BOM且库存充足 → 自动预扣库存
-                <br />- 无BOM且库存不足 → 提示缺料
+                <br />- 有BOM且库存充足 → 自动预扣库存
+                <br />- 有BOM且库存不足 → 自动生成生产订单
               </p>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">选择仓库 *</label>

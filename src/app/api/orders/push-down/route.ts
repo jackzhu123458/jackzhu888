@@ -68,47 +68,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (bomRecords && bomRecords.length > 0) {
-      // 成品 → 需要生产，创建生产订单
-      const orderNo = `PO-${Date.now().toString(36).toUpperCase()}`;
-
-      const { data: prodOrder, error: prodError } = await supabase
-        .from('production_orders')
-        .insert({
-          order_no: orderNo,
-          product_id: parentProductId,
-          quantity: requiredQty,
-          status: 'pending',
-          due_date: item.deadline || order.deadline || null,
-          customer_id: order.customer_id,
-          customer_order_id: order_id,
-          customer_order_item_id: item.id,
-        })
-        .select()
-        .single();
-
-      if (prodError) {
-        console.error('创建生产订单失败:', prodError.message);
-        continue;
-      }
-
-      // 创建生产订单用料明细（从BOM展开）
-      const materials = bomRecords.map((bomItem: { child_product_id: string; quantity: number }) => ({
-        order_id: prodOrder.id,
-        product_id: bomItem.child_product_id,
-        required_qty: Number(bomItem.quantity) * requiredQty,
-        prepared_qty: 0,
-      }));
-
-      await supabase.from('production_order_materials').insert(materials);
-
-      result.produced.push({
-        product_id: parentProductId,
-        product_name: bomParentName,
-        quantity: requiredQty,
-        production_order_id: prodOrder.id,
-      });
-    } else {
-      // 2b. 原材料/无BOM物料 → 检查库存
+      // 有BOM的成品 → 先检查库存，充足则预扣，不足则生成生产订单
       const { data: inventory } = await supabase
         .from('inventory')
         .select('id, quantity, reserved_qty')
@@ -130,6 +90,94 @@ export async function POST(request: NextRequest) {
         }
 
         // 更新订单明细的预扣状态
+        await supabase
+          .from('customer_order_items')
+          .update({ reserved_qty: Number(item.reserved_qty || 0) + requiredQty })
+          .eq('id', item.id);
+
+        result.reserved.push({
+          product_id: product.id,
+          product_name: product.name,
+          quantity: requiredQty,
+        });
+      } else {
+        // 库存不足 → 生成生产订单
+        const orderNo = `PO-${Date.now().toString(36).toUpperCase()}`;
+
+        const { data: prodOrder, error: prodError } = await supabase
+          .from('production_orders')
+          .insert({
+            order_no: orderNo,
+            product_id: parentProductId,
+            quantity: requiredQty,
+            status: 'pending',
+            due_date: item.deadline || order.deadline || null,
+            customer_id: order.customer_id,
+            customer_order_id: order_id,
+            customer_order_item_id: item.id,
+          })
+          .select()
+          .single();
+
+        if (prodError) {
+          console.error('创建生产订单失败:', prodError.message);
+          continue;
+        }
+
+        // 创建生产订单用料明细（从BOM展开）
+        const materials = bomRecords.map((bomItem: { child_product_id: string; quantity: number }) => ({
+          order_id: prodOrder.id,
+          product_id: bomItem.child_product_id,
+          required_qty: Number(bomItem.quantity) * requiredQty,
+          prepared_qty: 0,
+        }));
+
+        await supabase.from('production_order_materials').insert(materials);
+
+        // 如果有部分库存，先预扣可用部分
+        if (availableQty > 0 && inventory) {
+          await supabase
+            .from('inventory')
+            .update({
+              reserved_qty: Number(inventory.reserved_qty || 0) + availableQty,
+            })
+            .eq('id', inventory.id);
+
+          await supabase
+            .from('customer_order_items')
+            .update({ reserved_qty: Number(item.reserved_qty || 0) + availableQty })
+            .eq('id', item.id);
+        }
+
+        result.produced.push({
+          product_id: parentProductId,
+          product_name: bomParentName,
+          quantity: requiredQty,
+          production_order_id: prodOrder.id,
+        });
+      }
+    } else {
+      // 无BOM的原材料/辅料 → 检查库存
+      const { data: inventory } = await supabase
+        .from('inventory')
+        .select('id, quantity, reserved_qty')
+        .eq('product_id', product.id)
+        .eq('warehouse_id', warehouse_id)
+        .maybeSingle();
+
+      const availableQty = inventory ? Number(inventory.quantity) - Number(inventory.reserved_qty || 0) : 0;
+
+      if (availableQty >= requiredQty) {
+        // 库存充足 → 预扣库存
+        if (inventory) {
+          await supabase
+            .from('inventory')
+            .update({
+              reserved_qty: Number(inventory.reserved_qty || 0) + requiredQty,
+            })
+            .eq('id', inventory.id);
+        }
+
         await supabase
           .from('customer_order_items')
           .update({ reserved_qty: Number(item.reserved_qty || 0) + requiredQty })
