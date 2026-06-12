@@ -1181,21 +1181,21 @@ export default function DeliveryPage() {
           <div className="px-6 pb-4 overflow-x-auto">
             {/* 预览容器：按实际尺寸渲染，屏幕不够宽时水平滚动 */}
             <div style={{ minWidth: '241mm' }}>
-            {/* Print area — 三联单尺寸 241mm×140mm，预览按比例缩放 */}
-            <div id="delivery-print-area" className="bg-white text-[11px] leading-[17px]" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '140mm', padding: '6mm 8mm', boxSizing: 'border-box' }}>
+            {/* Print area — 三联单尺寸 241mm×140mm */}
+            <div id="delivery-print-area" className="bg-white" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '140mm', padding: '6mm 8mm', boxSizing: 'border-box', fontSize: '11px', lineHeight: '17px' }}>
               {/* 抬头区域 */}
-              <div className="text-center" style={{ marginBottom: '2px' }}>
+              <div style={{ textAlign: 'center', marginBottom: '2px' }}>
                 <div style={{ fontSize: '16px', fontWeight: 'bold', letterSpacing: '4px' }}>常州横林新顺电器配件厂</div>
-                <div className="flex justify-center gap-6" style={{ fontSize: '9px', color: '#555', marginTop: '1px' }}>
-                  <span>地址：江苏省常州市横林镇长虹东路103号</span>
-                  <span>电话：13806122629</span>
+                <div style={{ fontSize: '9px', color: '#555', marginTop: '1px' }}>
+                  <span style={{ marginRight: '24px' }}>地址：江苏省常州市横林镇长虹东路103号</span>
+                  <span style={{ marginRight: '24px' }}>电话：13806122629</span>
                   <span>传真：0519-88781585</span>
                 </div>
               </div>
-              <div className="text-center" style={{ fontSize: '14px', fontWeight: 'bold', margin: '2px 0 4px' }}>送 货 单</div>
+              <div style={{ textAlign: 'center', fontSize: '14px', fontWeight: 'bold', margin: '2px 0 4px' }}>送 货 单</div>
 
               {/* 客户信息 + 单号信息 */}
-              <div className="flex justify-between" style={{ marginBottom: '4px', fontSize: '11px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '11px' }}>
                 <div>
                   <div>客　户：{printData?.customer_name || ''}</div>
                   <div>交货地点：{printData?.customer_address || ''}</div>
@@ -1206,71 +1206,68 @@ export default function DeliveryPage() {
                 </div>
               </div>
 
-              {/* 明细表格 + 右侧三联标识 */}
-              <div className="flex">
-                <table className="flex-1 border-collapse" style={{ border: '1px solid #000' }}>
-                  <thead>
-                    <tr style={{ background: '#f0f0f0' }}>
-                      <th style={{ border: '1px solid #000', padding: '2px 4px', width: '32px', fontWeight: 'bold', fontSize: '10px' }}>项次</th>
-                      <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px' }}>订单编号</th>
-                      <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px' }}>物料编号</th>
-                      <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px' }}>物料名称</th>
-                      <th style={{ border: '1px solid #000', padding: '2px 4px', width: '32px', fontWeight: 'bold', fontSize: '10px' }}>单位</th>
-                      <th style={{ border: '1px solid #000', padding: '2px 4px', width: '56px', fontWeight: 'bold', fontSize: '10px' }}>数量</th>
-                      <th style={{ border: '1px solid #000', padding: '2px 4px', width: '60px', fontWeight: 'bold', fontSize: '10px' }}>备注</th>
+              {/* 明细表格（含右侧三联标识列） */}
+              <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #000' }}>
+                <thead>
+                  <tr style={{ background: '#f0f0f0' }}>
+                    <th style={{ border: '1px solid #000', padding: '2px 4px', width: '32px', fontWeight: 'bold', fontSize: '10px' }}>项次</th>
+                    <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px' }}>订单编号</th>
+                    <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px' }}>物料编号</th>
+                    <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px' }}>物料名称</th>
+                    <th style={{ border: '1px solid #000', padding: '2px 4px', width: '32px', fontWeight: 'bold', fontSize: '10px' }}>单位</th>
+                    <th style={{ border: '1px solid #000', padding: '2px 4px', width: '56px', fontWeight: 'bold', fontSize: '10px' }}>数量</th>
+                    <th style={{ border: '1px solid #000', padding: '2px 4px', width: '60px', fontWeight: 'bold', fontSize: '10px' }}>备注</th>
+                    <th rowSpan={8} style={{ border: '1px solid #000', padding: '4px 0', width: '20px', fontSize: '8px', textAlign: 'center', letterSpacing: '1px' }}>
+                      <div style={{ color: '#333', marginBottom: '8px' }}>(一)存根白</div>
+                      <div style={{ color: '#cc0000', marginBottom: '8px' }}>(二)客户红</div>
+                      <div style={{ color: '#cc8800' }}>(三)回单黄</div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(printData?.delivery_note_items || []).map((item, idx) => (
+                    <tr key={idx}>
+                      <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'center', fontSize: '10px' }}>{idx + 1}</td>
+                      <td style={{ border: '1px solid #000', padding: '1px 4px', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '10px' }}>
+                        {item.customer_order || (printData as DeliveryNote & { customer_orders?: { order_no?: string } | null })?.customer_orders?.order_no || ''}
+                      </td>
+                      <td style={{ border: '1px solid #000', padding: '1px 4px', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '10px' }}>
+                        {item.product?.code || ''}
+                      </td>
+                      <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>
+                        {item.product?.name || ''}{item.product?.spec ? `/${item.product.spec}` : ''}
+                      </td>
+                      <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'center', fontSize: '10px' }}>
+                        {item.product?.unit || ''}
+                      </td>
+                      <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'right', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '10px' }}>
+                        {item.quantity}
+                      </td>
+                      <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>
+                        {item.remark || ''}
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {(printData?.delivery_note_items || []).map((item, idx) => (
-                      <tr key={idx}>
-                        <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'center', fontSize: '10px' }}>{idx + 1}</td>
-                        <td style={{ border: '1px solid #000', padding: '1px 4px', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '10px' }}>
-                          {item.customer_order || (printData as DeliveryNote & { customer_orders?: { order_no?: string } | null })?.customer_orders?.order_no || ''}
-                        </td>
-                        <td style={{ border: '1px solid #000', padding: '1px 4px', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '10px' }}>
-                          {item.product?.code || ''}
-                        </td>
-                        <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>
-                          {item.product?.name || ''}{item.product?.spec ? `/${item.product.spec}` : ''}
-                        </td>
-                        <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'center', fontSize: '10px' }}>
-                          {item.product?.unit || ''}
-                        </td>
-                        <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'right', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '10px' }}>
-                          {item.quantity}
-                        </td>
-                        <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>
-                          {item.remark || ''}
-                        </td>
-                      </tr>
-                    ))}
-                    {/* 补空行至最少6行 */}
-                    {Array.from({ length: Math.max(0, 6 - (printData?.delivery_note_items?.length || 0)) }).map((_, i) => (
-                      <tr key={`empty-${i}`}>
-                        <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'center', height: '16px', fontSize: '10px' }}>&nbsp;</td>
-                        <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
-                        <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
-                        <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
-                        <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
-                        <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
-                        <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {/* 右侧三联标识 */}
-                <div className="flex flex-col justify-around items-center" style={{ width: '20px', border: '1px solid #000', borderLeft: 'none', fontSize: '8px', writingMode: 'vertical-rl', letterSpacing: '1px' }}>
-                  <span style={{ color: '#333' }}>(一)存根白</span>
-                  <span style={{ color: '#cc0000' }}>(二)客户红</span>
-                  <span style={{ color: '#cc8800' }}>(三)回单黄</span>
-                </div>
-              </div>
+                  ))}
+                  {/* 补空行至6行（与rowSpan=8匹配：1表头+7数据行，已有数据行之外的补空行） */}
+                  {Array.from({ length: Math.max(0, 6 - (printData?.delivery_note_items?.length || 0)) }).map((_, i) => (
+                    <tr key={`empty-${i}`}>
+                      <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'center', height: '16px', fontSize: '10px' }}>&nbsp;</td>
+                      <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
+                      <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
+                      <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
+                      <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
+                      <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
+                      <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
 
               {/* 底部备注 + 签署 */}
               <div style={{ marginTop: '4px', fontSize: '11px' }}>
                 <div>备注：{printData?.remark || ''}</div>
               </div>
-              <div className="flex justify-between" style={{ marginTop: '12px', fontSize: '11px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', fontSize: '11px' }}>
                 <div>收货单位及经手人：________________</div>
                 <div>送货单位及经手人：新　顺________________</div>
               </div>
