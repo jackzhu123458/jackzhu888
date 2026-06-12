@@ -19,6 +19,49 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await query.limit(500);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // 补充客户订单号和订单物料信息
+  if (data && data.length > 0) {
+    const orderIds = [...new Set(data.filter((o: Record<string, unknown>) => o.customer_order_id).map((o: Record<string, unknown>) => o.customer_order_id as string))];
+    const itemIds = [...new Set(data.filter((o: Record<string, unknown>) => o.customer_order_item_id).map((o: Record<string, unknown>) => o.customer_order_item_id as string))];
+
+    const orderMap: Record<string, { order_no: string }> = {};
+    const itemMap: Record<string, { product_id: string; quantity: number; delivered_qty: number; code: string; name: string; spec: string | null; unit: string }> = {};
+
+    if (orderIds.length > 0) {
+      const { data: orders } = await client.from('customer_orders').select('id, order_no').in('id', orderIds);
+      if (orders) orders.forEach((o: { id: string; order_no: string }) => { orderMap[o.id] = { order_no: o.order_no }; });
+    }
+
+    if (itemIds.length > 0) {
+      const { data: items } = await client
+        .from('customer_order_items')
+        .select('id, product_id, quantity, delivered_qty, products(id, code, name, spec, unit)')
+        .in('id', itemIds);
+      if (items) items.forEach((it: Record<string, unknown>) => {
+        const p = (it.products as Record<string, unknown> | null);
+        itemMap[it.id as string] = {
+          product_id: it.product_id as string,
+          quantity: Number(it.quantity),
+          delivered_qty: Number(it.delivered_qty || 0),
+          code: (p?.code as string) || '',
+          name: (p?.name as string) || '',
+          spec: (p?.spec as string | null) || null,
+          unit: (p?.unit as string) || '',
+        };
+      });
+    }
+
+    data.forEach((o: Record<string, unknown>) => {
+      if (o.customer_order_id && orderMap[o.customer_order_id as string]) {
+        (o as Record<string, unknown>).customer_order = orderMap[o.customer_order_id as string];
+      }
+      if (o.customer_order_item_id && itemMap[o.customer_order_item_id as string]) {
+        (o as Record<string, unknown>).order_item = itemMap[o.customer_order_item_id as string];
+      }
+    });
+  }
+
   return NextResponse.json(data);
 }
 

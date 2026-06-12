@@ -67,6 +67,8 @@ interface ProductionOrder {
   id: string;
   order_no: string;
   customer_id: string | null;
+  customer_order_id: string | null;
+  customer_order_item_id: string | null;
   product_id: string;
   quantity: string;
   status: string;
@@ -78,6 +80,16 @@ interface ProductionOrder {
   products: Product;
   customers: Customer | null;
   production_order_materials: Material[];
+  customer_order?: { order_no: string };
+  order_item?: {
+    product_id: string;
+    quantity: number;
+    delivered_qty: number;
+    code: string;
+    name: string;
+    spec: string | null;
+    unit: string;
+  };
 }
 
 const statusMap: Record<string, { label: string; color: string }> = {
@@ -421,7 +433,9 @@ export default function ProductionPage() {
                       <thead>
                         <tr className="border-t border-b border-gray-200 bg-gray-50/30">
                           <th className="text-left px-5 py-2.5 font-medium text-gray-500">订单号</th>
-                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">产品</th>
+                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">客户订单号</th>
+                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">物料编码</th>
+                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">物料描述</th>
                           <th className="text-right px-5 py-2.5 font-medium text-gray-500">数量</th>
                           <th className="text-left px-5 py-2.5 font-medium text-gray-500">状态</th>
                           <th className="text-left px-5 py-2.5 font-medium text-gray-500">计划开始</th>
@@ -433,11 +447,14 @@ export default function ProductionPage() {
                         {group.orders.map((order) => (
                           <tr key={order.id} className="border-b border-gray-50 hover:bg-gray-50/50">
                             <td className="px-5 py-3 font-mono text-gray-900">{order.order_no}</td>
+                            <td className="px-5 py-3 font-mono text-gray-600">{order.customer_order?.order_no || '-'}</td>
+                            <td className="px-5 py-3 font-mono text-gray-900">{order.order_item?.code || order.products?.code || '-'}</td>
                             <td className="px-5 py-3 text-gray-900">
-                              {order.products?.name || '-'}
-                              <span className="text-xs text-gray-400 ml-1">{order.products?.spec || ''}</span>
+                              {order.order_item?.name || order.products?.name || '-'}
+                              {order.order_item?.spec && <span className="text-xs text-gray-400 ml-1">{order.order_item.spec}</span>}
+                              {!order.order_item?.spec && order.products?.spec && <span className="text-xs text-gray-400 ml-1">{order.products.spec}</span>}
                             </td>
-                            <td className="px-5 py-3 text-right font-mono text-gray-900">{order.quantity} {order.products?.unit || ''}</td>
+                            <td className="px-5 py-3 text-right font-mono text-gray-900">{order.quantity} {order.order_item?.unit || order.products?.unit || ''}</td>
                             <td className="px-5 py-3">
                               <Badge variant="outline" className={statusMap[order.status]?.color || ''}>
                                 {statusMap[order.status]?.label || order.status}
