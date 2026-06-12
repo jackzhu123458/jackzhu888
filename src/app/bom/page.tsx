@@ -41,6 +41,7 @@ interface Product {
   spec: string | null;
   unit: string;
   type: string;
+  category: string | null;
   price: number;
 }
 
@@ -312,7 +313,7 @@ export default function BomPage() {
               <div className="px-4 py-3">物料编码</div>
               <div className="px-4 py-3">物料名称</div>
               <div className="px-4 py-3">规格</div>
-              <div className="px-4 py-3">类型</div>
+              <div className="px-4 py-3">类属</div>
               <div className="px-4 py-3 text-right">用量</div>
               <div className="px-4 py-3 text-right">售价(含税)</div>
               <div className="px-4 py-3">单位</div>
@@ -346,8 +347,8 @@ export default function BomPage() {
                       {group.product.name}
                     </div>
                     <div className="px-4 py-3 text-xs text-gray-500">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                        成品组
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                        {group.product.category || '-'}
                       </span>
                     </div>
                     <div className="px-4 py-3 text-right text-sm text-gray-600">
@@ -356,7 +357,7 @@ export default function BomPage() {
                     <div className="px-4 py-3 text-right font-mono text-sm text-gray-900">
                       ¥{Number(group.product.price || 0).toFixed(2)}
                     </div>
-                    <div className="px-4 py-3 text-xs text-gray-400">套</div>
+                    <div className="px-4 py-3 text-xs text-gray-500">{group.product.unit}</div>
                     <div className="px-4 py-3"></div>
                     <div className="px-4 py-3"></div>
                   </div>
@@ -381,7 +382,7 @@ export default function BomPage() {
                       </div>
                       <div className="px-4 py-2.5 text-xs text-gray-500">
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                          {item.child_product.type === 'raw_material' ? '原材料' : item.child_product.type === 'semi_finished' ? '半成品' : '其他'}
+                          {item.child_product.category || '-'}
                         </span>
                       </div>
                       <div className="px-4 py-2.5 text-right font-mono text-sm text-gray-900">
