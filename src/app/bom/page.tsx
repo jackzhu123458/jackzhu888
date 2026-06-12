@@ -129,17 +129,57 @@ export default function BomPage() {
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 从产品数据提取类目列表
+  // 从同类产品名称中提取公共中文描述
+  const extractCommonLabel = (names: string[]): string => {
+    if (names.length === 0) return '';
+    if (names.length === 1) return names[0];
+
+    // 提取每个名称的中文前缀（连续中文字符）
+    const chinesePrefixes = names.map(name => {
+      const match = name.match(/^[\u4e00-\u9fff]+/);
+      return match ? match[0] : '';
+    });
+
+    // 找出所有非空前缀中的最长公共前缀
+    const nonEmpty = chinesePrefixes.filter(p => p.length > 0);
+    if (nonEmpty.length === 0) return '';
+
+    // 如果只有一个有中文前缀，直接返回
+    if (nonEmpty.length === 1) return nonEmpty[0];
+
+    // 找最长公共前缀
+    let common = nonEmpty[0];
+    for (let i = 1; i < nonEmpty.length; i++) {
+      while (!nonEmpty[i].startsWith(common) && common.length > 0) {
+        common = common.slice(0, -1);
+      }
+      if (common.length === 0) break;
+    }
+
+    return common;
+  };
+
+  // 从产品数据提取类目列表（含中文描述名称）
   const categories = useMemo(() => {
-    const catMap = new Map<string, number>();
+    const catMap = new Map<string, { count: number; names: string[] }>();
     products.forEach(p => {
       if (p.category) {
-        catMap.set(p.category, (catMap.get(p.category) || 0) + 1);
+        const existing = catMap.get(p.category);
+        if (existing) {
+          existing.count++;
+          existing.names.push(p.name);
+        } else {
+          catMap.set(p.category, { count: 1, names: [p.name] });
+        }
       }
     });
     return Array.from(catMap.entries())
       .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))
-      .map(([cat, count]) => ({ name: cat, count }));
+      .map(([cat, { count, names }]) => ({
+        name: cat,
+        count,
+        label: extractCommonLabel(names),
+      }));
   }, [products]);
 
   const loadData = useCallback(async () => {
@@ -607,10 +647,11 @@ export default function BomPage() {
                   onClick={() => handleCategoryClick(cat.name)}
                 >
                   <span className="font-mono text-xs mr-1">{cat.name}</span>
+                  <span className="text-xs text-gray-400 mr-0.5">-</span>
                   <span className="text-sm truncate flex-1">
-                    {cat.name}
+                    {cat.label || cat.name}
                   </span>
-                  <span className={`ml-auto text-xs ${selectedCategory === cat.name ? 'text-blue-200' : 'text-gray-400'}`}>
+                  <span className={`ml-auto text-xs shrink-0 ${selectedCategory === cat.name ? 'text-blue-200' : 'text-gray-400'}`}>
                     ({cat.count})
                   </span>
                 </div>
