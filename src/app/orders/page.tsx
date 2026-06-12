@@ -759,7 +759,7 @@ export default function OrdersPage() {
 
       {/* 新增/编辑订单抽屉 */}
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-[1100px] max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-[1200px] w-[95vw] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingOrder ? '编辑订单' : '新增订单'}</DialogTitle>
           </DialogHeader>
@@ -822,7 +822,7 @@ export default function OrdersPage() {
               </div>
 
               {/* 表头 */}
-              <div className="grid grid-cols-[1.2fr_1.5fr_90px_100px_130px_36px] gap-3 mb-2 px-1">
+              <div className="grid grid-cols-[1fr_1fr_80px_100px_140px_36px] gap-2 mb-2 px-1">
                 <span className="text-xs text-gray-500 font-medium">物料编码</span>
                 <span className="text-xs text-gray-500 font-medium">物料名称</span>
                 <span className="text-xs text-gray-500 font-medium">数量</span>
@@ -832,7 +832,7 @@ export default function OrdersPage() {
               </div>
 
               {formItems.map((item, itemIdx) => (
-                <div key={itemIdx} className="grid grid-cols-[1.2fr_1.5fr_90px_100px_130px_36px] gap-3 mb-3 items-center">
+                <div key={itemIdx} className="grid grid-cols-[1fr_1fr_80px_100px_140px_36px] gap-2 mb-3 items-center">
                   {/* 物料编码搜索 */}
                   <div className="relative">
                     <Input
