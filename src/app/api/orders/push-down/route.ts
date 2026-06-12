@@ -35,20 +35,47 @@ export async function POST(request: NextRequest) {
     if (requiredQty <= 0) continue; // 已交完，跳过
 
     // 2. 检查是否为成品（有BOM的）还是原材料
-    const { data: bomRecords } = await supabase
+    // 2a. 先检查产品是否是BOM父产品（直接成品）
+    let { data: bomRecords } = await supabase
       .from('bom')
       .select('*, child_product:products!bom_child_product_id_products_id_fk(id, code, name, spec, unit, type)')
       .eq('parent_product_id', product.id);
 
+    // 2b. 如果不是BOM父产品，检查是否是某个BOM的子产品（该产品需要通过生产父产品来获得）
+    let parentProductId = product.id;
+    let bomParentName = product.name;
+    if (!bomRecords || bomRecords.length === 0) {
+      const { data: childBomRecords } = await supabase
+        .from('bom')
+        .select('parent_product_id, parent_product:products!bom_parent_product_id_products_id_fk(id, code, name)')
+        .eq('child_product_id', product.id);
+
+      if (childBomRecords && childBomRecords.length > 0) {
+        // 该产品是某个BOM的子产品，需要生产其父产品
+        const parentBom = childBomRecords[0];
+        parentProductId = parentBom.parent_product_id;
+        const pp = parentBom.parent_product as unknown as Record<string, unknown>;
+        bomParentName = (Array.isArray(pp) ? (pp as Record<string, unknown>[])[0]?.name : pp?.name) as string || product.name;
+
+        // 获取父产品的BOM子物料列表
+        const { data: parentBomRecords } = await supabase
+          .from('bom')
+          .select('*, child_product:products!bom_child_product_id_products_id_fk(id, code, name, spec, unit, type)')
+          .eq('parent_product_id', parentProductId);
+
+        bomRecords = parentBomRecords;
+      }
+    }
+
     if (bomRecords && bomRecords.length > 0) {
-      // 2a. 成品 → 需要生产，创建生产订单
+      // 成品 → 需要生产，创建生产订单
       const orderNo = `PO-${Date.now().toString(36).toUpperCase()}`;
 
       const { data: prodOrder, error: prodError } = await supabase
         .from('production_orders')
         .insert({
           order_no: orderNo,
-          product_id: product.id,
+          product_id: parentProductId,
           quantity: requiredQty,
           status: 'pending',
           due_date: item.deadline || order.deadline || null,
@@ -75,8 +102,8 @@ export async function POST(request: NextRequest) {
       await supabase.from('production_order_materials').insert(materials);
 
       result.produced.push({
-        product_id: product.id,
-        product_name: product.name,
+        product_id: parentProductId,
+        product_name: bomParentName,
         quantity: requiredQty,
         production_order_id: prodOrder.id,
       });
