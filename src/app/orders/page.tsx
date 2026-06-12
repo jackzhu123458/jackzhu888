@@ -277,7 +277,10 @@ export default function OrdersPage() {
 
   // 获取某明细在某日期的排程数量
   const getScheduleQty = (item: OrderItem, date: string): number => {
-    const sched = item.customer_order_schedules?.find((s) => s.schedule_date === date);
+    const sched = item.customer_order_schedules?.find((s) => {
+      const schedDate = s.schedule_date?.slice(0, 10); // 取 YYYY-MM-DD 部分
+      return schedDate === date;
+    });
     return sched?.quantity || 0;
   };
 
@@ -353,13 +356,20 @@ export default function OrdersPage() {
             (p) => p.code === item.material_code || p.code === item.material_code.replace(/\./g, '')
           );
 
+          // 交货日期生成排程
+          const deliveryDate = item.delivery_date || data.delivery_deadline || '';
+          const schedules: { schedule_date: string; quantity: number }[] = [];
+          if (deliveryDate && item.quantity > 0) {
+            schedules.push({ schedule_date: deliveryDate, quantity: item.quantity });
+          }
+
           return {
             product_id: matchedProduct?.id || '',
             quantity: item.quantity,
             unit_price: matchedProduct?.price || null,
-            delivery_date: item.delivery_date || data.delivery_deadline || '',
+            delivery_date: deliveryDate,
             remark: matchedProduct ? '' : `${item.material_code} ${item.material_name}`,
-            schedules: [],
+            schedules,
           };
         });
 
@@ -435,6 +445,11 @@ export default function OrdersPage() {
       customer_id: formCustomerId,
       order_no: formOrderNo,
       order_date: formOrderDate,
+      // 从所有明细中取最早的交货日期作为订单交货期限
+      delivery_deadline: formItems.reduce((earliest: string | null, item) => {
+        if (item.delivery_date && (!earliest || item.delivery_date < earliest)) return item.delivery_date;
+        return earliest;
+      }, null as string | null),
       remark: formRemark,
       status: editingOrder?.status || 'pending',
       items: formItems.map((item) => {
