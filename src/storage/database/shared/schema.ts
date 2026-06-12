@@ -58,6 +58,7 @@ export const inventory = pgTable(
     warehouse_id: varchar("warehouse_id", { length: 36 }).notNull().references(() => warehouses.id),
     quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull().default("0"),
     reserved_qty: numeric("reserved_qty", { precision: 12, scale: 2 }).notNull().default("0"),
+    location_no: varchar("location_no", { length: 50 }).default(""),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp("updated_at", { withTimezone: true }),
   },

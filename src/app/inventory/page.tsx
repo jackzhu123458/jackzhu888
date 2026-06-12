@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, MapPin } from 'lucide-react';
 
 interface Product {
   id: string;
@@ -25,6 +25,7 @@ interface InventoryItem {
   warehouse_id: string;
   quantity: string;
   reserved_qty: string;
+  location_no: string | null;
   products: Product;
   warehouses: Warehouse;
 }
@@ -51,6 +52,10 @@ export default function InventoryPage() {
   const [txProductCode, setTxProductCode] = useState('');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [txLoading, setTxLoading] = useState(false);
+
+  // 库位号编辑状态
+  const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
+  const [editingLocationValue, setEditingLocationValue] = useState('');
 
   const loadInventory = useCallback(async () => {
     setLoading(true);
@@ -82,16 +87,52 @@ export default function InventoryPage() {
     setTxLoading(false);
   }, []);
 
+  // 保存库位号
+  const saveLocationNo = useCallback(async (inventoryId: string, locationNo: string) => {
+    try {
+      await fetch('/api/inventory', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: inventoryId, location_no: locationNo }),
+      });
+      // 更新本地状态
+      setInventory(prev => prev.map(item =>
+        item.id === inventoryId ? { ...item, location_no: locationNo } : item
+      ));
+    } catch {
+      // 失败时静默回退
+    }
+    setEditingLocationId(null);
+  }, []);
+
+  // 开始编辑库位号
+  const startEditLocation = useCallback((item: InventoryItem) => {
+    setEditingLocationId(item.id);
+    setEditingLocationValue(item.location_no || '');
+  }, []);
+
   const filteredInventory = keyword
     ? inventory.filter(
         (item) =>
           item.products?.code?.toLowerCase().includes(keyword.toLowerCase()) ||
-          item.products?.name?.toLowerCase().includes(keyword.toLowerCase())
+          item.products?.name?.toLowerCase().includes(keyword.toLowerCase()) ||
+          (item.location_no && item.location_no.toLowerCase().includes(keyword.toLowerCase()))
       )
     : inventory;
 
-  // 按产品汇总库存
-  const summaryMap = new Map<string, { product: Product; totalQty: number; totalReserved: number; warehouses: Array<{ name: string; qty: string; reserved: string }> }>();
+  // 按产品汇总库存，保留库位号信息
+  const summaryMap = new Map<string, {
+    product: Product;
+    totalQty: number;
+    totalReserved: number;
+    warehouses: Array<{
+      inventoryId: string;
+      name: string;
+      qty: string;
+      reserved: string;
+      locationNo: string | null;
+    }>;
+  }>();
   filteredInventory.forEach((item) => {
     const key = item.product_id;
     if (!summaryMap.has(key)) {
@@ -105,7 +146,13 @@ export default function InventoryPage() {
     const entry = summaryMap.get(key)!;
     entry.totalQty += parseFloat(item.quantity) || 0;
     entry.totalReserved += parseFloat(item.reserved_qty) || 0;
-    entry.warehouses.push({ name: item.warehouses?.name || '默认', qty: item.quantity, reserved: item.reserved_qty || '0' });
+    entry.warehouses.push({
+      inventoryId: item.id,
+      name: item.warehouses?.name || '默认',
+      qty: item.quantity,
+      reserved: item.reserved_qty || '0',
+      locationNo: item.location_no || null,
+    });
   });
 
   // 计算进出汇总
@@ -120,10 +167,10 @@ export default function InventoryPage() {
 
       <div className="flex items-center gap-4 mb-4">
         <Input
-          placeholder="搜索物料编码或名称..."
+          placeholder="搜索物料编码、名称或库位号..."
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          className="w-64"
+          className="w-80"
         />
       </div>
 
@@ -138,37 +185,115 @@ export default function InventoryPage() {
               <th className="text-right px-5 py-3 font-medium text-gray-500">预留量</th>
               <th className="text-right px-5 py-3 font-medium text-gray-500">可用量</th>
               <th className="text-left px-5 py-3 font-medium text-gray-500">单位</th>
+              <th className="text-left px-5 py-3 font-medium text-gray-500">库位号</th>
               <th className="text-left px-5 py-3 font-medium text-gray-500">仓库明细</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="px-5 py-12 text-center text-gray-400">加载中...</td></tr>
+              <tr><td colSpan={9} className="px-5 py-12 text-center text-gray-400">加载中...</td></tr>
             ) : filteredInventory.length === 0 ? (
-              <tr><td colSpan={8} className="px-5 py-12 text-center text-gray-400">暂无库存数据</td></tr>
+              <tr><td colSpan={9} className="px-5 py-12 text-center text-gray-400">暂无库存数据</td></tr>
             ) : (
-              Array.from(summaryMap.entries()).map(([productId, summary]) => (
-                <tr key={productId} className="border-b border-gray-50 hover:bg-gray-50/50">
-                  <td className="px-5 py-3">
-                    <button
-                      className="font-mono text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                      onClick={() => loadTransactions(productId, summary.product.code, summary.product.name)}
-                      title="点击查看进出记录"
-                    >
-                      {summary.product.code}
-                    </button>
-                  </td>
-                  <td className="px-5 py-3 text-gray-900">{summary.product.name}</td>
-                  <td className="px-5 py-3 text-gray-600">{summary.product.spec || '-'}</td>
-                  <td className="px-5 py-3 text-right font-mono font-medium text-gray-900">{summary.totalQty.toFixed(2)}</td>
-                  <td className="px-5 py-3 text-right font-mono text-amber-600">{summary.totalReserved.toFixed(2)}</td>
-                  <td className="px-5 py-3 text-right font-mono font-medium text-green-700">{(summary.totalQty - summary.totalReserved).toFixed(2)}</td>
-                  <td className="px-5 py-3 text-gray-600">{summary.product.unit}</td>
-                  <td className="px-5 py-3 text-gray-600 text-xs">
-                    {summary.warehouses.map((w) => `${w.name}: ${w.qty}(预留${w.reserved})`).join(' | ')}
-                  </td>
-                </tr>
-              ))
+              Array.from(summaryMap.entries()).map(([productId, summary]) => {
+                // 汇总所有仓库的库位号
+                const locationNos = summary.warehouses
+                  .map(w => w.locationNo)
+                  .filter(Boolean);
+                const locationDisplay = locationNos.length > 0
+                  ? locationNos.join(', ')
+                  : '';
+
+                return (
+                  <tr key={productId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <td className="px-5 py-3">
+                      <button
+                        className="font-mono text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                        onClick={() => loadTransactions(productId, summary.product.code, summary.product.name)}
+                        title="点击查看进出记录"
+                      >
+                        {summary.product.code}
+                      </button>
+                    </td>
+                    <td className="px-5 py-3 text-gray-900">{summary.product.name}</td>
+                    <td className="px-5 py-3 text-gray-600">{summary.product.spec || '-'}</td>
+                    <td className="px-5 py-3 text-right font-mono font-medium text-gray-900">{summary.totalQty.toFixed(2)}</td>
+                    <td className="px-5 py-3 text-right font-mono text-amber-600">{summary.totalReserved.toFixed(2)}</td>
+                    <td className="px-5 py-3 text-right font-mono font-medium text-green-700">{(summary.totalQty - summary.totalReserved).toFixed(2)}</td>
+                    <td className="px-5 py-3 text-gray-600">{summary.product.unit}</td>
+                    <td className="px-5 py-3">
+                      {summary.warehouses.length === 1 ? (
+                        // 单仓库：直接编辑
+                        editingLocationId === summary.warehouses[0].inventoryId ? (
+                          <Input
+                            autoFocus
+                            value={editingLocationValue}
+                            onChange={(e) => setEditingLocationValue(e.target.value)}
+                            onBlur={() => saveLocationNo(summary.warehouses[0].inventoryId, editingLocationValue)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveLocationNo(summary.warehouses[0].inventoryId, editingLocationValue);
+                              if (e.key === 'Escape') setEditingLocationId(null);
+                            }}
+                            className="h-7 w-28 text-xs font-mono"
+                            placeholder="输入库位号"
+                          />
+                        ) : (
+                          <button
+                            className="flex items-center gap-1 text-xs font-mono text-gray-600 hover:text-blue-600 cursor-pointer group"
+                            onClick={() => {
+                              const w = summary.warehouses[0];
+                              setEditingLocationId(w.inventoryId);
+                              setEditingLocationValue(w.locationNo || '');
+                            }}
+                            title="点击编辑库位号"
+                          >
+                            <MapPin className="w-3 h-3 text-gray-400 group-hover:text-blue-500" />
+                            {locationDisplay || <span className="text-gray-300">未设置</span>}
+                          </button>
+                        )
+                      ) : (
+                        // 多仓库：显示每个仓库的库位号
+                        <div className="space-y-0.5">
+                          {summary.warehouses.map((w) => (
+                            editingLocationId === w.inventoryId ? (
+                              <Input
+                                key={w.inventoryId}
+                                autoFocus
+                                value={editingLocationValue}
+                                onChange={(e) => setEditingLocationValue(e.target.value)}
+                                onBlur={() => saveLocationNo(w.inventoryId, editingLocationValue)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveLocationNo(w.inventoryId, editingLocationValue);
+                                  if (e.key === 'Escape') setEditingLocationId(null);
+                                }}
+                                className="h-7 w-28 text-xs font-mono"
+                                placeholder="输入库位号"
+                              />
+                            ) : (
+                              <button
+                                key={w.inventoryId}
+                                className="flex items-center gap-1 text-xs font-mono text-gray-600 hover:text-blue-600 cursor-pointer group"
+                                onClick={() => {
+                                  setEditingLocationId(w.inventoryId);
+                                  setEditingLocationValue(w.locationNo || '');
+                                }}
+                                title={`${w.name} - 点击编辑库位号`}
+                              >
+                                <MapPin className="w-3 h-3 text-gray-400 group-hover:text-blue-500" />
+                                <span className="text-gray-400">{w.name}:</span>
+                                {w.locationNo || <span className="text-gray-300">未设置</span>}
+                              </button>
+                            )
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-5 py-3 text-gray-600 text-xs">
+                      {summary.warehouses.map((w) => `${w.name}: ${w.qty}(预留${w.reserved})`).join(' | ')}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
