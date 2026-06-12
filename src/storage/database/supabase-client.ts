@@ -2,15 +2,14 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { execSync } from 'child_process';
 import { getReportBuffer, createWrappedFetch } from 'coze-coding-dev-sdk';
 
+/* ── env loading (once, with guard) ── */
+
 let envLoaded = false;
 
-interface SupabaseCredentials {
-  url: string;
-  anonKey: string;
-}
-
 function loadEnv(): void {
-  if (envLoaded || (process.env.COZE_SUPABASE_URL && process.env.COZE_SUPABASE_ANON_KEY)) {
+  if (envLoaded) return;
+  if (process.env.COZE_SUPABASE_URL && process.env.COZE_SUPABASE_ANON_KEY) {
+    envLoaded = true;
     return;
   }
 
@@ -69,41 +68,19 @@ except Exception as e:
   }
 }
 
-function getSupabaseCredentials(): SupabaseCredentials {
-  loadEnv();
+/* ── singleton client cache ── */
 
-  const url = process.env.COZE_SUPABASE_URL;
-  const anonKey = process.env.COZE_SUPABASE_ANON_KEY;
+let cachedAdminClient: SupabaseClient | null = null;
+let cachedAnonClient: SupabaseClient | null = null;
 
-  if (!url) {
-    throw new Error('COZE_SUPABASE_URL is not set');
-  }
-  if (!anonKey) {
-    throw new Error('COZE_SUPABASE_ANON_KEY is not set');
-  }
-
-  return { url, anonKey };
-}
-
-function getSupabaseServiceRoleKey(): string | undefined {
-  loadEnv();
-  return process.env.COZE_SUPABASE_SERVICE_ROLE_KEY;
-}
-
-function getSupabaseClient(token?: string): SupabaseClient {
-  const { url, anonKey } = getSupabaseCredentials();
-
-  let key: string;
-  if (token) {
-    key = anonKey;
-  } else {
-    const serviceRoleKey = getSupabaseServiceRoleKey();
-    key = serviceRoleKey ?? anonKey;
-  }
+function buildClient(anonKey: string, key: string, extraHeaders?: Record<string, string>): SupabaseClient {
+  // Avoid MaxListenersExceededWarning from Supabase's process event listeners
+  const currentMax = process.getMaxListeners?.() ?? 10;
+  if (currentMax < 20) process.setMaxListeners(20);
 
   const globalOptions: Record<string, unknown> = {};
-  if (token) {
-    globalOptions.headers = { Authorization: `Bearer ${token}` };
+  if (extraHeaders) {
+    globalOptions.headers = extraHeaders;
   }
   try {
     const buffer = getReportBuffer();
@@ -114,16 +91,52 @@ function getSupabaseClient(token?: string): SupabaseClient {
     // Silent — reporting setup failure should not block client creation
   }
 
-  return createClient(url, key, {
+  return createClient(anonKey, key, {
     global: globalOptions,
-    db: {
-      timeout: 60000,
-    },
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
+    db: { timeout: 30000 },
+    auth: { autoRefreshToken: false, persistSession: false },
   });
+}
+
+/**
+ * Get a Supabase client (singleton per type).
+ * - Without token: uses service_role key (admin, bypasses RLS) — cached as singleton
+ * - With token: uses anon key + Authorization header — NOT cached (per-user token)
+ */
+function getSupabaseClient(token?: string): SupabaseClient {
+  loadEnv();
+
+  const url = process.env.COZE_SUPABASE_URL;
+  const anonKey = process.env.COZE_SUPABASE_ANON_KEY;
+  if (!url) throw new Error('COZE_SUPABASE_URL is not set');
+  if (!anonKey) throw new Error('COZE_SUPABASE_ANON_KEY is not set');
+
+  // Per-user client with token — cannot be cached globally
+  if (token) {
+    return buildClient(url, anonKey, { Authorization: `Bearer ${token}` });
+  }
+
+  // Admin client — cache as singleton
+  if (!cachedAdminClient) {
+    const serviceRoleKey = process.env.COZE_SUPABASE_SERVICE_ROLE_KEY;
+    const key = serviceRoleKey ?? anonKey;
+    cachedAdminClient = buildClient(url, key);
+  }
+  return cachedAdminClient;
+}
+
+function getSupabaseCredentials() {
+  loadEnv();
+  const url = process.env.COZE_SUPABASE_URL;
+  const anonKey = process.env.COZE_SUPABASE_ANON_KEY;
+  if (!url) throw new Error('COZE_SUPABASE_URL is not set');
+  if (!anonKey) throw new Error('COZE_SUPABASE_ANON_KEY is not set');
+  return { url, anonKey };
+}
+
+function getSupabaseServiceRoleKey(): string | undefined {
+  loadEnv();
+  return process.env.COZE_SUPABASE_SERVICE_ROLE_KEY;
 }
 
 export { loadEnv, getSupabaseCredentials, getSupabaseServiceRoleKey, getSupabaseClient };

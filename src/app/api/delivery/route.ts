@@ -161,46 +161,57 @@ async function handleShipment(
     items = data || [];
   }
 
+  if (items.length === 0) return;
+
+  // 批量获取所有涉及的产品库存和订单明细，避免 N+1 循环查询
+  const productIds = items.map(it => it.product_id as string).filter(Boolean);
+  const orderItemIds = items.map(it => it.customer_order_item_id as string).filter(Boolean);
+
+  const [invResult, orderItemsResult] = await Promise.all([
+    client.from('inventory').select('id, product_id, quantity, reserved_qty').eq('warehouse_id', warehouseId).in('product_id', productIds),
+    orderItemIds.length > 0
+      ? client.from('customer_order_items').select('id, delivered_qty, reserved_qty, quantity').in('id', orderItemIds)
+      : Promise.resolve({ data: [] as Array<Record<string, unknown>> | null })
+  ]);
+
+  // 构建查找 Map
+  const invMap = new Map((invResult.data || []).map((inv: Record<string, unknown>) => [inv.product_id as string, inv]));
+  const orderItemMap = new Map((orderItemsResult.data || []).map((oi: Record<string, unknown>) => [oi.id as string, oi]));
+
+  // 批量更新库存和订单明细
+  const invUpdates: Array<{ id: string; quantity: number; reserved_qty: number }> = [];
+  const orderUpdates: Array<{ id: string; delivered_qty: number; reserved_qty: number }> = [];
+
   for (const item of items) {
     const productId = item.product_id as string;
     const quantity = Number(item.quantity || 0);
-
     if (!productId || quantity <= 0) continue;
 
-    // 1. 扣减实际库存
-    const { data: inv } = await client
-      .from('inventory')
-      .select('id, quantity, reserved_qty')
-      .eq('product_id', productId)
-      .eq('warehouse_id', warehouseId)
-      .maybeSingle();
-
+    const inv = invMap.get(productId);
     if (inv) {
-      const newQty = Math.max(0, Number(inv.quantity) - quantity);
-      const newReserved = Math.max(0, Number(inv.reserved_qty || 0) - quantity);
-      await client
-        .from('inventory')
-        .update({ quantity: newQty, reserved_qty: newReserved })
-        .eq('id', inv.id);
+      invUpdates.push({
+        id: inv.id as string,
+        quantity: Math.max(0, Number(inv.quantity) - quantity),
+        reserved_qty: Math.max(0, Number(inv.reserved_qty || 0) - quantity),
+      });
     }
 
-    // 2. 更新客户订单明细的已交量
     const orderItemId = item.customer_order_item_id as string;
     if (orderItemId) {
-      const { data: orderItem } = await client
-        .from('customer_order_items')
-        .select('id, delivered_qty, reserved_qty, quantity')
-        .eq('id', orderItemId)
-        .maybeSingle();
-
+      const orderItem = orderItemMap.get(orderItemId);
       if (orderItem) {
-        const newDelivered = Number(orderItem.delivered_qty || 0) + quantity;
-        const newReserved = Math.max(0, Number(orderItem.reserved_qty || 0) - quantity);
-        await client
-          .from('customer_order_items')
-          .update({ delivered_qty: newDelivered, reserved_qty: newReserved })
-          .eq('id', orderItemId);
+        orderUpdates.push({
+          id: orderItem.id as string,
+          delivered_qty: Number(orderItem.delivered_qty || 0) + quantity,
+          reserved_qty: Math.max(0, Number(orderItem.reserved_qty || 0) - quantity),
+        });
       }
     }
   }
+
+  // 并行执行所有更新
+  await Promise.all([
+    ...invUpdates.map(u => client.from('inventory').update({ quantity: u.quantity, reserved_qty: u.reserved_qty }).eq('id', u.id)),
+    ...orderUpdates.map(u => client.from('customer_order_items').update({ delivered_qty: u.delivered_qty, reserved_qty: u.reserved_qty }).eq('id', u.id)),
+  ]);
 }

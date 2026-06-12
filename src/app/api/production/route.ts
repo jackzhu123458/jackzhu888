@@ -25,20 +25,21 @@ export async function GET(request: NextRequest) {
     const orderIds = [...new Set(data.filter((o: Record<string, unknown>) => o.customer_order_id).map((o: Record<string, unknown>) => o.customer_order_id as string))];
     const itemIds = [...new Set(data.filter((o: Record<string, unknown>) => o.customer_order_item_id).map((o: Record<string, unknown>) => o.customer_order_item_id as string))];
 
+    // 并行获取客户订单号和订单物料信息
+    const [ordersRes, itemsRes] = await Promise.all([
+      orderIds.length > 0
+        ? client.from('customer_orders').select('id, order_no').in('id', orderIds)
+        : Promise.resolve({ data: [] }),
+      itemIds.length > 0
+        ? client.from('customer_order_items').select('id, product_id, quantity, delivered_qty, products(id, code, name, spec, unit)').in('id', itemIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+
     const orderMap: Record<string, { order_no: string }> = {};
     const itemMap: Record<string, { product_id: string; quantity: number; delivered_qty: number; code: string; name: string; spec: string | null; unit: string }> = {};
 
-    if (orderIds.length > 0) {
-      const { data: orders } = await client.from('customer_orders').select('id, order_no').in('id', orderIds);
-      if (orders) orders.forEach((o: { id: string; order_no: string }) => { orderMap[o.id] = { order_no: o.order_no }; });
-    }
-
-    if (itemIds.length > 0) {
-      const { data: items } = await client
-        .from('customer_order_items')
-        .select('id, product_id, quantity, delivered_qty, products(id, code, name, spec, unit)')
-        .in('id', itemIds);
-      if (items) items.forEach((it: Record<string, unknown>) => {
+    if (ordersRes.data) ordersRes.data.forEach((o: { id: string; order_no: string }) => { orderMap[o.id] = { order_no: o.order_no }; });
+    if (itemsRes.data) itemsRes.data.forEach((it: Record<string, unknown>) => {
         const p = (it.products as Record<string, unknown> | null);
         itemMap[it.id as string] = {
           product_id: it.product_id as string,
@@ -50,7 +51,6 @@ export async function GET(request: NextRequest) {
           unit: (p?.unit as string) || '',
         };
       });
-    }
 
     data.forEach((o: Record<string, unknown>) => {
       if (o.customer_order_id && orderMap[o.customer_order_id as string]) {
