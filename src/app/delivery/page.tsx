@@ -272,6 +272,14 @@ export default function DeliveryPage() {
     });
   };
 
+  // 首次加载后自动选择第一条记录
+  useEffect(() => {
+    if (notes.length > 0 && currentIdx < 0 && !editMode) {
+      setCurrentIdx(0);
+      loadForm(notes[0]);
+    }
+  }, [notes]);
+
   /* ─── CRUD ─── */
   const handleNew = (copy = false) => {
     const base = copy && form.id ? { ...form } : emptyNote();
@@ -490,9 +498,13 @@ export default function DeliveryPage() {
 
   /* ─── Print delivery note ─── */
   const handlePrintDelivery = async () => {
-    if (!form.id) return;
+    const noteId = form.id || current?.id;
+    if (!noteId) {
+      alert('请先选择一条送货单');
+      return;
+    }
     try {
-      const res = await fetch(`/api/delivery?id=${form.id}`);
+      const res = await fetch(`/api/delivery?id=${noteId}`);
       const data = await res.json();
       if (data && !data.error) {
         setPrintData(data as DeliveryNote);
