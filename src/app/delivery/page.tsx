@@ -289,14 +289,8 @@ export default function DeliveryPage() {
   };
 
   const handleSave = async () => {
-    if (!form.note_no || !form.customer_name) {
-      const missing = [];
-      if (!form.note_no) missing.push('送货单号');
-      if (!form.customer_name) missing.push('客户名称');
-      if (missing.length > 0) {
-        alert(`请填写${missing.join('和')}`);
-        return;
-      }
+    if (!form.customer_name) {
+      alert('请填写客户名称');
       return;
     }
     const payload = {
@@ -717,12 +711,7 @@ export default function DeliveryPage() {
             {editMode ? (
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500 whitespace-nowrap">送货单号:</label>
-                <Input
-                  className="h-7 text-xs font-mono w-40"
-                  value={form.note_no}
-                  onChange={(e) => { setForm((prev) => ({ ...prev, note_no: e.target.value })); setIsFormDirty(true); }}
-                  placeholder="输入送货单号"
-                />
+                <span className="text-xs text-gray-400 italic">保存后自动生成</span>
               </div>
             ) : (
               form.note_no && <span className="text-xs text-gray-500">单号: {form.note_no}</span>

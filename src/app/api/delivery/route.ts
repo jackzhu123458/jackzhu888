@@ -31,7 +31,28 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { items, customer_order_id, warehouse_id, ...noteFields } = body;
 
-  const insertData: Record<string, unknown> = { ...noteFields };
+  // 自动生成送货单号: XS + 月份(2位) + 序号(6位)，如 XS06000001
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const prefix = `XS${month}`;
+
+  // 查询当前月份已有的最大编号
+  const { data: existingNotes } = await client
+    .from('delivery_notes')
+    .select('note_no')
+    .like('note_no', `${prefix}%`)
+    .order('note_no', { ascending: false })
+    .limit(1);
+
+  let seq = 1;
+  if (existingNotes && existingNotes.length > 0) {
+    const lastNo = existingNotes[0].note_no as string;
+    const lastSeq = parseInt(lastNo.slice(prefix.length), 10);
+    if (!isNaN(lastSeq)) seq = lastSeq + 1;
+  }
+  const autoNoteNo = `${prefix}${String(seq).padStart(6, '0')}`;
+
+  const insertData: Record<string, unknown> = { ...noteFields, note_no: autoNoteNo };
   if (customer_order_id) insertData.customer_order_id = customer_order_id;
 
   const { data: note, error: nErr } = await client
