@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -43,6 +43,9 @@ interface Product {
   type: string;
   category: string | null;
   price: number;
+  cost_price: number;
+  remark: string | null;
+  is_active: boolean;
 }
 
 interface BomItem {
@@ -63,31 +66,25 @@ interface ImportResult {
 }
 
 export default function BomPage() {
-  const [bomList, setBomList] = useState<BomItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [bomList, setBomList] = useState<BomItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [editItem, setEditItem] = useState<BomItem | null>(null);
-  const [quantity, setQuantity] = useState('');
-  const [remark, setRemark] = useState('');
-  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [searchText, setSearchText] = useState('');
 
-  // 树状展开/收缩状态
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-  const [allExpanded, setAllExpanded] = useState(false);
+  // 左侧类目树状态
+  const [selectedCategory, setSelectedCategory] = useState<string>('0'); // '0' = 所有商品
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['0']));
 
-  // Excel 导入相关状态
-  const [importOpen, setImportOpen] = useState(false);
-  const [importMode, setImportMode] = useState<'single' | 'multi'>('single');
-  const [importParentId, setImportParentId] = useState('');
-  const [importFile, setImportFile] = useState<File | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // 搜索状态
+  const [searchField, setSearchField] = useState<string>('all');
+  const [searchKeyword, setSearchKeyword] = useState('');
 
-  // 新增BOM表单状态（ERP商品资料风格）
+  // 选中行状态
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+
+  // 新增/编辑商品抽屉
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
   const [newSpec, setNewSpec] = useState('');
@@ -96,7 +93,8 @@ export default function BomPage() {
   const [newCategory, setNewCategory] = useState('');
   const [newCostPrice, setNewCostPrice] = useState('0');
   const [newSellPrice, setNewSellPrice] = useState('0');
-  const [childType, setChildType] = useState('raw_material');
+  const [newRemark, setNewRemark] = useState('');
+  const [newType, setNewType] = useState('finished_product');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
   // 子级物料表单状态
@@ -108,21 +106,40 @@ export default function BomPage() {
   const [newChildCategory, setNewChildCategory] = useState('');
   const [newChildCostPrice, setNewChildCostPrice] = useState('0');
   const [newChildSellPrice, setNewChildSellPrice] = useState('0');
+  const [childType, setChildType] = useState('raw_material');
+  const [quantity, setQuantity] = useState('');
+  const [remark, setRemark] = useState('');
   const [showChildCategoryDropdown, setShowChildCategoryDropdown] = useState(false);
 
-  // 父级/子级选择状态
-  const [selectedParentId, setSelectedParentId] = useState('');
-  const [selectedChildId, setSelectedChildId] = useState('');
-  const [parentSearchOpen, setParentSearchOpen] = useState(false);
-  const [parentSearch, setParentSearch] = useState('');
-  const [childSearchOpen, setChildSearchOpen] = useState(false);
-  const [childSearch, setChildSearch] = useState('');
+  // 删除确认
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteType, setDeleteType] = useState<'product' | 'category'>('product');
+
+  // 类别编辑对话框
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [categoryDialogMode, setCategoryDialogMode] = useState<'add' | 'edit'>('add');
+  const [categoryDialogValue, setCategoryDialogValue] = useState('');
+
+  // Excel 导入
+  const [importOpen, setImportOpen] = useState(false);
+  const [importMode, setImportMode] = useState<'single' | 'multi'>('single');
+  const [importParentId, setImportParentId] = useState('');
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 从产品数据提取类目列表
   const categories = useMemo(() => {
-    const cats = new Set<string>();
-    products.forEach(p => { if (p.category) cats.add(p.category); });
-    return Array.from(cats).sort();
+    const catMap = new Map<string, number>();
+    products.forEach(p => {
+      if (p.category) {
+        catMap.set(p.category, (catMap.get(p.category) || 0) + 1);
+      }
+    });
+    return Array.from(catMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))
+      .map(([cat, count]) => ({ name: cat, count }));
   }, [products]);
 
   const loadData = useCallback(async () => {
@@ -140,25 +157,90 @@ export default function BomPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // 首次加载时默认全部展开
-  useEffect(() => {
-    if (bomList.length > 0 && expandedGroups.size === 0) {
-      const allParentIds = new Set(bomList.map(b => b.parent_product_id));
-      setExpandedGroups(allParentIds);
-      setAllExpanded(true);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bomList.length]);
+  // 根据选中类目和搜索条件过滤产品
+  const filteredProducts = useMemo(() => {
+    let result = products;
 
-  const handleAdd = () => {
-    setEditItem(null);
+    // 按类目筛选
+    if (selectedCategory !== '0') {
+      result = result.filter(p => p.category === selectedCategory);
+    }
+
+    // 按搜索条件筛选
+    if (searchKeyword.trim()) {
+      const q = searchKeyword.toLowerCase().trim();
+      result = result.filter(p => {
+        switch (searchField) {
+          case 'code': return p.code.toLowerCase().includes(q);
+          case 'name': return p.name.toLowerCase().includes(q);
+          case 'category': return (p.category || '').toLowerCase().includes(q);
+          case 'all':
+          default:
+            return p.code.toLowerCase().includes(q) ||
+              p.name.toLowerCase().includes(q) ||
+              (p.spec || '').toLowerCase().includes(q) ||
+              (p.category || '').toLowerCase().includes(q);
+        }
+      });
+    }
+
+    return result.sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  }, [products, selectedCategory, searchField, searchKeyword]);
+
+  // 类目树节点点击
+  const handleCategoryClick = (category: string) => {
+    setSelectedCategory(category);
+    setSelectedProductId(null);
+  };
+
+  const toggleCategoryExpand = (cat: string) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  };
+
+  // 打开新增商品抽屉
+  const handleAddProduct = () => {
+    setEditProduct(null);
     setNewCode('');
     setNewName('');
+    setNewSpec('');
     setNewSpecDetail('');
     setNewUnit('个');
-    setNewCategory('');
+    setNewCategory(selectedCategory !== '0' ? selectedCategory : '');
     setNewCostPrice('');
     setNewSellPrice('');
+    setNewRemark('');
+    setNewType('finished_product');
+    setNewChildCode('');
+    setNewChildName('');
+    setNewChildSpec('');
+    setNewChildSpecDetail('');
+    setNewChildUnit('个');
+    setNewChildCategory('');
+    setNewChildCostPrice('');
+    setNewChildSellPrice('');
+    setChildType('raw_material');
+    setQuantity('');
+    setRemark('');
+    setSheetOpen(true);
+  };
+
+  // 打开编辑商品抽屉
+  const handleEditProduct = (product: Product) => {
+    setEditProduct(product);
+    setNewCode(product.code || '');
+    setNewName(product.name || '');
+    setNewSpecDetail(product.spec || '');
+    setNewUnit(product.unit || '个');
+    setNewCategory(product.category || '');
+    setNewCostPrice(product.cost_price?.toString() || '0');
+    setNewSellPrice(product.price?.toString() || '0');
+    setNewRemark(product.remark || '');
+    setNewType(product.type || 'finished_product');
     setNewChildCode('');
     setNewChildName('');
     setNewChildSpecDetail('');
@@ -172,79 +254,46 @@ export default function BomPage() {
     setSheetOpen(true);
   };
 
-  const handleEdit = (item: BomItem) => {
-    setEditItem(item);
-    setSelectedParentId(item.parent_product_id);
-    setSelectedChildId(item.child_product_id);
-    setQuantity(item.quantity);
-    setRemark(item.remark || '');
-    setChildType(item.child_product?.type || 'raw_material');
-    // 填充归属大类信息
-    const parentProd = products.find(p => p.id === item.parent_product_id);
-    if (parentProd) {
-      setNewCode(parentProd.code || '');
-      setNewName(parentProd.name || '');
-      setNewSpecDetail(parentProd.spec || '');
-      setNewUnit(parentProd.unit || '个');
-      setNewCategory(parentProd.category || '');
-      setNewCostPrice(parentProd.price?.toString() || '');
-      setNewSellPrice(parentProd.price?.toString() || '');
-    }
-    // 填充物料明细信息
-    const childProd = products.find(p => p.id === item.child_product_id);
-    if (childProd) {
-      setNewChildCode(childProd.code || '');
-      setNewChildName(childProd.name || '');
-      setNewChildSpecDetail(childProd.spec || '');
-      setNewChildUnit(childProd.unit || '个');
-      setNewChildCategory(childProd.category || '');
-      setNewChildCostPrice(childProd.price?.toString() || '');
-      setNewChildSellPrice(childProd.price?.toString() || '');
-    }
-    setSheetOpen(true);
-  };
-
-  // 快速新增产品
-  const handleQuickAddProduct = async (isParent: boolean) => {
-    const code = isParent ? newCode : newChildCode;
-    const name = isParent ? newName : newChildName;
-    const type = isParent ? 'finished_product' : childType;
-    const spec = isParent ? newSpecDetail : newChildSpecDetail;
-    const unit = isParent ? newUnit : newChildUnit;
-    const category = isParent ? newCategory : newChildCategory;
-    const price = isParent ? (parseFloat(newCostPrice) || 0) : (parseFloat(newChildCostPrice) || 0);
-    const res = await fetch('/api/products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, name, type, spec, unit, category, price }),
-    });
-    if (res.ok) {
-      const newProd = await res.json();
-      await loadData();
-      if (isParent) {
-        setSelectedParentId(newProd.id);
-      } else {
-        setSelectedChildId(newProd.id);
-      }
-    } else {
-      const err = await res.json();
-      alert(err.error || '新增产品失败');
-    }
-  };
-
-  const handleSave = async () => {
+  // 保存商品
+  const handleSaveProduct = async () => {
     setSaving(true);
     try {
-      let parentId = selectedParentId;
-      let childProductId = selectedChildId;
-
-      // If no parent selected, create new product as 归属大类
-      if (!parentId) {
+      if (editProduct) {
+        // 编辑已有商品
+        const res = await fetch('/api/products', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: editProduct.id,
+            code: newCode.trim(),
+            name: newName.trim(),
+            spec: newSpecDetail.trim() || null,
+            unit: newUnit,
+            category: newCategory.trim() || null,
+            type: newType,
+            price: newSellPrice ? parseFloat(newSellPrice) : 0,
+            cost_price: newCostPrice ? parseFloat(newCostPrice) : 0,
+            remark: newRemark.trim() || null,
+          }),
+        });
+        if (res.ok) {
+          setSheetOpen(false);
+          loadData();
+        } else {
+          const err = await res.json();
+          alert(err.error || '修改失败');
+        }
+      } else {
+        // 新增商品
         if (!newCode.trim() || !newName.trim()) {
-          alert('请填写归属大类的商品编号和商品名称');
+          alert('请填写商品编号和商品名称');
           setSaving(false);
           return;
         }
+
+        let parentId: string | null = null;
+
+        // 先创建归属大类产品
         const parentRes = await fetch('/api/products', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -254,72 +303,55 @@ export default function BomPage() {
             spec: newSpecDetail.trim() || null,
             unit: newUnit,
             category: newCategory.trim() || null,
-            type: 'finished_product',
+            type: newType,
             price: newSellPrice ? parseFloat(newSellPrice) : 0,
+            cost_price: newCostPrice ? parseFloat(newCostPrice) : 0,
+            remark: newRemark.trim() || null,
           }),
         });
         if (parentRes.ok) {
           const newProd = await parentRes.json();
           parentId = newProd.id;
-          await loadData();
         } else {
           const err = await parentRes.json();
-          alert(err.error || '新增归属大类失败');
+          alert(err.error || '新增商品失败');
           setSaving(false);
           return;
         }
-      }
 
-      // If no child selected, create new product as child material
-      if (!childProductId) {
-        if (!newChildCode.trim() || !newChildName.trim()) {
-          alert('请填写物料的商品编号和商品名称');
-          setSaving(false);
-          return;
+        // 如果有子物料信息，创建子产品和BOM记录
+        if (newChildCode.trim() && newChildName.trim() && quantity) {
+          const childRes = await fetch('/api/products', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              code: newChildCode.trim(),
+              name: newChildName.trim(),
+              spec: newChildSpecDetail.trim() || null,
+              unit: newChildUnit,
+              category: newChildCategory.trim() || null,
+              type: childType,
+              price: newChildSellPrice ? parseFloat(newChildSellPrice) : 0,
+              cost_price: newChildCostPrice ? parseFloat(newChildCostPrice) : 0,
+            }),
+          });
+          if (childRes.ok) {
+            const childProd = await childRes.json();
+            await fetch('/api/bom', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                parent_product_id: parentId,
+                child_product_id: childProd.id,
+                quantity,
+                remark: remark || null,
+              }),
+            });
+          }
         }
-        const childRes = await fetch('/api/products', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            code: newChildCode.trim(),
-            name: newChildName.trim(),
-            spec: newChildSpecDetail.trim() || null,
-            unit: newChildUnit,
-            category: newChildCategory.trim() || null,
-            type: childType,
-            price: newChildSellPrice ? parseFloat(newChildSellPrice) : 0,
-          }),
-        });
-        if (childRes.ok) {
-          const newProd = await childRes.json();
-          childProductId = newProd.id;
-          await loadData();
-        } else {
-          const err = await childRes.json();
-          alert(err.error || '新增物料失败');
-          setSaving(false);
-          return;
-        }
-      }
 
-      const body = {
-        parent_product_id: parentId,
-        child_product_id: childProductId,
-        quantity,
-        remark: remark || null,
-        ...(editItem ? { id: editItem.id } : {}),
-      };
-      const res = await fetch('/api/bom', {
-        method: editItem ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (res.ok) {
         setSheetOpen(false);
         loadData();
-      } else {
-        const err = await res.json();
-        alert(err.error || '保存失败');
       }
     } catch {
       alert('保存失败');
@@ -327,13 +359,92 @@ export default function BomPage() {
     setSaving(false);
   };
 
-  const handleDelete = async () => {
-    if (!deleteId) return;
-    await fetch(`/api/bom?id=${deleteId}`, { method: 'DELETE' });
+  // 删除商品
+  const handleDeleteProduct = async () => {
+    if (!deleteId || deleteType !== 'product') return;
+    try {
+      const res = await fetch(`/api/products?id=${deleteId}`, { method: 'DELETE' });
+      if (res.ok) {
+        loadData();
+      } else {
+        const err = await res.json();
+        alert(err.error || '删除失败');
+      }
+    } catch {
+      alert('删除失败');
+    }
+    setDeleteId(null);
+  };
+
+  // 删除类目（将类目下所有商品的category清空）
+  const handleDeleteCategory = async () => {
+    if (!deleteId || deleteType !== 'category') return;
+    const categoryToDelete = deleteId;
+    const affectedProducts = products.filter(p => p.category === categoryToDelete);
+    for (const p of affectedProducts) {
+      await fetch('/api/products', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: p.id, category: null }),
+      });
+    }
+    if (selectedCategory === categoryToDelete) {
+      setSelectedCategory('0');
+    }
     setDeleteId(null);
     loadData();
   };
 
+  // 类别新增/编辑对话框
+  const handleCategoryAdd = () => {
+    setCategoryDialogMode('add');
+    setCategoryDialogValue('');
+    setCategoryDialogOpen(true);
+  };
+
+  const handleCategoryEdit = () => {
+    if (selectedCategory === '0') {
+      alert('请先选择一个类目');
+      return;
+    }
+    setCategoryDialogMode('edit');
+    setCategoryDialogValue(selectedCategory);
+    setCategoryDialogOpen(true);
+  };
+
+  const handleCategoryDialogSave = async () => {
+    const newName = categoryDialogValue.trim();
+    if (!newName) {
+      alert('请输入类目名称');
+      return;
+    }
+
+    if (categoryDialogMode === 'add') {
+      // 新增类目：创建一个空产品占位即可，类目由产品带出
+      // 直接切换到该类目视图
+      setSelectedCategory(newName);
+      setCategoryDialogOpen(false);
+    } else {
+      // 编辑类目：更新该类目下所有产品的category
+      if (newName === selectedCategory) {
+        setCategoryDialogOpen(false);
+        return;
+      }
+      const affectedProducts = products.filter(p => p.category === selectedCategory);
+      for (const p of affectedProducts) {
+        await fetch('/api/products', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: p.id, category: newName }),
+        });
+      }
+      setSelectedCategory(newName);
+      setCategoryDialogOpen(false);
+      loadData();
+    }
+  };
+
+  // Excel 导入
   const handleImport = async () => {
     if (!importFile) return;
     if (importMode === 'single' && !importParentId) {
@@ -376,219 +487,228 @@ export default function BomPage() {
     setImportOpen(true);
   };
 
-  // 按 parent_product 分组
-  const groupedBom = bomList.reduce((acc, item) => {
-    const key = item.parent_product_id;
-    if (!acc[key]) {
-      acc[key] = { product: item.parent_product, items: [] };
-    }
-    acc[key].items.push(item);
-    return acc;
-  }, {} as Record<string, { product: Product; items: BomItem[] }>);
-
-  // 搜索过滤
-  const filteredGroups = searchText.trim()
-    ? Object.fromEntries(
-        Object.entries(groupedBom).filter(([, group]) => {
-          const q = searchText.toLowerCase();
-          // 父产品匹配
-          if (group.product.name.toLowerCase().includes(q) || group.product.code.toLowerCase().includes(q)) return true;
-          // 子物料匹配
-          return group.items.some(item =>
-            item.child_product.name.toLowerCase().includes(q) ||
-            item.child_product.code.toLowerCase().includes(q)
-          );
-        })
-      )
-    : groupedBom;
-
-  // 排序：按父产品编码排序
-  const sortedGroupEntries = Object.entries(filteredGroups).sort((a, b) =>
-    a[1].product.code.localeCompare(b[1].product.code)
-  );
+  // 获取产品关联的BOM子物料数量
+  const getBomChildCount = (productId: string) => {
+    return bomList.filter(b => b.parent_product_id === productId).length;
+  };
 
   const finishedProducts = products.filter((p) => p.type === 'finished_product' || p.type === 'semi_finished');
 
-  const toggleGroup = (groupId: string) => {
-    setExpandedGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(groupId)) {
-        next.delete(groupId);
-      } else {
-        next.add(groupId);
-      }
-      return next;
-    });
-  };
-
-  const toggleAll = () => {
-    if (allExpanded) {
-      setExpandedGroups(new Set());
-      setAllExpanded(false);
-    } else {
-      const allIds = new Set(Object.keys(filteredGroups));
-      setExpandedGroups(allIds);
-      setAllExpanded(true);
-    }
-  };
-
   return (
     <>
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-          <h1 className="text-xl font-semibold text-gray-900">BOM 物料清单</h1>
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={openImportDialog}>
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
-              Excel 导入
-            </Button>
-            <Button onClick={handleAdd}>新增 BOM</Button>
-          </div>
-        </div>
-
-        {/* 搜索和操作栏 */}
-        <div className="flex items-center gap-4 mb-4">
-          <div className="relative flex-1 max-w-md">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <Input
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              placeholder="搜索物料编码或名称..."
-              className="pl-10"
-            />
-          </div>
-          <Button variant="outline" size="sm" onClick={toggleAll}>
-            <svg className={`w-4 h-4 mr-1.5 transition-transform ${allExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-            {allExpanded ? '全部收缩' : '全部展开'}
+      <div className="h-[calc(100vh-0px)] flex flex-col bg-[#F8F9FA]">
+        {/* 顶部工具栏 */}
+        <div className="bg-[#E8EBF0] border-b border-gray-300 px-2 py-1 flex items-center gap-1 shrink-0">
+          <Button variant="ghost" size="sm" className="h-7 text-xs px-2.5 bg-[#F0F1F3] hover:bg-[#D8DAE0] border border-gray-300 rounded-sm" onClick={handleCategoryAdd}>
+            新增类别
           </Button>
-          <span className="text-sm text-gray-500">
-            共 {sortedGroupEntries.length} 个 BOM 组，{bomList.length} 条物料
-          </span>
+          <Button variant="ghost" size="sm" className="h-7 text-xs px-2.5 bg-[#F0F1F3] hover:bg-[#D8DAE0] border border-gray-300 rounded-sm" onClick={handleCategoryEdit}>
+            修改类别
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 text-xs px-2.5 bg-[#F0F1F3] hover:bg-[#D8DAE0] border border-gray-300 rounded-sm" onClick={() => {
+            if (selectedCategory === '0') { alert('请先选择一个类目'); return; }
+            setDeleteType('category');
+            setDeleteId(selectedCategory);
+          }}>
+            删除类别
+          </Button>
+          <div className="w-px h-5 bg-gray-400 mx-1" />
+          <Button variant="ghost" size="sm" className="h-7 text-xs px-2.5 bg-[#F0F1F3] hover:bg-[#D8DAE0] border border-gray-300 rounded-sm" onClick={handleAddProduct}>
+            新增
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 text-xs px-2.5 bg-[#F0F1F3] hover:bg-[#D8DAE0] border border-gray-300 rounded-sm" onClick={() => {
+            const prod = products.find(p => p.id === selectedProductId);
+            if (prod) handleEditProduct(prod);
+            else alert('请先选择一个商品');
+          }}>
+            修改
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 text-xs px-2.5 bg-[#F0F1F3] hover:bg-[#D8DAE0] border border-gray-300 rounded-sm" onClick={() => {
+            if (!selectedProductId) { alert('请先选择一个商品'); return; }
+            setDeleteType('product');
+            setDeleteId(selectedProductId);
+          }}>
+            删除
+          </Button>
+          <div className="w-px h-5 bg-gray-400 mx-1" />
+          <Button variant="ghost" size="sm" className="h-7 text-xs px-2.5 bg-[#F0F1F3] hover:bg-[#D8DAE0] border border-gray-300 rounded-sm" onClick={openImportDialog}>
+            导入
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 text-xs px-2.5 bg-[#F0F1F3] hover:bg-[#D8DAE0] border border-gray-300 rounded-sm">
+            导出
+          </Button>
         </div>
 
-        {loading ? (
-          <div className="text-center py-12 text-gray-400">加载中...</div>
-        ) : sortedGroupEntries.length === 0 ? (
-          <div className="text-center py-12 text-gray-400">暂无 BOM 数据</div>
-        ) : (
-          <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
+        {/* 查询筛选栏 */}
+        <div className="bg-[#F0F2F5] border-b border-gray-300 px-3 py-1.5 flex items-center gap-2 shrink-0">
+          <span className="text-xs text-gray-600">查询条件</span>
+          <Select value={searchField} onValueChange={setSearchField}>
+            <SelectTrigger className="h-7 w-[120px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部字段</SelectItem>
+              <SelectItem value="code">商品编号</SelectItem>
+              <SelectItem value="name">商品名称</SelectItem>
+              <SelectItem value="category">商品类别</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+            placeholder="输入关键字..."
+            className="h-7 w-[200px] text-xs"
+            onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+          />
+          <Button variant="ghost" size="sm" className="h-7 text-xs px-3 bg-[#F0F1F3] hover:bg-[#D8DAE0] border border-gray-300 rounded-sm" onClick={() => {}}>
+            查询
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 text-xs px-3 bg-[#F0F1F3] hover:bg-[#D8DAE0] border border-gray-300 rounded-sm" onClick={() => setSearchKeyword('')}>
+            清空
+          </Button>
+        </div>
+
+        {/* 主体区域：左树 + 右表 */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* 左侧类目树 */}
+          <div className="w-[220px] shrink-0 border-r border-gray-300 bg-white flex flex-col">
+            <div className="px-3 py-2 bg-[#E8EBF0] border-b border-gray-300">
+              <span className="text-xs font-semibold text-gray-700">商品类别</span>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {/* 所有商品根节点 */}
+              <div
+                className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-sm border-b border-gray-100 ${
+                  selectedCategory === '0' ? 'bg-[#1E40AF] text-white' : 'hover:bg-blue-50 text-gray-800'
+                }`}
+                onClick={() => handleCategoryClick('0')}
+              >
+                <svg
+                  className={`w-3.5 h-3.5 shrink-0 transition-transform ${expandedCategories.has('0') ? 'rotate-90' : ''}`}
+                  fill="currentColor" viewBox="0 0 20 20"
+                  onClick={(e) => { e.stopPropagation(); toggleCategoryExpand('0'); }}
+                >
+                  <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                </svg>
+                <span className="font-mono text-xs mr-1">0</span>
+                <span className="text-sm">所有商品</span>
+                <span className={`ml-auto text-xs ${selectedCategory === '0' ? 'text-blue-200' : 'text-gray-400'}`}>
+                  ({products.length})
+                </span>
+              </div>
+
+              {/* 子类目列表 */}
+              {expandedCategories.has('0') && categories.map((cat) => (
+                <div
+                  key={cat.name}
+                  className={`flex items-center gap-1.5 px-2 pl-7 py-1.5 cursor-pointer text-sm border-b border-gray-50 ${
+                    selectedCategory === cat.name ? 'bg-[#1E40AF] text-white' : 'hover:bg-blue-50 text-gray-700'
+                  }`}
+                  onClick={() => handleCategoryClick(cat.name)}
+                >
+                  <span className="font-mono text-xs mr-1">{cat.name}</span>
+                  <span className="text-sm truncate flex-1">
+                    {cat.name}
+                  </span>
+                  <span className={`ml-auto text-xs ${selectedCategory === cat.name ? 'text-blue-200' : 'text-gray-400'}`}>
+                    ({cat.count})
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 右侧数据表格 */}
+          <div className="flex-1 flex flex-col overflow-hidden">
             {/* 表头 */}
-            <div className="grid grid-cols-[36px_1fr_120px_120px_1fr_100px_100px_80px_60px_80px] border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-500">
-              <div className="px-2 py-3"></div>
-              <div className="px-4 py-3">物料编码</div>
-              <div className="px-4 py-3">物料名称</div>
-              <div className="px-4 py-3">规格</div>
-              <div className="px-4 py-3">类属</div>
-              <div className="px-4 py-3 text-right">用量</div>
-              <div className="px-4 py-3 text-right">售价(含税)</div>
-              <div className="px-4 py-3">单位</div>
-              <div className="px-4 py-3">备注</div>
-              <div className="px-4 py-3 text-center">操作</div>
+            <div className="grid grid-cols-[50px_100px_120px_1fr_60px_100px_100px_1fr] bg-[#E8EBF0] border-b border-gray-300 shrink-0">
+              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">序号</div>
+              <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品类别</div>
+              <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品编号</div>
+              <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品名称</div>
+              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">单位</div>
+              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-right border-r border-gray-300">成本单价</div>
+              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-right border-r border-gray-300">商品售价一</div>
+              <div className="px-2 py-2 text-xs font-semibold text-gray-700">商品描述</div>
             </div>
 
-            {/* 树状列表 */}
-            {sortedGroupEntries.map(([key, group]) => {
-              const isExpanded = expandedGroups.has(key);
-              return (
-                <div key={key} className={isExpanded ? '' : 'border-b border-gray-100'}>
-                  {/* 归属大类行（BOM 组） */}
-                  <div
-                    className="grid grid-cols-[36px_1fr_120px_120px_1fr_100px_100px_80px_60px_80px] items-center bg-gray-50/60 hover:bg-gray-100/60 cursor-pointer border-b border-gray-50 transition-colors"
-                    onClick={() => toggleGroup(key)}
-                  >
-                    <div className="px-2 py-3 flex items-center justify-center">
-                      <svg
-                        className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                    <div className="px-4 py-3 font-mono text-sm font-medium text-gray-900">
-                      {group.product.code}
-                    </div>
-                    <div className="px-4 py-3 text-sm font-semibold text-blue-800">
-                      {group.product.name}
-                    </div>
-                    <div className="px-4 py-3 text-sm text-gray-500">
-                      {group.product.spec || '-'}
-                    </div>
-                    <div className="px-4 py-3 text-xs text-gray-500">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
-                        {group.product.category || '-'}
-                      </span>
-                    </div>
-                    <div className="px-4 py-3 text-right text-sm text-gray-500">
-                      {group.items.length} 项
-                    </div>
-                    <div className="px-4 py-3 text-right font-mono text-sm text-gray-900">
-                      ¥{Number(group.product.price || 0).toFixed(2)}
-                    </div>
-                    <div className="px-4 py-3 text-xs text-gray-500">{group.product.unit}</div>
-                    <div className="px-4 py-3 text-xs text-gray-400">{group.product.spec ? '' : ''}</div>
-                    <div className="px-4 py-3"></div>
-                  </div>
-
-                  {/* 子物料行 */}
-                  {isExpanded && group.items.map((item, idx) => (
+            {/* 表体 */}
+            <div className="flex-1 overflow-y-auto">
+              {loading ? (
+                <div className="text-center py-12 text-gray-400 text-sm">加载中...</div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="text-center py-12 text-gray-400 text-sm">暂无商品数据</div>
+              ) : (
+                filteredProducts.map((product, idx) => {
+                  const isSelected = selectedProductId === product.id;
+                  const bomCount = getBomChildCount(product.id);
+                  return (
                     <div
-                      key={item.id}
-                      className={`grid grid-cols-[36px_1fr_120px_120px_1fr_100px_100px_80px_60px_80px] items-center border-b border-gray-50 hover:bg-gray-50/80 transition-colors ${idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}
+                      key={product.id}
+                      className={`grid grid-cols-[50px_100px_120px_1fr_60px_100px_100px_1fr] items-center border-b border-gray-200 cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'bg-[#1E40AF]/10 border-l-2 border-l-[#1E40AF]'
+                          : idx % 2 === 0
+                            ? 'bg-white hover:bg-blue-50/50'
+                            : 'bg-[#F9FAFB] hover:bg-blue-50/50'
+                      }`}
+                      onClick={() => setSelectedProductId(product.id)}
+                      onDoubleClick={() => handleEditProduct(product)}
                     >
-                      <div className="px-2 py-2.5 flex items-center justify-center">
-                        <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
+                      <div className="px-2 py-2.5 text-xs text-gray-500 text-center font-mono border-r border-gray-100">
+                        {idx + 1}
                       </div>
-                      <div className="px-4 py-2.5 font-mono text-sm text-gray-700">
-                        {item.child_product.code}
+                      <div className="px-2 py-2.5 text-xs text-gray-600 font-mono border-r border-gray-100 truncate">
+                        {product.category || '-'}
                       </div>
-                      <div className="px-4 py-2.5 text-sm text-gray-900">
-                        {item.child_product.name}
+                      <div className="px-2 py-2.5 text-xs text-gray-900 font-mono border-r border-gray-100 truncate">
+                        {product.code}
                       </div>
-                      <div className="px-4 py-2.5 text-sm text-gray-500">
-                        {item.child_product.spec || '-'}
+                      <div className="px-2 py-2.5 text-sm text-gray-900 border-r border-gray-100 truncate">
+                        {product.name}
+                        {bomCount > 0 && (
+                          <span className="ml-1.5 inline-flex items-center px-1.5 py-0 rounded text-[10px] bg-blue-100 text-blue-700 font-medium">
+                            BOM({bomCount})
+                          </span>
+                        )}
                       </div>
-                      <div className="px-4 py-2.5 text-xs text-gray-500">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                          {item.child_product.category || '-'}
-                        </span>
+                      <div className="px-2 py-2.5 text-xs text-gray-600 text-center border-r border-gray-100">
+                        {product.unit}
                       </div>
-                      <div className="px-4 py-2.5 text-right font-mono text-sm text-gray-900">
-                        {item.quantity}
+                      <div className="px-2 py-2.5 text-xs text-gray-900 text-right font-mono border-r border-gray-100">
+                        {Number(product.cost_price || 0).toFixed(2)}
                       </div>
-                      <div className="px-4 py-2.5 text-right font-mono text-sm text-gray-700">
-                        ¥{Number(item.child_product.price || 0).toFixed(2)}
+                      <div className="px-2 py-2.5 text-xs text-gray-900 text-right font-mono border-r border-gray-100">
+                        {Number(product.price || 0).toFixed(2)}
                       </div>
-                      <div className="px-4 py-2.5 text-sm text-gray-500">
-                        {item.child_product.unit}
-                      </div>
-                      <div className="px-4 py-2.5 text-xs text-gray-400">
-                        {item.remark || '-'}
-                      </div>
-                      <div className="px-4 py-2.5 text-center">
-                        <button onClick={(e) => { e.stopPropagation(); handleEdit(item); }} className="text-blue-600 hover:text-blue-800 text-xs mr-2">编辑</button>
-                        <button onClick={(e) => { e.stopPropagation(); setDeleteId(item.id); }} className="text-red-500 hover:text-red-700 text-xs">删除</button>
+                      <div className="px-2 py-2.5 text-xs text-gray-500 truncate">
+                        {product.spec || product.remark || '-'}
                       </div>
                     </div>
-                  ))}
-                </div>
-              );
-            })}
+                  );
+                })
+              )}
+            </div>
+
+            {/* 底部状态栏 */}
+            <div className="bg-[#E8EBF0] border-t border-gray-300 px-3 py-1 flex items-center justify-between shrink-0">
+              <span className="text-xs text-gray-600">
+                共 <span className="font-semibold text-gray-800">{filteredProducts.length}</span> 条记录
+                {selectedCategory !== '0' && <span className="ml-2">类目: {selectedCategory}</span>}
+              </span>
+              <span className="text-xs text-gray-500">
+                双击行编辑 | 单击选中
+              </span>
+            </div>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* 新增/编辑抽屉 - ERP商品资料维护风格 */}
+      {/* 新增/编辑商品抽屉 - ERP商品资料维护风格 */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent className="w-[560px]">
+        <SheetContent className="w-[560px] overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>{editItem ? '编辑 BOM' : '商品基本资料维护'}</SheetTitle>
+            <SheetTitle>{editProduct ? '修改商品资料' : '商品基本资料维护'}</SheetTitle>
           </SheetHeader>
           <div className="mt-6 space-y-4 px-1">
             {/* 顶部：商品编号 + 商品名称 */}
@@ -599,6 +719,7 @@ export default function BomPage() {
                   value={newCode}
                   onChange={(e) => setNewCode(e.target.value)}
                   placeholder="输入商品编号"
+                  disabled={!!editProduct}
                 />
               </div>
               <div>
@@ -623,7 +744,7 @@ export default function BomPage() {
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1.5 block">商品类别</label>
-                <div className="flex gap-1">
+                <div className="flex gap-1 relative">
                   <Input
                     value={newCategory}
                     onChange={(e) => setNewCategory(e.target.value)}
@@ -636,18 +757,18 @@ export default function BomPage() {
                     className="px-2 shrink-0"
                     onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
                   >···</Button>
+                  {showCategoryDropdown && (
+                    <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-auto">
+                      {categories.map(c => (
+                        <div
+                          key={c.name}
+                          className="px-3 py-2 cursor-pointer hover:bg-blue-50 text-sm"
+                          onMouseDown={() => { setNewCategory(c.name); setShowCategoryDropdown(false); }}
+                        >{c.name}</div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                {showCategoryDropdown && (
-                  <div className="absolute z-50 mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-auto">
-                    {categories.map(c => (
-                      <div
-                        key={c}
-                        className="px-3 py-2 cursor-pointer hover:bg-blue-50 text-sm"
-                        onMouseDown={() => { setNewCategory(c); setShowCategoryDropdown(false); }}
-                      >{c}</div>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
 
@@ -674,128 +795,190 @@ export default function BomPage() {
               </div>
             </div>
 
-            {/* === 物料明细分隔线 === */}
-            <div className="border-t pt-4 mt-4">
-              <h4 className="text-sm font-semibold text-gray-800 mb-3">物料明细</h4>
-              <div className="space-y-3">
-                {/* 物料编号 + 物料名称 */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">物料编号 *</label>
-                    <Input
-                      value={newChildCode}
-                      onChange={(e) => setNewChildCode(e.target.value)}
-                      placeholder="输入物料编号"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">物料名称 *</label>
-                    <Input
-                      value={newChildName}
-                      onChange={(e) => setNewChildName(e.target.value)}
-                      placeholder="输入物料名称"
-                    />
-                  </div>
-                </div>
-
-                {/* 速记编码 + 商品类别 */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">速记编码</label>
-                    <Input
-                      value={newChildSpec}
-                      onChange={(e) => setNewChildSpec(e.target.value)}
-                      placeholder="速记编码"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">商品类别</label>
-                    <Input
-                      value={newChildCategory}
-                      onChange={(e) => setNewChildCategory(e.target.value)}
-                      placeholder="如: 029"
-                    />
-                  </div>
-                </div>
-
-                {/* 型号规格 + 单位 */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">型号规格</label>
-                    <Input
-                      value={newChildSpecDetail}
-                      onChange={(e) => setNewChildSpecDetail(e.target.value)}
-                      placeholder="型号规格"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">单位 *</label>
-                    <Select value={newChildUnit} onValueChange={setNewChildUnit}>
-                      <SelectTrigger><SelectValue placeholder="选择单位" /></SelectTrigger>
-                      <SelectContent>
-                        {['个', '件', '套', '千克', '公斤', '米', '张', '片', 'PCS', '箱', '包', '根', '条', '只', '副', '台', '批'].map(u => (
-                          <SelectItem key={u} value={u}>{u}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* 子级类型 + 用量 */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">子级类型</label>
-                    <Select value={childType} onValueChange={setChildType}>
-                      <SelectTrigger><SelectValue placeholder="选择类型" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="finished_product">成品</SelectItem>
-                        <SelectItem value="raw_material">原材料</SelectItem>
-                        <SelectItem value="semi_finished">半成品</SelectItem>
-                        <SelectItem value="other">其他</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">用量 *</label>
-                    <Input value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="如: 2" type="number" step="0.0001" />
-                  </div>
-                </div>
-
-                {/* 成本单价 + 商品售价(含税) */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">成本单价</label>
-                    <Input
-                      value={newChildCostPrice}
-                      onChange={(e) => setNewChildCostPrice(e.target.value)}
-                      placeholder="0.000"
-                      type="number"
-                      step="0.001"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">商品售价(含税)</label>
-                    <Input
-                      value={newChildSellPrice}
-                      onChange={(e) => setNewChildSellPrice(e.target.value)}
-                      placeholder="0.000"
-                      type="number"
-                      step="0.001"
-                    />
-                  </div>
-                </div>
+            {/* 成本单价 + 商品售价(含税) */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1.5 block">成本单价</label>
+                <Input
+                  value={newCostPrice}
+                  onChange={(e) => setNewCostPrice(e.target.value)}
+                  placeholder="0.00"
+                  type="number"
+                  step="0.01"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1.5 block">商品售价(含税)</label>
+                <Input
+                  value={newSellPrice}
+                  onChange={(e) => setNewSellPrice(e.target.value)}
+                  placeholder="0.00"
+                  type="number"
+                  step="0.01"
+                />
               </div>
             </div>
 
-            {/* 备注 */}
+            {/* 商品描述 */}
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-1.5 block">备注</label>
-              <Input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="备注" />
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">商品描述</label>
+              <Input
+                value={newRemark}
+                onChange={(e) => setNewRemark(e.target.value)}
+                placeholder="商品描述/备注"
+              />
             </div>
+
+            {/* === 物料明细分隔线（仅新增时显示） === */}
+            {!editProduct && (
+              <div className="border-t pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-gray-800 mb-3">物料明细（可选）</h4>
+                <div className="space-y-3">
+                  {/* 物料编号 + 物料名称 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1.5 block">物料编号</label>
+                      <Input
+                        value={newChildCode}
+                        onChange={(e) => setNewChildCode(e.target.value)}
+                        placeholder="输入物料编号"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1.5 block">物料名称</label>
+                      <Input
+                        value={newChildName}
+                        onChange={(e) => setNewChildName(e.target.value)}
+                        placeholder="输入物料名称"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 速记编码 + 商品类别 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1.5 block">速记编码</label>
+                      <Input
+                        value={newChildSpec}
+                        onChange={(e) => setNewChildSpec(e.target.value)}
+                        placeholder="速记编码"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1.5 block">商品类别</label>
+                      <div className="flex gap-1 relative">
+                        <Input
+                          value={newChildCategory}
+                          onChange={(e) => setNewChildCategory(e.target.value)}
+                          placeholder="如: 029"
+                          className="flex-1"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="px-2 shrink-0"
+                          onClick={() => setShowChildCategoryDropdown(!showChildCategoryDropdown)}
+                        >···</Button>
+                        {showChildCategoryDropdown && (
+                          <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-auto">
+                            {categories.map(c => (
+                              <div
+                                key={c.name}
+                                className="px-3 py-2 cursor-pointer hover:bg-blue-50 text-sm"
+                                onMouseDown={() => { setNewChildCategory(c.name); setShowChildCategoryDropdown(false); }}
+                              >{c.name}</div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 型号规格 + 单位 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1.5 block">型号规格</label>
+                      <Input
+                        value={newChildSpecDetail}
+                        onChange={(e) => setNewChildSpecDetail(e.target.value)}
+                        placeholder="型号规格"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1.5 block">单位</label>
+                      <Select value={newChildUnit} onValueChange={setNewChildUnit}>
+                        <SelectTrigger><SelectValue placeholder="选择单位" /></SelectTrigger>
+                        <SelectContent>
+                          {['个', '件', '套', '千克', '公斤', '米', '张', '片', 'PCS', '箱', '包', '根', '条', '只', '副', '台', '批'].map(u => (
+                            <SelectItem key={u} value={u}>{u}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* 子级类型 + 用量 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1.5 block">子级类型</label>
+                      <Select value={childType} onValueChange={setChildType}>
+                        <SelectTrigger><SelectValue placeholder="选择类型" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="finished_product">成品</SelectItem>
+                          <SelectItem value="raw_material">原材料</SelectItem>
+                          <SelectItem value="semi_finished">半成品</SelectItem>
+                          <SelectItem value="other">其他</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1.5 block">用量</label>
+                      <Input value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="如: 2" type="number" step="0.0001" />
+                    </div>
+                  </div>
+
+                  {/* 成本单价 + 商品售价(含税) */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1.5 block">成本单价</label>
+                      <Input
+                        value={newChildCostPrice}
+                        onChange={(e) => setNewChildCostPrice(e.target.value)}
+                        placeholder="0.000"
+                        type="number"
+                        step="0.001"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1.5 block">商品售价(含税)</label>
+                      <Input
+                        value={newChildSellPrice}
+                        onChange={(e) => setNewChildSellPrice(e.target.value)}
+                        placeholder="0.000"
+                        type="number"
+                        step="0.001"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 备注 */}
+            {!editProduct && (
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1.5 block">备注</label>
+                <Input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="备注" />
+              </div>
+            )}
 
             {/* 按钮 */}
             <div className="pt-4 flex gap-3">
-              <Button onClick={handleSave} disabled={saving || !newCode || !newName || !newUnit || !quantity} className="flex-1 bg-green-600 hover:bg-green-700">
+              <Button
+                onClick={handleSaveProduct}
+                disabled={saving || !newCode || !newName || !newUnit}
+                className="flex-1 bg-green-600 hover:bg-green-700"
+              >
                 {saving ? '保存中...' : '确定'}
               </Button>
               <Button variant="outline" onClick={() => setSheetOpen(false)} className="flex-1">取消</Button>
@@ -955,16 +1138,54 @@ export default function BomPage() {
         </DialogContent>
       </Dialog>
 
+      {/* 类别新增/编辑对话框 */}
+      <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>{categoryDialogMode === 'add' ? '新增类别' : '修改类别'}</DialogTitle>
+            <DialogDescription>
+              {categoryDialogMode === 'add'
+                ? '输入新类别编号/名称，新增后可在该类别下添加商品'
+                : '修改类别名称后，该类别下所有商品的类别将同步更新'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4">
+            <label className="text-sm font-medium text-gray-700 mb-1.5 block">类别编号/名称</label>
+            <Input
+              value={categoryDialogValue}
+              onChange={(e) => setCategoryDialogValue(e.target.value)}
+              placeholder="如: 003-新类别"
+              onKeyDown={(e) => { if (e.key === 'Enter') handleCategoryDialogSave(); }}
+            />
+          </div>
+          <div className="flex gap-3 mt-4">
+            <Button onClick={handleCategoryDialogSave} className="flex-1 bg-green-600 hover:bg-green-700">
+              确定
+            </Button>
+            <Button variant="outline" onClick={() => setCategoryDialogOpen(false)} className="flex-1">取消</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* 删除确认 */}
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除</AlertDialogTitle>
-            <AlertDialogDescription>确认删除该 BOM 记录吗？</AlertDialogDescription>
+            <AlertDialogDescription>
+              {deleteType === 'category'
+                ? `确认删除类别「${deleteId}」吗？该类别下所有商品的类别将被清空。`
+                : '确认删除该商品吗？关联的 BOM 记录也将被删除。'}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">删除</AlertDialogAction>
+            <AlertDialogAction
+              onClick={deleteType === 'category' ? handleDeleteCategory : handleDeleteProduct}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              删除
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

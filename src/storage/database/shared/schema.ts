@@ -19,6 +19,7 @@ export const products = pgTable(
     category: varchar("category", { length: 100 }),
     type: varchar("type", { length: 30 }).notNull().default("raw_material"),
     price: numeric("price", { precision: 12, scale: 2 }),
+    cost_price: numeric("cost_price", { precision: 12, scale: 2 }).default("0"),
     remark: text("remark"),
     is_active: boolean("is_active").default(true).notNull(),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

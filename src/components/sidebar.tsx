@@ -8,7 +8,7 @@ const navItems = [
   { href: '/', label: '工作台', icon: '⊞' },
   { href: '/customers', label: '客户管理', icon: '◉' },
   { href: '/orders', label: '客户订单', icon: '▤' },
-  { href: '/bom', label: 'BOM 表', icon: '☰' },
+  { href: '/bom', label: '商品资料', icon: '☰' },
   { href: '/production', label: '生产订单', icon: '⚙' },
   { href: '/inbound', label: '入库单', icon: '↓' },
   { href: '/delivery', label: '送货单', icon: '→' },
