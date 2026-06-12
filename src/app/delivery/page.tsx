@@ -706,7 +706,19 @@ export default function DeliveryPage() {
           {/* Header */}
           <div className="bg-[#F0F2F5] px-5 py-3 border-b border-[#E5E7EB] flex items-center justify-between">
             <h2 className="text-base font-semibold text-[#111827]">销售出货单</h2>
-            {form.note_no && <span className="text-xs text-gray-500">单号: {form.note_no}</span>}
+            {editMode ? (
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500 whitespace-nowrap">送货单号:</label>
+                <Input
+                  className="h-7 text-xs font-mono w-40"
+                  value={form.note_no}
+                  onChange={(e) => { setForm((prev) => ({ ...prev, note_no: e.target.value })); setIsFormDirty(true); }}
+                  placeholder="输入送货单号"
+                />
+              </div>
+            ) : (
+              form.note_no && <span className="text-xs text-gray-500">单号: {form.note_no}</span>
+            )}
           </div>
 
           {/* Customer info area */}
