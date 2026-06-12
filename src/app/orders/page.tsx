@@ -128,6 +128,8 @@ export default function OrdersPage() {
 
   // 表单状态
   const [formCustomerId, setFormCustomerId] = useState('');
+  const [formCustomerSearch, setFormCustomerSearch] = useState('');
+  const [formCustomerDropdownOpen, setFormCustomerDropdownOpen] = useState(false);
   const [formOrderNo, setFormOrderNo] = useState('');
   const [formOrderDate, setFormOrderDate] = useState('');
   const [formRemark, setFormRemark] = useState('');
@@ -281,6 +283,7 @@ export default function OrdersPage() {
   const handleNew = () => {
     setEditingOrder(null);
     setFormCustomerId('');
+    setFormCustomerSearch('');
     setFormOrderNo('');
     setFormOrderDate(new Date().toISOString().split('T')[0]);
     setFormRemark('');
@@ -294,6 +297,8 @@ export default function OrdersPage() {
   const handleEdit = (order: Order) => {
     setEditingOrder(order);
     setFormCustomerId(order.customer_id);
+    const cust = customers.find((c) => c.id === order.customer_id);
+    setFormCustomerSearch(cust ? `${cust.code} - ${cust.name}` : '');
     setFormOrderNo(order.order_no);
     setFormOrderDate(order.order_date);
     setFormRemark(order.remark || '');
@@ -802,16 +807,70 @@ export default function OrdersPage() {
             <div className="grid grid-cols-2 gap-x-6 gap-y-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">客户 *</label>
-                <Select value={formCustomerId} onValueChange={setFormCustomerId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="选择客户" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customers.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="relative">
+                  <Input
+                    value={formCustomerSearch}
+                    onChange={(e) => {
+                      setFormCustomerSearch(e.target.value);
+                      setFormCustomerId('');
+                      setFormCustomerDropdownOpen(true);
+                    }}
+                    onFocus={() => setFormCustomerDropdownOpen(true)}
+                    placeholder="输入客户编号或名称"
+                    className="w-full"
+                  />
+                  {formCustomerDropdownOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setFormCustomerDropdownOpen(false)} />
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-[200px] overflow-y-auto">
+                      {customers
+                        .filter((c) => {
+                          if (!formCustomerSearch) return true;
+                          const q = formCustomerSearch.toLowerCase();
+                          return (
+                            c.code.toLowerCase().includes(q) ||
+                            c.name.toLowerCase().includes(q)
+                          );
+                        })
+                        .slice(0, 20)
+                        .map((c) => (
+                          <div
+                            key={c.id}
+                            className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-0"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setFormCustomerId(c.id);
+                              setFormCustomerSearch(`${c.code} - ${c.name}`);
+                              setFormCustomerDropdownOpen(false);
+                            }}
+                          >
+                            <span className="font-mono text-gray-600 mr-2">{c.code}</span>
+                            <span>{c.name}</span>
+                          </div>
+                        ))}
+                      {customers.filter((c) => {
+                        const q = formCustomerSearch.toLowerCase();
+                        return c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q);
+                      }).length === 0 && (
+                        <div className="px-3 py-2 text-sm text-gray-400 text-center">无匹配客户</div>
+                      )}
+                    </div>
+                    </>
+                  )}
+                  {formCustomerId && (
+                    <button
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      onClick={() => {
+                        setFormCustomerId('');
+                        setFormCustomerSearch('');
+                        setFormCustomerDropdownOpen(false);
+                      }}
+                      type="button"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">订单号 *</label>
