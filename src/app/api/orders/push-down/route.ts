@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       .select('*, child_product:products!bom_child_product_id_products_id_fk(id, code, name, spec, unit, type)')
       .eq('parent_product_id', product.id);
 
-    // 2b. 如果不是BOM父产品，检查是否是某个BOM的子产品（该产品需要通过生产父产品来获得）
+    // 2b. 如果不是BOM父产品，检查是否是某个BOM的子产品（半成品，需要通过生产父产品来获得）
     let parentProductId = product.id;
     let bomParentName = product.name;
     if (!bomRecords || bomRecords.length === 0) {
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
         .eq('child_product_id', product.id);
 
       if (childBomRecords && childBomRecords.length > 0) {
-        // 该产品是某个BOM的子产品，需要生产其父产品
+        // 该产品是某个BOM的子产品，需要生产其父产品（成品）
         const parentBom = childBomRecords[0];
         parentProductId = parentBom.parent_product_id;
         const pp = parentBom.parent_product as unknown as Record<string, unknown>;
@@ -68,11 +68,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (bomRecords && bomRecords.length > 0) {
-      // 有BOM的成品 → 先检查库存，充足则预扣，不足则生成生产订单
+      // 有BOM的成品 → 先检查成品库存，充足则预扣，不足则生成生产订单
       const { data: inventory } = await supabase
         .from('inventory')
         .select('id, quantity, reserved_qty')
-        .eq('product_id', product.id)
+        .eq('product_id', parentProductId)
         .eq('warehouse_id', warehouse_id)
         .maybeSingle();
 
@@ -96,8 +96,8 @@ export async function POST(request: NextRequest) {
           .eq('id', item.id);
 
         result.reserved.push({
-          product_id: product.id,
-          product_name: product.name,
+          product_id: parentProductId,
+          product_name: bomParentName,
           quantity: requiredQty,
         });
       } else {
@@ -150,8 +150,8 @@ export async function POST(request: NextRequest) {
         }
 
         result.produced.push({
-          product_id: parentProductId,
-          product_name: bomParentName,
+          product_id: product.id,
+          product_name: product.name,
           quantity: requiredQty,
           production_order_id: prodOrder.id,
         });
