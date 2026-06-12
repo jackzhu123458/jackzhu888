@@ -5,7 +5,7 @@ export async function GET() {
   const client = getSupabaseClient();
   const { data, error } = await client
     .from('bom')
-    .select('*, parent_product:products!bom_parent_product_id_products_id_fk(id, code, name, spec, unit), child_product:products!bom_child_product_id_products_id_fk(id, code, name, spec, unit)')
+    .select('*, parent_product:products!bom_parent_product_id_products_id_fk(id, code, name, spec, unit, type, price), child_product:products!bom_child_product_id_products_id_fk(id, code, name, spec, unit, type, price)')
     .order('created_at', { ascending: false })
     .limit(500);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

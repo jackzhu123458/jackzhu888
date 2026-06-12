@@ -41,6 +41,7 @@ interface Product {
   spec: string | null;
   unit: string;
   type: string;
+  price: number;
 }
 
 interface BomItem {
@@ -306,13 +307,14 @@ export default function BomPage() {
         ) : (
           <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
             {/* 表头 */}
-            <div className="grid grid-cols-[36px_1fr_120px_120px_1fr_100px_80px_60px_80px] border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-500">
+            <div className="grid grid-cols-[36px_1fr_120px_120px_1fr_100px_100px_80px_60px_80px] border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-500">
               <div className="px-2 py-3"></div>
               <div className="px-4 py-3">物料编码</div>
               <div className="px-4 py-3">物料名称</div>
               <div className="px-4 py-3">规格</div>
               <div className="px-4 py-3">类型</div>
               <div className="px-4 py-3 text-right">用量</div>
+              <div className="px-4 py-3 text-right">售价(含税)</div>
               <div className="px-4 py-3">单位</div>
               <div className="px-4 py-3">备注</div>
               <div className="px-4 py-3 text-center">操作</div>
@@ -325,7 +327,7 @@ export default function BomPage() {
                 <div key={key} className={isExpanded ? '' : 'border-b border-gray-100'}>
                   {/* 父级行（BOM 组） */}
                   <div
-                    className="grid grid-cols-[36px_1fr_120px_120px_1fr_100px_80px_60px_80px] items-center bg-gray-50/60 hover:bg-gray-100/60 cursor-pointer border-b border-gray-50 transition-colors"
+                    className="grid grid-cols-[36px_1fr_120px_120px_1fr_100px_100px_80px_60px_80px] items-center bg-gray-50/60 hover:bg-gray-100/60 cursor-pointer border-b border-gray-50 transition-colors"
                     onClick={() => toggleGroup(key)}
                   >
                     <div className="px-2 py-3 flex items-center justify-center">
@@ -351,6 +353,9 @@ export default function BomPage() {
                     <div className="px-4 py-3 text-right text-sm text-gray-600">
                       {group.items.length} 项
                     </div>
+                    <div className="px-4 py-3 text-right font-mono text-sm text-gray-900">
+                      ¥{Number(group.product.price || 0).toFixed(2)}
+                    </div>
                     <div className="px-4 py-3 text-xs text-gray-400">套</div>
                     <div className="px-4 py-3"></div>
                     <div className="px-4 py-3"></div>
@@ -360,7 +365,7 @@ export default function BomPage() {
                   {isExpanded && group.items.map((item, idx) => (
                     <div
                       key={item.id}
-                      className={`grid grid-cols-[36px_1fr_120px_120px_1fr_100px_80px_60px_80px] items-center border-b border-gray-50 hover:bg-gray-50/80 transition-colors ${idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}
+                      className={`grid grid-cols-[36px_1fr_120px_120px_1fr_100px_100px_80px_60px_80px] items-center border-b border-gray-50 hover:bg-gray-50/80 transition-colors ${idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}
                     >
                       <div className="px-2 py-2.5 flex items-center justify-center">
                         <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
@@ -381,6 +386,9 @@ export default function BomPage() {
                       </div>
                       <div className="px-4 py-2.5 text-right font-mono text-sm text-gray-900">
                         {item.quantity}
+                      </div>
+                      <div className="px-4 py-2.5 text-right font-mono text-sm text-gray-700">
+                        ¥{Number(item.child_product.price || 0).toFixed(2)}
                       </div>
                       <div className="px-4 py-2.5 text-sm text-gray-500">
                         {item.child_product.unit}
