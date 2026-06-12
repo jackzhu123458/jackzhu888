@@ -140,6 +140,7 @@ export default function OrdersPage() {
     product_id: string;
     quantity: number;
     unit_price: number | null;
+    delivery_date: string;
     remark: string;
     schedules: { schedule_date: string; quantity: number }[];
   }[]>([]);
@@ -306,6 +307,7 @@ export default function OrdersPage() {
         product_id: item.product_id,
         quantity: item.quantity,
         unit_price: item.unit_price,
+        delivery_date: item.customer_order_schedules?.[0]?.schedule_date || order.delivery_deadline || '',
         remark: item.remark || '',
         schedules: item.customer_order_schedules?.map((s) => ({
           schedule_date: s.schedule_date,
@@ -328,13 +330,20 @@ export default function OrdersPage() {
       delivery_deadline: formDeadline || null,
       remark: formRemark,
       status: editingOrder?.status || 'pending',
-      items: formItems.map((item) => ({
-        product_id: item.product_id,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        remark: item.remark,
-        schedules: item.schedules,
-      })),
+      items: formItems.map((item) => {
+        // 如果没有手动排程，但有交货日期，自动生成一条排程
+        let schedules = item.schedules;
+        if (schedules.length === 0 && item.delivery_date && item.quantity > 0) {
+          schedules = [{ schedule_date: item.delivery_date, quantity: item.quantity }];
+        }
+        return {
+          product_id: item.product_id,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          remark: item.remark,
+          schedules,
+        };
+      }),
     };
 
     const method = editingOrder ? 'PUT' : 'POST';
@@ -371,7 +380,7 @@ export default function OrdersPage() {
 
   // 表单：添加明细行
   const addFormItem = () => {
-    setFormItems([...formItems, { product_id: '', quantity: 0, unit_price: null, remark: '', schedules: [] }]);
+    setFormItems([...formItems, { product_id: '', quantity: 0, unit_price: null, delivery_date: formDeadline || '', remark: '', schedules: [] }]);
   };
 
   // 表单：删除明细行
@@ -473,6 +482,7 @@ export default function OrdersPage() {
         product_id: bomItem.child_product_id,
         quantity: bomItem.quantity,
         unit_price: null as number | null,
+        delivery_date: '',
         remark: '',
         schedules: [] as { schedule_date: string; quantity: number }[],
       }));
@@ -795,6 +805,7 @@ export default function OrdersPage() {
                   value={formDeadline}
                   onChange={(e) => setFormDeadline(e.target.value)}
                 />
+                <p className="text-xs text-gray-400 mt-0.5">默认截止日期，各物料可单独设置交货日期</p>
               </div>
             </div>
             <div>
@@ -819,7 +830,7 @@ export default function OrdersPage() {
                 <div key={itemIdx} className="border border-gray-200 rounded-lg p-3 mb-3">
                   <div className="flex items-start gap-2">
                     <div className="flex-1 space-y-2">
-                      <div className="grid grid-cols-4 gap-2">
+                      <div className="grid grid-cols-5 gap-2">
                         <div className="col-span-2">
                           <label className="block text-xs text-gray-500 mb-1">物料</label>
                           <div className="relative">
@@ -897,6 +908,15 @@ export default function OrdersPage() {
                             type="number"
                             value={item.unit_price ?? ''}
                             onChange={(e) => updateFormItem(itemIdx, 'unit_price', e.target.value ? Number(e.target.value) : null)}
+                            className="text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">交货日期</label>
+                          <Input
+                            type="date"
+                            value={item.delivery_date}
+                            onChange={(e) => updateFormItem(itemIdx, 'delivery_date', e.target.value)}
                             className="text-xs"
                           />
                         </div>
