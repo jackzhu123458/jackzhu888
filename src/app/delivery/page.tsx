@@ -1177,13 +1177,11 @@ export default function DeliveryPage() {
 
       {/* ─── Delivery Print Preview Dialog ─── */}
       <Dialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen}>
-        <DialogContent className="max-w-[980px] max-h-[90vh] overflow-y-auto p-0">
+        <DialogContent className="max-w-[1020px] p-0" style={{ height: 'auto', maxHeight: 'none' }}>
           <DialogHeader className="px-6 pt-4 pb-2 no-print">
             <DialogTitle>打印预览 - 送货单（三联单 241mm×140mm）</DialogTitle>
           </DialogHeader>
-          <div className="px-6 pb-4 overflow-x-auto">
-            {/* 预览容器：按实际尺寸渲染，屏幕不够宽时水平滚动 */}
-            <div style={{ minWidth: '241mm' }}>
+          <div className="px-6 pb-4" style={{ overflow: 'visible' }}>
             {/* Print area — 三联单尺寸 241mm×140mm */}
             <div id="delivery-print-area" className="bg-white" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '140mm', padding: '6mm 8mm', boxSizing: 'border-box', fontSize: '11px', lineHeight: '17px' }}>
               {/* 抬头区域 */}
@@ -1336,8 +1334,7 @@ export default function DeliveryPage() {
               </Button>
             </div>
             </div>
-          </div>
-        </DialogContent>
+          </DialogContent>
       </Dialog>
 
       {/* ─── Label Print Dialog ─── */}
