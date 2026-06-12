@@ -298,7 +298,7 @@ export default function OrdersPage() {
     setEditingOrder(order);
     setFormCustomerId(order.customer_id);
     const cust = customers.find((c) => c.id === order.customer_id);
-    setFormCustomerSearch(cust ? `${cust.code} - ${cust.name}` : '');
+    setFormCustomerSearch(cust ? cust.code : '');
     setFormOrderNo(order.order_no);
     setFormOrderDate(order.order_date);
     setFormRemark(order.remark || '');
@@ -805,71 +805,71 @@ export default function OrdersPage() {
           <div className="mt-2 space-y-4">
             {/* 基础信息 */}
             <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">客户 *</label>
-                <div className="relative">
-                  <Input
-                    value={formCustomerSearch}
-                    onChange={(e) => {
-                      setFormCustomerSearch(e.target.value);
-                      setFormCustomerId('');
-                      setFormCustomerDropdownOpen(true);
-                    }}
-                    onFocus={() => setFormCustomerDropdownOpen(true)}
-                    placeholder="输入客户编号或名称"
-                    className="w-full"
-                  />
-                  {formCustomerDropdownOpen && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setFormCustomerDropdownOpen(false)} />
-                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-[200px] overflow-y-auto">
-                      {customers
-                        .filter((c) => {
+              <div className="col-span-2 grid grid-cols-2 gap-x-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">客户编号 *</label>
+                  <div className="relative">
+                    <Input
+                      value={formCustomerSearch}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormCustomerSearch(val);
+                        setFormCustomerId('');
+                        setFormCustomerDropdownOpen(true);
+                      }}
+                      onFocus={() => setFormCustomerDropdownOpen(true)}
+                      placeholder="输入客户编号"
+                      className="w-full font-mono"
+                    />
+                    {formCustomerDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setFormCustomerDropdownOpen(false)} />
+                        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-[200px] overflow-y-auto">
+                        {customers
+                          .filter((c) => {
+                            if (!formCustomerSearch) return true;
+                            const q = formCustomerSearch.toLowerCase();
+                            return (
+                              c.code.toLowerCase().includes(q) ||
+                              c.name.toLowerCase().includes(q)
+                            );
+                          })
+                          .slice(0, 20)
+                          .map((c) => (
+                            <div
+                              key={c.id}
+                              className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-0"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setFormCustomerId(c.id);
+                                setFormCustomerSearch(c.code);
+                                setFormCustomerDropdownOpen(false);
+                              }}
+                            >
+                              <span className="font-mono text-gray-600 mr-2">{c.code}</span>
+                              <span>{c.name}</span>
+                            </div>
+                          ))}
+                        {customers.filter((c) => {
                           if (!formCustomerSearch) return true;
                           const q = formCustomerSearch.toLowerCase();
-                          return (
-                            c.code.toLowerCase().includes(q) ||
-                            c.name.toLowerCase().includes(q)
-                          );
-                        })
-                        .slice(0, 20)
-                        .map((c) => (
-                          <div
-                            key={c.id}
-                            className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-0"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              setFormCustomerId(c.id);
-                              setFormCustomerSearch(`${c.code} - ${c.name}`);
-                              setFormCustomerDropdownOpen(false);
-                            }}
-                          >
-                            <span className="font-mono text-gray-600 mr-2">{c.code}</span>
-                            <span>{c.name}</span>
-                          </div>
-                        ))}
-                      {customers.filter((c) => {
-                        const q = formCustomerSearch.toLowerCase();
-                        return c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q);
-                      }).length === 0 && (
-                        <div className="px-3 py-2 text-sm text-gray-400 text-center">无匹配客户</div>
-                      )}
-                    </div>
-                    </>
-                  )}
-                  {formCustomerId && (
-                    <button
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      onClick={() => {
-                        setFormCustomerId('');
-                        setFormCustomerSearch('');
-                        setFormCustomerDropdownOpen(false);
-                      }}
-                      type="button"
-                    >
-                      ✕
-                    </button>
-                  )}
+                          return c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q);
+                        }).length === 0 && (
+                          <div className="px-3 py-2 text-sm text-gray-400 text-center">无匹配客户</div>
+                        )}
+                      </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">客户名称</label>
+                  <Input
+                    value={formCustomerId ? (customers.find(c => c.id === formCustomerId)?.name || '') : ''}
+                    readOnly
+                    placeholder="自动填充"
+                    className="w-full bg-gray-50 text-gray-600"
+                  />
                 </div>
               </div>
               <div>
