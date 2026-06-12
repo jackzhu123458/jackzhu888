@@ -759,17 +759,17 @@ export default function OrdersPage() {
 
       {/* 新增/编辑订单抽屉 */}
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-[900px] max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-[1100px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingOrder ? '编辑订单' : '新增订单'}</DialogTitle>
           </DialogHeader>
           <div className="mt-2 space-y-4">
             {/* 基础信息 */}
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">客户 *</label>
                 <Select value={formCustomerId} onValueChange={setFormCustomerId}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="选择客户" />
                   </SelectTrigger>
                   <SelectContent>
@@ -822,7 +822,7 @@ export default function OrdersPage() {
               </div>
 
               {/* 表头 */}
-              <div className="grid grid-cols-[1fr_1fr_80px_100px_120px_36px] gap-2 mb-2 px-1">
+              <div className="grid grid-cols-[1.2fr_1.5fr_90px_100px_130px_36px] gap-3 mb-2 px-1">
                 <span className="text-xs text-gray-500 font-medium">物料编码</span>
                 <span className="text-xs text-gray-500 font-medium">物料名称</span>
                 <span className="text-xs text-gray-500 font-medium">数量</span>
@@ -832,7 +832,7 @@ export default function OrdersPage() {
               </div>
 
               {formItems.map((item, itemIdx) => (
-                <div key={itemIdx} className="grid grid-cols-[1fr_1fr_80px_100px_120px_36px] gap-2 mb-2 items-center">
+                <div key={itemIdx} className="grid grid-cols-[1.2fr_1.5fr_90px_100px_130px_36px] gap-3 mb-3 items-center">
                   {/* 物料编码搜索 */}
                   <div className="relative">
                     <Input
@@ -862,10 +862,10 @@ export default function OrdersPage() {
                           });
                         }, 200);
                       }}
-                      className="text-sm font-mono h-9"
+                      className="text-sm font-mono h-10"
                     />
                     {itemSearches[itemIdx] && !item.product_id && (
-                      <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto">
+                      <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto mt-0.5">
                         {searchProducts(itemSearches[itemIdx]).length === 0 ? (
                           <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
                         ) : (
@@ -917,10 +917,10 @@ export default function OrdersPage() {
                           });
                         }, 200);
                       }}
-                      className={`text-sm h-9 ${item.product_id ? 'bg-gray-50' : ''}`}
+                      className={`text-sm h-10 ${item.product_id ? 'bg-gray-50' : ''}`}
                     />
                     {!item.product_id && itemSearches[itemIdx] && (
-                      <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto">
+                      <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto mt-0.5">
                         {searchProducts(itemSearches[itemIdx]).length === 0 ? (
                           <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
                         ) : (
@@ -951,7 +951,7 @@ export default function OrdersPage() {
                     type="number"
                     value={item.quantity || ''}
                     onChange={(e) => updateFormItem(itemIdx, 'quantity', Number(e.target.value))}
-                    className="text-sm h-9 text-right"
+                    className="text-sm h-10 text-right"
                     placeholder="0"
                   />
                   {/* 单价 - 根据BOM自动填充，只读 */}
@@ -959,7 +959,7 @@ export default function OrdersPage() {
                     type="number"
                     value={item.unit_price ?? ''}
                     readOnly
-                    className="text-sm h-9 bg-gray-50 text-right"
+                    className="text-sm h-10 bg-gray-50 text-right"
                     placeholder="自动"
                   />
                   {/* 交货日期 */}
@@ -967,13 +967,13 @@ export default function OrdersPage() {
                     type="date"
                     value={item.delivery_date}
                     onChange={(e) => updateFormItem(itemIdx, 'delivery_date', e.target.value)}
-                    className="text-sm h-9"
+                    className="text-sm h-10"
                   />
                   {/* 删除 */}
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-9 w-9 p-0 text-red-400 hover:text-red-600"
+                    className="h-10 w-10 p-0 text-red-400 hover:text-red-600"
                     onClick={() => removeFormItem(itemIdx)}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
