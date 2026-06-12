@@ -249,26 +249,45 @@ export default function DeliveryPage() {
     loadForm(notes[clamped]);
   };
 
-  const loadForm = (note: DeliveryNote) => {
+  const loadForm = async (note: DeliveryNote) => {
+    // 如果 items 是 count 汇总格式，从 API 获取完整数据
+    const hasCountOnly = Array.isArray(note.delivery_note_items) &&
+      note.delivery_note_items.length > 0 &&
+      'count' in (note.delivery_note_items[0] as unknown as Record<string, unknown>) &&
+      Object.keys(note.delivery_note_items[0] as unknown as Record<string, unknown>).length <= 2;
+
+    let fullNote = note;
+    if (hasCountOnly && note.id) {
+      try {
+        const res = await fetch(`/api/delivery?id=${note.id}`);
+        const data = await res.json();
+        if (data.id) fullNote = data;
+      } catch { /* fallback to list data */ }
+    }
+
     setForm({
-      id: note.id,
-      note_no: note.note_no,
-      customer_id: note.customer_id || null,
-      customer_name: note.customer_name,
-      customer_address: note.customer_address || '',
-      customer_contact: note.customer_contact || '',
-      customer_phone: note.customer_phone || '',
-      customer_order: note.customer_order || '',
-      customer_order_id: note.customer_order_id || null,
-      delivery_date: formatDate(note.delivery_date),
-      status: note.status,
-      remark: note.remark || '',
-      delivery_note_items: (note.delivery_note_items || []).map((it: DeliveryItem) => ({
-        ...it,
-        per_box_qty: it.per_box_qty || it.quantity,
-        remark: it.remark || '',
-        customer_order_item_id: it.customer_order_item_id || null,
-      })),
+      id: fullNote.id,
+      note_no: fullNote.note_no,
+      customer_id: fullNote.customer_id || null,
+      customer_name: fullNote.customer_name,
+      customer_address: fullNote.customer_address || '',
+      customer_contact: fullNote.customer_contact || '',
+      customer_phone: fullNote.customer_phone || '',
+      customer_order: fullNote.customer_order || '',
+      customer_order_id: fullNote.customer_order_id || null,
+      delivery_date: formatDate(fullNote.delivery_date),
+      status: fullNote.status,
+      remark: fullNote.remark || '',
+      delivery_note_items: Array.isArray(fullNote.delivery_note_items)
+        ? fullNote.delivery_note_items
+            .filter((it: DeliveryItem) => !('count' in (it as unknown as Record<string, unknown>) && Object.keys(it as unknown as Record<string, unknown>).length <= 2))
+            .map((it: DeliveryItem) => ({
+              ...it,
+              per_box_qty: it.per_box_qty || it.quantity,
+              remark: it.remark || '',
+              customer_order_item_id: it.customer_order_item_id || null,
+            }))
+        : [],
     });
   };
 
@@ -276,9 +295,9 @@ export default function DeliveryPage() {
   useEffect(() => {
     if (notes.length > 0 && currentIdx < 0 && !editMode) {
       setCurrentIdx(0);
-      loadForm(notes[0]);
+      void loadForm(notes[0]);
     }
-  }, [notes]);
+  }, [notes, currentIdx, editMode, loadForm]);
 
   /* ─── CRUD ─── */
   const handleNew = (copy = false) => {
