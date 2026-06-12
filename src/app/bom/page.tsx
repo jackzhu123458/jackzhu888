@@ -565,7 +565,7 @@ export default function BomPage() {
 
   return (
     <>
-      <div className="h-[calc(100vh-0px)] flex flex-col bg-[#F8F9FA]">
+      <div className="flex flex-col h-[calc(100vh-0px)] bg-[#F8F9FA] overflow-hidden">
         {/* 顶部工具栏 */}
         <div className="bg-[#E8EBF0] border-b border-gray-300 px-2 py-1 flex items-center gap-1 shrink-0">
           <Button variant="ghost" size="sm" className="h-7 text-xs px-2.5 bg-[#F0F1F3] hover:bg-[#D8DAE0] border border-gray-300 rounded-sm" onClick={handleCategoryAdd}>
@@ -647,22 +647,22 @@ export default function BomPage() {
             <div className="flex-1 overflow-y-auto">
               {/* 所有商品根节点 */}
               <div
-                className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-sm border-b border-gray-100 ${
+                className={`flex items-center px-3 py-1.5 cursor-pointer text-sm border-b border-gray-100 ${
                   selectedCategory === '0' ? 'bg-[#1E40AF] text-white' : 'hover:bg-blue-50 text-gray-800'
                 }`}
                 onClick={() => handleCategoryClick('0')}
               >
                 <svg
-                  className={`w-3.5 h-3.5 shrink-0 transition-transform ${expandedCategories.has('0') ? 'rotate-90' : ''}`}
+                  className={`w-3.5 h-3.5 shrink-0 mr-1.5 transition-transform ${expandedCategories.has('0') ? 'rotate-90' : ''}`}
                   fill="currentColor" viewBox="0 0 20 20"
                   onClick={(e) => { e.stopPropagation(); toggleCategoryExpand('0'); }}
                 >
                   <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
                 </svg>
                 <span className="font-mono text-xs mr-1">0</span>
-                <span className="text-sm">所有商品</span>
-                <span className={`ml-auto text-xs ${selectedCategory === '0' ? 'text-blue-200' : 'text-gray-400'}`}>
-                  ({products.filter(p => !p.code.startsWith('BOM-')).length})
+                <span className="text-sm flex-1">所有商品</span>
+                <span className={`text-xs shrink-0 ${selectedCategory === '0' ? 'text-blue-200' : 'text-gray-400'}`}>
+                  {products.filter(p => !p.code.startsWith('BOM-')).length}
                 </span>
               </div>
 
@@ -670,18 +670,17 @@ export default function BomPage() {
               {expandedCategories.has('0') && categories.map((cat) => (
                 <div
                   key={cat.name}
-                  className={`flex items-center gap-1.5 px-2 pl-7 py-1.5 cursor-pointer text-sm border-b border-gray-50 ${
+                  className={`flex items-center px-3 pl-8 py-1.5 cursor-pointer text-sm border-b border-gray-50 ${
                     selectedCategory === cat.name ? 'bg-[#1E40AF] text-white' : 'hover:bg-blue-50 text-gray-700'
                   }`}
                   onClick={() => handleCategoryClick(cat.name)}
                 >
-                  <span className="font-mono text-xs mr-1">{cat.name}</span>
-                  <span className="text-xs text-gray-400 mr-0.5">-</span>
-                  <span className="text-sm truncate flex-1">
-                    {cat.label || cat.name}
+                  <span className="truncate flex-1">
+                    <span className="font-mono text-xs">{cat.name}</span>
+                    {cat.label && <span className={`${selectedCategory === cat.name ? 'text-blue-200' : 'text-gray-500'}`}> - {cat.label}</span>}
                   </span>
-                  <span className={`ml-auto text-xs shrink-0 ${selectedCategory === cat.name ? 'text-blue-200' : 'text-gray-400'}`}>
-                    ({cat.count})
+                  <span className={`ml-1 text-xs shrink-0 ${selectedCategory === cat.name ? 'text-blue-200' : 'text-gray-400'}`}>
+                    {cat.count}
                   </span>
                 </div>
               ))}
