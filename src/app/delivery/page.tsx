@@ -315,6 +315,7 @@ export default function DeliveryPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id, ...noteFields, items: payload.items }),
         });
+        await fetchNotes();
       } else {
         const res = await fetch('/api/delivery', {
           method: 'POST',
@@ -323,8 +324,13 @@ export default function DeliveryPage() {
         });
         const created = await res.json();
         setForm((prev) => ({ ...prev, id: created.id }));
+        const refreshed = await fetch('/api/delivery').then(r => r.json());
+        if (Array.isArray(refreshed)) {
+          setNotes(refreshed);
+          const idx = refreshed.findIndex((n: DeliveryNote) => n.id === created.id);
+          if (idx >= 0) setCurrentIdx(idx);
+        }
       }
-      await fetchNotes();
       setEditMode(false);
       setIsFormDirty(false);
     } catch (e) {
@@ -646,7 +652,7 @@ export default function DeliveryPage() {
                 <ArrowRight className="h-3.5 w-3.5" /> 从订单导入
               </Button>
               <div className="w-px h-5 bg-gray-300 mx-1" />
-              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={handlePrintDelivery} disabled={!current}>
+              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={handlePrintDelivery} disabled={!current && !form.id}>
                 <Printer className="h-3.5 w-3.5" /> 打印送货单
               </Button>
             </>
@@ -657,7 +663,7 @@ export default function DeliveryPage() {
                   <ArrowRight className="h-3.5 w-3.5 text-green-600" /> 确认出货
                 </Button>
               )}
-              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={handlePrintDelivery} disabled={!current}>
+              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={handlePrintDelivery} disabled={!current && !form.id}>
                 <Printer className="h-3.5 w-3.5" /> 打印送货单
               </Button>
             </>
