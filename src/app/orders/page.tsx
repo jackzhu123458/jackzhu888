@@ -323,10 +323,18 @@ export default function OrdersPage() {
 
       const data = result.data;
 
-      // 自动填充订单基本信息
-      if (data.order_no && !formOrderNo) {
+      // 检查订单号是否已存在
+      if (data.order_no) {
+        const existing = orders.some(o => o.order_no === data.order_no);
+        if (existing) {
+          alert(`订单号 ${data.order_no} 已存在，请勿重复录入`);
+          setOcrLoading(false);
+          return;
+        }
         setFormOrderNo(data.order_no);
       }
+
+      // 自动填充订单基本信息
       if (data.order_date && !formOrderDate) {
         setFormOrderDate(data.order_date);
       }

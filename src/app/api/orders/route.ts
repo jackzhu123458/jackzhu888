@@ -72,7 +72,11 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (orderError) {
-      return NextResponse.json({ error: orderError.message }, { status: 500 });
+      const msg = orderError.message || '';
+      if (msg.includes('order_no_unique') || msg.includes('duplicate key')) {
+        return NextResponse.json({ error: `订单号 ${order_no} 已存在，请勿重复录入` }, { status: 409 });
+      }
+      return NextResponse.json({ error: msg }, { status: 500 });
     }
 
     // 创建订单明细
