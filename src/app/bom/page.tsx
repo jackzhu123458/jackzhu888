@@ -130,33 +130,59 @@ export default function BomPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 从同类产品名称中提取公共中文描述
+  // 策略：提取每个名称中的中文关键词（2字及以上），取频率最高的作为类目标签
   const extractCommonLabel = (names: string[]): string => {
     if (names.length === 0) return '';
-    if (names.length === 1) return names[0];
-
-    // 提取每个名称的中文前缀（连续中文字符）
-    const chinesePrefixes = names.map(name => {
-      const match = name.match(/^[\u4e00-\u9fff]+/);
+    if (names.length === 1) {
+      const match = names[0].match(/^[\u4e00-\u9fff]+/);
       return match ? match[0] : '';
-    });
-
-    // 找出所有非空前缀中的最长公共前缀
-    const nonEmpty = chinesePrefixes.filter(p => p.length > 0);
-    if (nonEmpty.length === 0) return '';
-
-    // 如果只有一个有中文前缀，直接返回
-    if (nonEmpty.length === 1) return nonEmpty[0];
-
-    // 找最长公共前缀
-    let common = nonEmpty[0];
-    for (let i = 1; i < nonEmpty.length; i++) {
-      while (!nonEmpty[i].startsWith(common) && common.length > 0) {
-        common = common.slice(0, -1);
-      }
-      if (common.length === 0) break;
     }
 
-    return common;
+    // 统计每个中文关键词出现的频率
+    const freq = new Map<string, number>();
+    for (const name of names) {
+      // 提取名称中所有连续中文片段（2字及以上）
+      const matches = name.match(/[\u4e00-\u9fff]{2,}/g);
+      if (matches) {
+        // 取最长的中文片段优先，同时记录其子串
+        for (const m of matches) {
+          // 只记录2字及以上的片段
+          if (m.length >= 2) {
+            freq.set(m, (freq.get(m) || 0) + 1);
+          }
+        }
+      }
+    }
+
+    if (freq.size === 0) return '';
+
+    // 按频率降序、长度降序排序，取频率最高的
+    const sorted = Array.from(freq.entries()).sort((a, b) => {
+      // 优先按频率降序
+      if (b[1] !== a[1]) return b[1] - a[1];
+      // 频率相同时按长度降序（更长的更具体）
+      return b[0].length - a[0].length;
+    });
+
+    // 选取频率最高的关键词
+    // 但要避免选择过于宽泛的词（如"规格"），优先选择出现在名称开头的高频词
+    const topFreq = sorted[0][1];
+    const candidates = sorted.filter(([, f]) => f === topFreq || f >= topFreq * 0.5);
+    
+    // 在候选词中，优先选择出现在名称开头的词
+    for (const name of names) {
+      const prefix = name.match(/^[\u4e00-\u9fff]{2,}/);
+      if (prefix) {
+        // 检查候选词中是否包含此前缀，或此前缀包含某个候选词
+        const matched = candidates.find(([word]) => 
+          prefix[0].includes(word) || word.includes(prefix[0])
+        );
+        if (matched) return matched[0];
+      }
+    }
+
+    // 没有前缀匹配，返回频率最高的
+    return sorted[0][0];
   };
 
   // 从产品数据提取类目列表（含中文描述名称）
