@@ -317,16 +317,18 @@ export default function DeliveryPage() {
         customer_order_item_id: it.customer_order_item_id || null,
       })),
     };
-    // Remove extra fields
-    const { id, delivery_note_items, ...noteFields } = payload as typeof payload & { id?: string };
+    // Only keep fields that belong to delivery_notes table + items
+    const { id, delivery_note_items, customer_order, customer_orders, ...noteFields } = payload as typeof payload & { id?: string; customer_order?: unknown; customer_orders?: unknown };
 
     try {
       if (id) {
-        await fetch('/api/delivery', {
+        const putRes = await fetch('/api/delivery', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id, ...noteFields, items: payload.items }),
         });
+        const putData = await putRes.json();
+        if (putData.error) { alert('保存失败: ' + putData.error); return; }
         await fetchNotes();
       } else {
         const res = await fetch('/api/delivery', {
@@ -335,6 +337,7 @@ export default function DeliveryPage() {
           body: JSON.stringify(noteFields),
         });
         const created = await res.json();
+        if (created.error) { alert('保存失败: ' + created.error); return; }
         setForm((prev) => ({ ...prev, id: created.id }));
         const refreshed = await fetch('/api/delivery').then(r => r.json());
         if (Array.isArray(refreshed)) {
