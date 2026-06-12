@@ -645,6 +645,10 @@ export default function DeliveryPage() {
               <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => setOrderPickerOpen(true)}>
                 <ArrowRight className="h-3.5 w-3.5" /> 从订单导入
               </Button>
+              <div className="w-px h-5 bg-gray-300 mx-1" />
+              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={handlePrintDelivery} disabled={!current}>
+                <Printer className="h-3.5 w-3.5" /> 打印送货单
+              </Button>
             </>
           ) : (
             <>
