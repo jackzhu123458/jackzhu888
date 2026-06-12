@@ -185,20 +185,22 @@ export default function BomPage() {
     return sorted[0][0];
   };
 
-  // 从产品数据提取类目列表（含中文描述名称）
+  // 从产品数据提取类目列表（含中文描述名称），排除BOM占位产品
   const categories = useMemo(() => {
     const catMap = new Map<string, { count: number; names: string[] }>();
-    products.forEach(p => {
-      if (p.category) {
-        const existing = catMap.get(p.category);
-        if (existing) {
-          existing.count++;
-          existing.names.push(p.name);
-        } else {
-          catMap.set(p.category, { count: 1, names: [p.name] });
+    products
+      .filter(p => !p.code.startsWith('BOM-'))
+      .forEach(p => {
+        if (p.category) {
+          const existing = catMap.get(p.category);
+          if (existing) {
+            existing.count++;
+            existing.names.push(p.name);
+          } else {
+            catMap.set(p.category, { count: 1, names: [p.name] });
+          }
         }
-      }
-    });
+      });
     return Array.from(catMap.entries())
       .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))
       .map(([cat, { count, names }]) => ({
@@ -225,7 +227,8 @@ export default function BomPage() {
 
   // 根据选中类目和搜索条件过滤产品
   const filteredProducts = useMemo(() => {
-    let result = products;
+    // 排除BOM占位产品（code以BOM-开头的是BOM导入时自动创建的虚拟产品）
+    let result = products.filter(p => !p.code.startsWith('BOM-'));
 
     // 按类目筛选
     if (selectedCategory !== '0') {
@@ -659,7 +662,7 @@ export default function BomPage() {
                 <span className="font-mono text-xs mr-1">0</span>
                 <span className="text-sm">所有商品</span>
                 <span className={`ml-auto text-xs ${selectedCategory === '0' ? 'text-blue-200' : 'text-gray-400'}`}>
-                  ({products.length})
+                  ({products.filter(p => !p.code.startsWith('BOM-')).length})
                 </span>
               </div>
 
