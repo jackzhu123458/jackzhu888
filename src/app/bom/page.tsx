@@ -90,8 +90,6 @@ export default function BomPage() {
   const [drawings, setDrawings] = useState<Array<{id: string; file_name: string; file_type: string; file_size: number; file_key: string; remark: string | null; created_at: string}>>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadingDrawing, setUploadingDrawing] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState('');
-  const [previewName, setPreviewName] = useState('');
 
   // 加载图纸列表
   const loadDrawings = useCallback(async (productId: string) => {
@@ -146,27 +144,34 @@ export default function BomPage() {
     } catch { alert('删除失败'); }
   };
 
-  // 预览图纸
+  // 预览图纸 - 新窗口打开
   const handlePreviewDrawing = async (fileKey: string, fileName: string) => {
     try {
       const res = await fetch(`/api/drawings?file_key=${encodeURIComponent(fileKey)}`);
       if (res.ok) {
         const { url } = await res.json();
-        setPreviewUrl(url);
-        setPreviewName(fileName);
+        if (url) {
+          window.open(url, '_blank');
+        } else {
+          alert('获取预览地址失败');
+        }
+      } else {
+        alert('获取预览地址失败');
       }
     } catch { alert('获取预览地址失败'); }
   };
 
-  // 打印图纸
+  // 打印图纸 - 新窗口打开后自动打印
   const handlePrintDrawing = async (fileKey: string, fileName: string) => {
     try {
       const res = await fetch(`/api/drawings?file_key=${encodeURIComponent(fileKey)}`);
       if (res.ok) {
         const { url } = await res.json();
-        const printWindow = window.open(url, '_blank');
-        if (printWindow) {
-          printWindow.onload = () => { printWindow.print(); };
+        if (url) {
+          const printWindow = window.open(url, '_blank');
+          if (printWindow) {
+            printWindow.onload = () => { printWindow.print(); };
+          }
         }
       }
     } catch { alert('打印失败'); }
@@ -1474,32 +1479,6 @@ export default function BomPage() {
                 ))}
               </div>
             )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* 图纸预览弹窗 */}
-      <Dialog open={!!previewUrl} onOpenChange={(open) => { if (!open) { setPreviewUrl(''); setPreviewName(''); } }}>
-        <DialogContent className="sm:max-w-none max-w-[1200px] w-[95vw]">
-          <DialogHeader>
-            <DialogTitle>{previewName}</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col items-center">
-            {previewUrl && (
-              previewUrl.toLowerCase().endsWith('.pdf') ? (
-                <iframe src={previewUrl} className="w-full h-[70vh] border rounded" title={previewName} />
-              ) : (
-                <img src={previewUrl} alt={previewName} className="max-w-full max-h-[70vh] object-contain" />
-              )
-            )}
-            <div className="flex gap-2 mt-4">
-              <Button onClick={() => window.print()} variant="outline">
-                <Printer className="w-4 h-4 mr-1" /> 打印
-              </Button>
-              <Button onClick={() => { setPreviewUrl(''); setPreviewName(''); }} variant="outline">
-                关闭
-              </Button>
-            </div>
           </div>
         </DialogContent>
       </Dialog>
