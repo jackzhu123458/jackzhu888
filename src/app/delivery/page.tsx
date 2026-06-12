@@ -498,23 +498,23 @@ export default function DeliveryPage() {
 
   /* ─── Print delivery note ─── */
   const handlePrintDelivery = async () => {
-    const noteId = form.id || current?.id;
-    if (!noteId) {
-      alert('请先选择一条送货单');
-      return;
-    }
-    try {
-      const res = await fetch(`/api/delivery?id=${noteId}`);
-      const data = await res.json();
-      if (data && !data.error) {
-        setPrintData(data as DeliveryNote);
-        setPrintPreviewOpen(true);
-      } else {
-        alert('获取送货单数据失败');
+    // 如果有保存过的ID，从API获取完整数据（含订单编号等关联信息）
+    if (form.id) {
+      try {
+        const res = await fetch(`/api/delivery?id=${form.id}`);
+        const data = await res.json();
+        if (data && !data.error) {
+          setPrintData(data as DeliveryNote);
+          setPrintPreviewOpen(true);
+          return;
+        }
+      } catch {
+        // API获取失败，降级用当前表单数据
       }
-    } catch {
-      alert('获取送货单数据失败');
     }
+    // 直接用当前表单数据打印（无论是否已保存）
+    setPrintData(form as DeliveryNote);
+    setPrintPreviewOpen(true);
   };
 
   const doPrint = () => {
