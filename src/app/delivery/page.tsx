@@ -160,6 +160,10 @@ export default function DeliveryPage() {
   const [customerSearch, setCustomerSearch] = useState('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
+  // Delivery print preview
+  const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
+  const [printData, setPrintData] = useState<DeliveryNote | null>(null);
+
   // Label printing
   const [labelOpen, setLabelOpen] = useState(false);
   const [labelItemIdx, setLabelItemIdx] = useState(0);
@@ -485,7 +489,23 @@ export default function DeliveryPage() {
   };
 
   /* ─── Print delivery note ─── */
-  const handlePrintDelivery = () => {
+  const handlePrintDelivery = async () => {
+    if (!form.id) return;
+    try {
+      const res = await fetch(`/api/delivery?id=${form.id}`);
+      const data = await res.json();
+      if (data && !data.error) {
+        setPrintData(data as DeliveryNote);
+        setPrintPreviewOpen(true);
+      } else {
+        alert('获取送货单数据失败');
+      }
+    } catch {
+      alert('获取送货单数据失败');
+    }
+  };
+
+  const doPrint = () => {
     window.print();
   };
 
@@ -1140,6 +1160,122 @@ export default function DeliveryPage() {
         </DialogContent>
       </Dialog>
 
+      {/* ─── Delivery Print Preview Dialog ─── */}
+      <Dialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0">
+          <DialogHeader className="px-6 pt-4 pb-2 no-print">
+            <DialogTitle>打印预览 - 送货单</DialogTitle>
+          </DialogHeader>
+          <div className="px-6 pb-4">
+            {/* Print area */}
+            <div id="delivery-print-area" className="bg-white border border-gray-300 p-6 text-[12px] leading-[20px]" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif' }}>
+              {/* 抬头区域 */}
+              <div className="text-center mb-1">
+                <div style={{ fontSize: '18px', fontWeight: 'bold', letterSpacing: '4px' }}>常州横林新顺电器配件厂</div>
+                <div className="flex justify-center gap-6 mt-1" style={{ fontSize: '10px', color: '#555' }}>
+                  <span>地址：江苏省常州市横林镇长虹东路103号</span>
+                  <span>电话：13806122629</span>
+                  <span>传真：0519-88781585</span>
+                </div>
+              </div>
+              <div className="text-center my-2" style={{ fontSize: '16px', fontWeight: 'bold' }}>送 货 单</div>
+
+              {/* 客户信息 + 单号信息 */}
+              <div className="flex justify-between mb-2">
+                <div style={{ fontSize: '12px' }}>
+                  <div>客　户：{printData?.customer_name || ''}</div>
+                  <div>交货地点：{printData?.customer_address || ''}</div>
+                </div>
+                <div style={{ fontSize: '12px', textAlign: 'right' }}>
+                  <div>送货单号：{printData?.note_no || ''}</div>
+                  <div>单据日期：{printData?.delivery_date ? formatDate(printData.delivery_date) : ''}</div>
+                </div>
+              </div>
+
+              {/* 明细表格 + 右侧三联标识 */}
+              <div className="flex">
+                <table className="flex-1 border-collapse" style={{ border: '1px solid #000' }}>
+                  <thead>
+                    <tr style={{ background: '#f0f0f0' }}>
+                      <th style={{ border: '1px solid #000', padding: '4px 6px', width: '40px', fontWeight: 'bold' }}>项次</th>
+                      <th style={{ border: '1px solid #000', padding: '4px 6px', fontWeight: 'bold' }}>订单编号</th>
+                      <th style={{ border: '1px solid #000', padding: '4px 6px', fontWeight: 'bold' }}>物料编号</th>
+                      <th style={{ border: '1px solid #000', padding: '4px 6px', fontWeight: 'bold' }}>物料名称</th>
+                      <th style={{ border: '1px solid #000', padding: '4px 6px', width: '40px', fontWeight: 'bold' }}>单位</th>
+                      <th style={{ border: '1px solid #000', padding: '4px 6px', width: '70px', fontWeight: 'bold' }}>数量</th>
+                      <th style={{ border: '1px solid #000', padding: '4px 6px', width: '80px', fontWeight: 'bold' }}>备注</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(printData?.delivery_note_items || []).map((item, idx) => (
+                      <tr key={idx}>
+                        <td style={{ border: '1px solid #000', padding: '3px 6px', textAlign: 'center' }}>{idx + 1}</td>
+                        <td style={{ border: '1px solid #000', padding: '3px 6px', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '11px' }}>
+                          {/* 优先用 item 上的 customer_order，否则从关联的 customer_orders 取 order_no */}
+                          {item.customer_order || (printData as DeliveryNote & { customer_orders?: { order_no?: string } | null })?.customer_orders?.order_no || ''}
+                        </td>
+                        <td style={{ border: '1px solid #000', padding: '3px 6px', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '11px' }}>
+                          {item.product?.code || ''}
+                        </td>
+                        <td style={{ border: '1px solid #000', padding: '3px 6px' }}>
+                          {item.product?.name || ''}{item.product?.spec ? `/${item.product.spec}` : ''}
+                        </td>
+                        <td style={{ border: '1px solid #000', padding: '3px 6px', textAlign: 'center' }}>
+                          {item.product?.unit || ''}
+                        </td>
+                        <td style={{ border: '1px solid #000', padding: '3px 6px', textAlign: 'right', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '11px' }}>
+                          {item.quantity}
+                        </td>
+                        <td style={{ border: '1px solid #000', padding: '3px 6px' }}>
+                          {item.remark || ''}
+                        </td>
+                      </tr>
+                    ))}
+                    {/* 补空行至最少8行 */}
+                    {Array.from({ length: Math.max(0, 8 - (printData?.delivery_note_items?.length || 0)) }).map((_, i) => (
+                      <tr key={`empty-${i}`}>
+                        <td style={{ border: '1px solid #000', padding: '3px 6px', textAlign: 'center', height: '22px' }}>&nbsp;</td>
+                        <td style={{ border: '1px solid #000', padding: '3px 6px' }}>&nbsp;</td>
+                        <td style={{ border: '1px solid #000', padding: '3px 6px' }}>&nbsp;</td>
+                        <td style={{ border: '1px solid #000', padding: '3px 6px' }}>&nbsp;</td>
+                        <td style={{ border: '1px solid #000', padding: '3px 6px' }}>&nbsp;</td>
+                        <td style={{ border: '1px solid #000', padding: '3px 6px' }}>&nbsp;</td>
+                        <td style={{ border: '1px solid #000', padding: '3px 6px' }}>&nbsp;</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {/* 右侧三联标识 */}
+                <div className="flex flex-col justify-around items-center" style={{ width: '24px', border: '1px solid #000', borderLeft: 'none', fontSize: '9px', writingMode: 'vertical-rl', letterSpacing: '2px' }}>
+                  <span style={{ color: '#333' }}>(一)存根白</span>
+                  <span style={{ color: '#cc0000' }}>(二)客户红</span>
+                  <span style={{ color: '#cc8800' }}>(三)回单黄</span>
+                </div>
+              </div>
+
+              {/* 底部备注 + 签署 */}
+              <div className="flex mt-3" style={{ fontSize: '12px' }}>
+                <div className="flex-1">
+                  <div>备注：{printData?.remark || ''}</div>
+                </div>
+              </div>
+              <div className="flex justify-between mt-6" style={{ fontSize: '12px' }}>
+                <div>收货单位及经手人：________________</div>
+                <div>送货单位及经手人：新　顺________________</div>
+              </div>
+            </div>
+
+            {/* 操作按钮 */}
+            <div className="flex justify-end gap-2 mt-4 no-print">
+              <Button variant="outline" onClick={() => setPrintPreviewOpen(false)}>关闭</Button>
+              <Button className="bg-[#1E40AF] hover:bg-[#1D4ED8] gap-1" onClick={doPrint}>
+                <Printer className="h-4 w-4" /> 打印
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* ─── Label Print Dialog ─── */}
       <Dialog open={labelOpen} onOpenChange={setLabelOpen}>
         <DialogContent className="max-w-2xl">
@@ -1352,6 +1488,8 @@ export default function DeliveryPage() {
         }
         @media print {
           body * { visibility: hidden; }
+          #delivery-print-area, #delivery-print-area * { visibility: visible; }
+          #delivery-print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 20px; border: none; }
           .label-card, .label-card * { visibility: visible; }
           .label-card { position: relative; }
           .no-print { visibility: hidden; }
