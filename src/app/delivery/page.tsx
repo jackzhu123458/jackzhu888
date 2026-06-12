@@ -289,7 +289,13 @@ export default function DeliveryPage() {
 
   const handleSave = async () => {
     if (!form.note_no || !form.customer_name) {
-      alert('请填写送货单号和客户名称');
+      const missing = [];
+      if (!form.note_no) missing.push('送货单号');
+      if (!form.customer_name) missing.push('客户名称');
+      if (missing.length > 0) {
+        alert(`请填写${missing.join('和')}`);
+        return;
+      }
       return;
     }
     const payload = {
@@ -711,26 +717,40 @@ export default function DeliveryPage() {
                 {editMode ? (
                   <div className="relative flex-1">
                     <Input
-                      className="h-7 text-xs"
+                      className="h-7 text-xs font-mono"
                       value={customerSearch}
                       onChange={(e) => {
-                        setCustomerSearch(e.target.value);
+                        const val = e.target.value;
+                        setCustomerSearch(val);
+                        // 输入时清空客户关联，等从下拉选择后自动填充
+                        setForm((prev) => ({ ...prev, customer_id: null, customer_name: '', customer_address: '', customer_contact: '', customer_phone: '' }));
                         setShowCustomerDropdown(true);
                         setIsFormDirty(true);
+                        // 精确匹配时自动选中
+                        const exact = customers.find(c => c.code.toLowerCase() === val.toLowerCase());
+                        if (exact) {
+                          pickCustomer(exact);
+                          setCustomerSearch(exact.code);
+                          setShowCustomerDropdown(false);
+                        }
                       }}
-                      onFocus={() => { setCustomerSearch(customerSearch || form.customer_id || ''); setShowCustomerDropdown(true); }}
+                      onFocus={() => { setCustomerSearch(customerSearch || ''); setShowCustomerDropdown(true); }}
                       onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
-                      placeholder="输入编号或名称搜索"
+                      placeholder="输入客户编号"
                     />
-                    {showCustomerDropdown && customerSearch && customers.filter(c => c.code.includes(customerSearch) || c.name.includes(customerSearch)).length > 0 && (
-                      <div className="absolute z-50 top-7 left-0 bg-white border rounded shadow-lg max-h-32 overflow-auto w-full">
-                        {customers.filter(c => c.code.includes(customerSearch) || c.name.includes(customerSearch)).slice(0, 5).map(c => (
-                          <button key={c.id} className="w-full text-left px-2 py-1 hover:bg-gray-100 text-xs" onClick={() => { pickCustomer(c); setCustomerSearch(c.code); }}>
-                            {c.code} - {c.name}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    {showCustomerDropdown && customerSearch && (() => {
+                      const q = customerSearch.toLowerCase();
+                      const filtered = customers.filter(c => c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
+                      return filtered.length > 0 ? (
+                        <div className="absolute z-50 top-7 left-0 bg-white border rounded shadow-lg max-h-32 overflow-auto w-full">
+                          {filtered.slice(0, 10).map(c => (
+                            <button key={c.id} className="w-full text-left px-2 py-1 hover:bg-gray-100 text-xs" onMouseDown={(e) => { e.preventDefault(); pickCustomer(c); setCustomerSearch(c.code); }}>
+                              <span className="font-mono text-gray-600 mr-1">{c.code}</span> {c.name}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                 ) : (
                   <span className="text-xs text-[#111827]">{form.customer_id ? customers.find(c => c.id === form.customer_id)?.code : '-'}</span>
@@ -740,9 +760,10 @@ export default function DeliveryPage() {
                 <label className="text-xs text-gray-500 whitespace-nowrap w-16">客户名称</label>
                 {editMode ? (
                   <Input
-                    className="h-7 text-xs flex-1"
+                    className="h-7 text-xs flex-1 bg-gray-50"
                     value={form.customer_name}
-                    onChange={(e) => { setForm((prev) => ({ ...prev, customer_name: e.target.value })); setIsFormDirty(true); }}
+                    readOnly
+                    placeholder="自动填充"
                   />
                 ) : (
                   <span className="text-xs text-[#111827]">{form.customer_name || '-'}</span>
