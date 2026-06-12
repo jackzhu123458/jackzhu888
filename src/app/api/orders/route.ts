@@ -95,19 +95,26 @@ export async function POST(request: NextRequest) {
       }
 
       // 创建排程记录
-      const schedules: { order_item_id: string; schedule_date: string; quantity: number }[] = [];
-      for (const item of items) {
-        if (item.schedules && Array.isArray(item.schedules)) {
+      const schedules: { item_id: string; schedule_date: string; quantity: number }[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const insertedItem = insertedItems[i];
+
+        // 优先使用 delivery_date 自动创建排程，其次使用 schedules 数组
+        if (item.delivery_date && item.quantity > 0 && insertedItem) {
+          schedules.push({
+            item_id: insertedItem.id,
+            schedule_date: item.delivery_date,
+            quantity: item.quantity,
+          });
+        } else if (item.schedules && Array.isArray(item.schedules)) {
           for (const s of item.schedules) {
-            if (s.schedule_date && s.quantity > 0) {
-              const insertedItem = insertedItems.find((ii: { product_id: string }) => ii.product_id === item.product_id);
-              if (insertedItem) {
-                schedules.push({
-                  order_item_id: insertedItem.id,
-                  schedule_date: s.schedule_date,
-                  quantity: s.quantity,
-                });
-              }
+            if (s.schedule_date && s.quantity > 0 && insertedItem) {
+              schedules.push({
+                item_id: insertedItem.id,
+                schedule_date: s.schedule_date,
+                quantity: s.quantity,
+              });
             }
           }
         }
@@ -194,7 +201,7 @@ export async function PUT(request: NextRequest) {
         await supabase
           .from('customer_order_schedules')
           .delete()
-          .in('order_item_id', oldItemIds);
+          .in('item_id', oldItemIds);
         await supabase
           .from('customer_order_items')
           .delete()
@@ -221,7 +228,7 @@ export async function PUT(request: NextRequest) {
         }
 
         // 重新插入排程
-        const schedules: { order_item_id: string; schedule_date: string; quantity: number }[] = [];
+        const schedules: { item_id: string; schedule_date: string; quantity: number }[] = [];
         for (const item of items) {
           if (item.schedules && Array.isArray(item.schedules)) {
             for (const s of item.schedules) {
@@ -229,7 +236,7 @@ export async function PUT(request: NextRequest) {
                 const insertedItem = insertedItems.find((ii: { product_id: string }) => ii.product_id === item.product_id);
                 if (insertedItem) {
                   schedules.push({
-                    order_item_id: insertedItem.id,
+                    item_id: insertedItem.id,
                     schedule_date: s.schedule_date,
                     quantity: s.quantity,
                   });
@@ -290,7 +297,7 @@ export async function DELETE(request: NextRequest) {
 
     if (items && items.length > 0) {
       const itemIds = items.map((i: { id: string }) => i.id);
-      await supabase.from('customer_order_schedules').delete().in('order_item_id', itemIds);
+      await supabase.from('customer_order_schedules').delete().in('item_id', itemIds);
     }
 
     // 删除明细
