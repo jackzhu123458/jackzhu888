@@ -791,7 +791,7 @@ export default function OrdersPage() {
 
       {/* 新增/编辑订单抽屉 */}
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-[1400px] w-[95vw] max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[1400px] w-[95vw] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingOrder ? '编辑订单' : '新增订单'}</DialogTitle>
           </DialogHeader>
@@ -854,7 +854,7 @@ export default function OrdersPage() {
               </div>
 
               {/* 表头 */}
-              <div className="grid grid-cols-[1.2fr_1.5fr_90px_100px_140px_36px] gap-2 mb-1 px-1">
+              <div className="grid grid-cols-[2fr_2.5fr_100px_120px_160px_40px] gap-3 mb-2 px-1">
                 <span className="text-xs text-gray-500 font-medium">物料编码</span>
                 <span className="text-xs text-gray-500 font-medium">物料名称</span>
                 <span className="text-xs text-gray-500 font-medium">数量</span>
@@ -864,7 +864,7 @@ export default function OrdersPage() {
               </div>
 
               {formItems.map((item, itemIdx) => (
-                <div key={itemIdx} className="grid grid-cols-[1.2fr_1.5fr_90px_100px_140px_36px] gap-2 items-center mb-2">
+                <div key={itemIdx} className="grid grid-cols-[2fr_2.5fr_100px_120px_160px_40px] gap-3 items-center mb-3">
                   {/* 物料编码搜索 */}
                   <div className="relative">
                     <Input
@@ -898,7 +898,7 @@ export default function OrdersPage() {
                           });
                         }, 200);
                       }}
-                      className="text-sm font-mono h-9"
+                      className="text-sm font-mono h-10"
                     />
                     {itemSearches[itemIdx] && !item.product_id && (
                       <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto mt-0.5">
@@ -960,7 +960,7 @@ export default function OrdersPage() {
                           });
                         }, 200);
                       }}
-                      className="text-sm h-9"
+                      className="text-sm h-10"
                     />
                     {itemNameSearches[itemIdx] && !item.product_id && (
                       <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto mt-0.5">
@@ -994,7 +994,7 @@ export default function OrdersPage() {
                     type="number"
                     value={item.quantity || ''}
                     onChange={(e) => updateFormItem(itemIdx, 'quantity', Number(e.target.value))}
-                    className="text-sm h-9 text-right"
+                    className="text-sm h-10 text-right"
                     placeholder="0"
                   />
                   {/* 单价 - 只读自动填充 */}
@@ -1002,7 +1002,7 @@ export default function OrdersPage() {
                     type="number"
                     value={item.unit_price ?? ''}
                     readOnly
-                    className="text-sm h-9 bg-gray-100 text-right"
+                    className="text-sm h-10 bg-gray-100 text-right"
                     placeholder="自动"
                   />
                   {/* 交货日期 */}
@@ -1010,13 +1010,13 @@ export default function OrdersPage() {
                     type="date"
                     value={item.delivery_date}
                     onChange={(e) => updateFormItem(itemIdx, 'delivery_date', e.target.value)}
-                    className="text-sm h-9"
+                    className="text-sm h-10"
                   />
                   {/* 删除 */}
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-9 w-9 p-0 text-red-400 hover:text-red-600"
+                    className="h-10 w-10 p-0 text-red-400 hover:text-red-600"
                     onClick={() => removeFormItem(itemIdx)}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
