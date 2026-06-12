@@ -463,9 +463,18 @@ export default function ProductionPage() {
                             <td className="px-5 py-3 text-gray-600">{order.start_date ? order.start_date.slice(0, 10) : '-'}</td>
                             <td className="px-5 py-3 text-gray-600">{order.due_date ? order.due_date.slice(0, 10) : '-'}</td>
                             <td className="px-5 py-3 text-center">
-                              <button onClick={() => setDetailOrder(order)} className="text-blue-600 hover:text-blue-800 text-xs mr-2">查看</button>
-                              <button onClick={() => handleEdit(order)} className="text-blue-600 hover:text-blue-800 text-xs mr-2">编辑</button>
-                              <button onClick={() => setDeleteId(order.id)} className="text-red-500 hover:text-red-700 text-xs">删除</button>
+                              <div className="flex items-center justify-center gap-1 flex-wrap">
+                                {order.status === 'pending' && (
+                                  <button onClick={() => handleStatusChange(order.id, 'in_progress')} className="text-green-600 hover:text-green-800 text-xs px-2 py-0.5 rounded border border-green-300 bg-green-50">开始生产</button>
+                                )}
+                                {order.status === 'in_progress' && (
+                                  <button onClick={() => { setCompleteOrderId(order.id); setCompleteWarehouseId(warehouses.length > 0 ? warehouses[0].id : ''); }} className="text-blue-600 hover:text-blue-800 text-xs px-2 py-0.5 rounded border border-blue-300 bg-blue-50">完成入库</button>
+                                )}
+                                {(order.status === 'pending' || order.status === 'in_progress') && (
+                                  <button onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-red-500 hover:text-red-700 text-xs px-2 py-0.5 rounded border border-red-300 bg-red-50">取消</button>
+                                )}
+                                <button onClick={() => setDetailOrder(order)} className="text-gray-500 hover:text-gray-700 text-xs px-2 py-0.5 rounded border border-gray-300 bg-gray-50">详情</button>
+                              </div>
                             </td>
                           </tr>
                         ))}
