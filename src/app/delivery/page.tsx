@@ -1249,13 +1249,13 @@ export default function DeliveryPage() {
 
       {/* ─── Delivery Print Preview Dialog ─── */}
       <Dialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen}>
-        <DialogContent className="max-w-4xl p-0 flex flex-col" style={{ height: '85vh' }}>
+        <DialogContent className="w-auto max-w-none p-0 flex flex-col" style={{ width: 'fit-content', maxWidth: '98vw' }}>
           <DialogHeader className="px-6 pt-4 pb-2 no-print shrink-0">
-            <DialogTitle>打印预览 - 送货单（三联单 241mm×140mm）</DialogTitle>
+            <DialogTitle>打印预览 - 送货单</DialogTitle>
           </DialogHeader>
-          <div className="flex-1 overflow-auto flex justify-center py-4" style={{ background: '#E5E7EB' }}>
-            {/* 打印区域 — 白纸效果，实际尺寸 241mm×140mm，用zoom缩放适配视口 */}
-            <div id="delivery-print-area" className="bg-white" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '140mm', padding: '6mm 8mm', boxSizing: 'border-box', fontSize: '11px', lineHeight: '17px', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', zoom: 0.75 }}>
+          <div className="flex justify-center py-4" style={{ background: '#E5E7EB' }}>
+            {/* 打印区域 — 白纸效果，实际尺寸 241mm×140mm */}
+            <div id="delivery-print-area" className="bg-white" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '140mm', padding: '6mm 8mm', boxSizing: 'border-box', fontSize: '11px', lineHeight: '17px', boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
               {/* 抬头区域 — 从系统设置读取公司信息 */}
               <div style={{ textAlign: 'center', marginBottom: '2px' }}>
                 <div style={{ fontSize: '16px', fontWeight: 'bold', letterSpacing: '4px' }}>{companyInfo.name || '常州横林新顺电器配件厂'}</div>
@@ -1673,7 +1673,6 @@ export default function DeliveryPage() {
             border: none;
             box-shadow: none;
             box-sizing: border-box;
-            zoom: 1 !important;
           }
           .label-card, .label-card * { visibility: visible; }
           .label-card { position: relative; }
