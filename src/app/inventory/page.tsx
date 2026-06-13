@@ -333,41 +333,50 @@ export default function InventoryPage() {
               </div>
 
               {/* 进出记录表格 */}
-              <div className="border border-gray-200 rounded-lg">
-                <table className="w-full text-sm" style={{ tableLayout: 'auto' }}>
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
+                  <colgroup>
+                    <col style={{ width: '100px' }} />
+                    <col style={{ width: '80px' }} />
+                    <col style={{ width: '160px' }} />
+                    <col style={{ width: '100px' }} />
+                    <col style={{ width: '120px' }} />
+                    <col style={{ width: '160px' }} />
+                    <col style={{ width: 'auto' }} />
+                  </colgroup>
                   <thead>
                     <tr className="border-b border-gray-200" style={{ backgroundColor: '#1E40AF' }}>
-                      <th className="text-left px-4 py-3 font-medium text-white">日期</th>
-                      <th className="text-center px-4 py-3 font-medium text-white">类型</th>
-                      <th className="text-left px-4 py-3 font-medium text-white">单号</th>
-                      <th className="text-right px-4 py-3 font-medium text-white">数量</th>
-                      <th className="text-left px-4 py-3 font-medium text-white">仓库</th>
-                      <th className="text-left px-4 py-3 font-medium text-white">关联单据</th>
-                      <th className="text-left px-4 py-3 font-medium text-white">备注</th>
+                      <th className="text-left px-3 py-3 font-medium text-white whitespace-nowrap">日期</th>
+                      <th className="text-center px-3 py-3 font-medium text-white whitespace-nowrap">类型</th>
+                      <th className="text-left px-3 py-3 font-medium text-white whitespace-nowrap">单号</th>
+                      <th className="text-right px-3 py-3 font-medium text-white whitespace-nowrap">数量</th>
+                      <th className="text-left px-3 py-3 font-medium text-white whitespace-nowrap">仓库</th>
+                      <th className="text-left px-3 py-3 font-medium text-white whitespace-nowrap">关联单据</th>
+                      <th className="text-left px-3 py-3 font-medium text-white whitespace-nowrap">备注</th>
                     </tr>
                   </thead>
                   <tbody>
                     {transactions.map((tx, idx) => (
                       <tr key={tx.id} className="border-b border-gray-100 hover:bg-blue-50/40" style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#F9FAFB' }}>
-                        <td className="px-4 py-3 text-gray-700 font-mono text-xs">
+                        <td className="px-3 py-3 text-gray-700 font-mono text-xs whitespace-nowrap overflow-hidden text-overflow-ellipsis">
                           {tx.date ? new Date(tx.date).toLocaleDateString('zh-CN') : '-'}
                         </td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-3 py-3 text-center">
                           {tx.type === 'inbound' ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 border border-green-200">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 border border-green-200 whitespace-nowrap">
                               <ArrowDownCircle className="w-3.5 h-3.5" />入库
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-600 border border-red-200">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-600 border border-red-200 whitespace-nowrap">
                               <ArrowUpCircle className="w-3.5 h-3.5" />出库
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 font-mono text-xs text-blue-700 font-medium">{tx.note_no || '-'}</td>
-                        <td className="px-4 py-3 text-right font-mono text-gray-900 font-medium">{tx.quantity.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-gray-600 text-xs">{tx.warehouse}</td>
-                        <td className="px-4 py-3 text-gray-600 text-xs">{tx.related_order || '-'}</td>
-                        <td className="px-4 py-3 text-gray-500 text-xs">{tx.remark || '-'}</td>
+                        <td className="px-3 py-3 font-mono text-xs text-blue-700 font-medium whitespace-nowrap overflow-hidden text-overflow-ellipsis">{tx.note_no || '-'}</td>
+                        <td className="px-3 py-3 text-right font-mono text-gray-900 font-medium whitespace-nowrap">{tx.quantity.toFixed(2)}</td>
+                        <td className="px-3 py-3 text-gray-600 text-xs whitespace-nowrap overflow-hidden text-overflow-ellipsis">{tx.warehouse}</td>
+                        <td className="px-3 py-3 text-gray-600 text-xs whitespace-nowrap overflow-hidden text-overflow-ellipsis">{tx.related_order || '-'}</td>
+                        <td className="px-3 py-3 text-gray-500 text-xs whitespace-nowrap overflow-hidden text-overflow-ellipsis">{tx.remark || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
