@@ -164,9 +164,89 @@ export async function DELETE(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 });
+
+  // 获取送货单详情（状态、仓库、明细），用于回退库存
+  const { data: note } = await client
+    .from('delivery_notes')
+    .select('status, warehouse_id')
+    .eq('id', id)
+    .maybeSingle();
+
+  // 如果已出库（shipped），需要回退库存和客户订单已交量
+  if (note?.status === 'shipped' && note.warehouse_id) {
+    const { data: items } = await client
+      .from('delivery_note_items')
+      .select('*')
+      .eq('note_id', id);
+
+    if (items && items.length > 0) {
+      await handleShipmentRollback(client, id, note.warehouse_id, items);
+    }
+  }
+
   const { error } = await client.from('delivery_notes').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
+}
+
+// 出库回退：恢复库存 + 恢复预扣 + 回退客户订单已交量（删除已出库送货单时调用）
+async function handleShipmentRollback(
+  client: ReturnType<typeof getSupabaseClient>,
+  noteId: string,
+  warehouseId: string,
+  items: Array<Record<string, unknown>>
+) {
+  if (items.length === 0) return;
+
+  const productIds = items.map(it => it.product_id as string).filter(Boolean);
+  const orderItemIds = items.map(it => it.customer_order_item_id as string).filter(Boolean);
+
+  const [invResult, orderItemsResult] = await Promise.all([
+    client.from('inventory').select('id, product_id, quantity, reserved_qty').eq('warehouse_id', warehouseId).in('product_id', productIds),
+    orderItemIds.length > 0
+      ? client.from('customer_order_items').select('id, delivered_qty, reserved_qty, quantity').in('id', orderItemIds)
+      : Promise.resolve({ data: [] as Array<Record<string, unknown>> | null })
+  ]);
+
+  const invMap = new Map((invResult.data || []).map((inv: Record<string, unknown>) => [inv.product_id as string, inv]));
+  const orderItemMap = new Map((orderItemsResult.data || []).map((oi: Record<string, unknown>) => [oi.id as string, oi]));
+
+  const invUpdates: Array<{ id: string; quantity: number; reserved_qty: number }> = [];
+  const orderUpdates: Array<{ id: string; delivered_qty: number; reserved_qty: number }> = [];
+
+  for (const item of items) {
+    const productId = item.product_id as string;
+    const quantity = Number(item.quantity || 0);
+    if (!productId || quantity <= 0) continue;
+
+    // 回退库存：加回 quantity 和 reserved_qty
+    const inv = invMap.get(productId);
+    if (inv) {
+      invUpdates.push({
+        id: inv.id as string,
+        quantity: Number(inv.quantity) + quantity,
+        reserved_qty: Number(inv.reserved_qty || 0) + quantity,
+      });
+    }
+
+    // 回退客户订单：减少已交量，恢复预留量
+    const orderItemId = item.customer_order_item_id as string;
+    if (orderItemId) {
+      const orderItem = orderItemMap.get(orderItemId);
+      if (orderItem) {
+        orderUpdates.push({
+          id: orderItem.id as string,
+          delivered_qty: Math.max(0, Number(orderItem.delivered_qty || 0) - quantity),
+          reserved_qty: Number(orderItem.reserved_qty || 0) + quantity,
+        });
+      }
+    }
+  }
+
+  await Promise.all([
+    ...invUpdates.map(u => client.from('inventory').update({ quantity: u.quantity, reserved_qty: u.reserved_qty }).eq('id', u.id)),
+    ...orderUpdates.map(u => client.from('customer_order_items').update({ delivered_qty: u.delivered_qty, reserved_qty: u.reserved_qty }).eq('id', u.id)),
+  ]);
 }
 
 // 出库处理：扣减库存 + 释放预扣 + 更新客户订单已交量
