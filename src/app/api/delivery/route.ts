@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const client = getSupabaseClient();
   const body = await request.json();
-  const { items, customer_order_id, warehouse_id, ...noteFields } = body;
+  const { items, customer_order_id, warehouse_id, note_no: _incomingNoteNo, ...noteFields } = body;
 
   // 自动生成送货单号: XS + 月份(2位) + 序号(6位)，如 XS06000001
   const now = new Date();
@@ -96,9 +96,32 @@ export async function PUT(request: NextRequest) {
   // 获取修改前的状态
   const { data: beforeNote } = await client
     .from('delivery_notes')
-    .select('status, warehouse_id')
+    .select('status, warehouse_id, note_no')
     .eq('id', id)
     .maybeSingle();
+
+  // 如果 note_no 为空或不存在，自动生成
+  if (!updates.note_no || (typeof updates.note_no === 'string' && updates.note_no.trim() === '')) {
+    delete updates.note_no;
+    if (!beforeNote?.note_no) {
+      const now = new Date();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const prefix = `XS${month}`;
+      const { data: existingNotes } = await client
+        .from('delivery_notes')
+        .select('note_no')
+        .like('note_no', `${prefix}%`)
+        .order('note_no', { ascending: false })
+        .limit(1);
+      let seq = 1;
+      if (existingNotes && existingNotes.length > 0) {
+        const lastNo = existingNotes[0].note_no as string;
+        const lastSeq = parseInt(lastNo.slice(prefix.length), 10);
+        if (!isNaN(lastSeq)) seq = lastSeq + 1;
+      }
+      updates.note_no = `${prefix}${String(seq).padStart(6, '0')}`;
+    }
+  }
 
   const { error: nErr } = await client.from('delivery_notes').update(updates).eq('id', id);
   if (nErr) return NextResponse.json({ error: nErr.message }, { status: 500 });
