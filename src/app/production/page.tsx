@@ -1,282 +1,208 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { translateUnit } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
+import { translateUnit } from '@/lib/utils';
+
+/* ---------- 类型 ---------- */
+interface Order {
+  id: string;
+  order_no: string;
+  customer_id: string | null;
+  product_id: string;
+  quantity: number;
+  status: string;
+  due_date: string | null;
+  start_date: string | null;
+  remark: string | null;
+  customer_order_id: string | null;
+  created_at?: string;
+  customers?: { id: string; name: string } | null;
+  customer_order?: { id: string; order_no: string } | null;
+  products?: { id: string; code: string; name: string; unit?: string; spec?: string } | null;
+  production_order_materials?: Array<{
+    id?: string;
+    product_id: string;
+    required_qty: number;
+    prepared_qty: number;
+    products?: { id: string; code: string; name: string; unit?: string } | null;
+  }>;
+}
 
 interface Product {
   id: string;
   code: string;
   name: string;
-  spec: string | null;
-  unit: string;
-  type: string;
+  spec?: string;
+  unit?: string;
+  type?: string;
+  category?: string;
+  price?: number;
 }
 
-interface Customer {
-  id: string;
-  name: string;
-  code: string | null;
-}
+interface Customer { id: string; name: string; code?: string }
+interface Warehouse { id: string; name: string }
 
-interface Warehouse {
-  id: string;
-  name: string;
-}
-
-interface Material {
-  product_id: string;
-  required_qty: string;
-  prepared_qty: string;
-  remark: string;
-  products: Product;
-}
-
-interface ProductionOrder {
-  id: string;
-  order_no: string;
-  customer_id: string | null;
-  customer_order_id: string | null;
-  customer_order_item_id: string | null;
-  product_id: string;
-  quantity: string;
-  status: string;
-  start_date: string | null;
-  due_date: string | null;
-  completed_at: string | null;
-  remark: string | null;
-  created_at: string;
-  products: Product;
-  customers: Customer | null;
-  production_order_materials: Material[];
-  customer_order?: { order_no: string };
-  order_item?: {
-    product_id: string;
-    quantity: number;
-    delivered_qty: number;
-    code: string;
-    name: string;
-    spec: string | null;
-    unit: string;
-  };
-}
-
-const statusMap: Record<string, { label: string; color: string }> = {
-  pending: { label: '待生产', color: 'bg-yellow-100 text-yellow-800' },
-  confirmed: { label: '已确认', color: 'bg-blue-100 text-blue-800' },
-  in_progress: { label: '生产中', color: 'bg-blue-100 text-blue-800' },
-  completed: { label: '已完成', color: 'bg-green-100 text-green-800' },
-  cancelled: { label: '已取消', color: 'bg-red-100 text-red-800' },
+/* ---------- 状态配色 ---------- */
+const statusMap: Record<string, { label: string; color: string; bg: string }> = {
+  pending:     { label: '待生产', color: 'text-amber-700 border-amber-300', bg: 'bg-amber-50' },
+  in_progress: { label: '生产中', color: 'text-blue-700 border-blue-300',   bg: 'bg-blue-50' },
+  completed:   { label: '已完成', color: 'text-green-700 border-green-300', bg: 'bg-green-50' },
+  confirmed:   { label: '已确认', color: 'text-indigo-700 border-indigo-300', bg: 'bg-indigo-50' },
+  cancelled:   { label: '已取消', color: 'text-red-600 border-red-300',     bg: 'bg-red-50' },
 };
 
+/* ---------- 看板列定义 ---------- */
+const columns = [
+  { key: 'pending',     label: '待生产', headerBg: 'bg-amber-500',  headerText: 'text-white' },
+  { key: 'in_progress', label: '生产中', headerBg: 'bg-blue-500',   headerText: 'text-white' },
+  { key: 'completed',   label: '已完成', headerBg: 'bg-green-600',  headerText: 'text-white' },
+] as const;
+
 export default function ProductionPage() {
-  const [orders, setOrders] = useState<ProductionOrder[]>([]);
+  /* ---------- state ---------- */
+  const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterProductId, setFilterProductId] = useState<string>('all');
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [editOrder, setEditOrder] = useState<ProductionOrder | null>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [detailOrder, setDetailOrder] = useState<ProductionOrder | null>(null);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [completeOrderId, setCompleteOrderId] = useState<string | null>(null);
-  const [completeWarehouseId, setCompleteWarehouseId] = useState('');
-  const [completing, setCompleting] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [filterProductId, setFilterProductId] = useState('all');
 
-  // 表单
+  // 新增/编辑
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [editOrder, setEditOrder] = useState<Order | null>(null);
   const [formCustomerId, setFormCustomerId] = useState('');
   const [formProductId, setFormProductId] = useState('');
   const [formQuantity, setFormQuantity] = useState('');
   const [formStartDate, setFormStartDate] = useState('');
   const [formDueDate, setFormDueDate] = useState('');
   const [formRemark, setFormRemark] = useState('');
-  const [formMaterials, setFormMaterials] = useState<Array<{ product_id: string; required_qty: string; remark: string }>>([]);
+  const [formMaterials, setFormMaterials] = useState<Array<{ product_id: string; required_qty: string }>>([]);
+  const [saving, setSaving] = useState(false);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    const [orderRes, prodRes, custRes, whRes] = await Promise.all([
-      fetch('/api/production'),
-      fetch('/api/products'),
-      fetch('/api/customers'),
-      fetch('/api/warehouses'),
-    ]);
-    const orderData = await orderRes.json();
-    const prodData = await prodRes.json();
-    const custData = await custRes.json();
-    const whData = await whRes.json();
-    if (Array.isArray(orderData)) setOrders(orderData);
-    if (Array.isArray(prodData)) setProducts(prodData);
-    if (Array.isArray(custData)) setCustomers(custData);
-    if (Array.isArray(whData)) setWarehouses(whData);
+  // 删除
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  // 完成入库
+  const [completeOrderId, setCompleteOrderId] = useState<string | null>(null);
+  const [completeWarehouseId, setCompleteWarehouseId] = useState('');
+  const [completing, setCompleting] = useState(false);
+
+  // 详情
+  const [detailOrder, setDetailOrder] = useState<Order | null>(null);
+
+  /* ---------- fetch ---------- */
+  const fetchOrders = useCallback(async () => {
+    const res = await fetch('/api/production');
+    const data = await res.json();
+    setOrders(Array.isArray(data) ? data : data.orders || []);
     setLoading(false);
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
-
-  // 初始化展开所有客户组
   useEffect(() => {
-    if (orders.length > 0) {
-      const groupIds = new Set<string>();
-      orders.forEach((o) => {
-        const key = o.customer_id || '__no_customer__';
-        groupIds.add(key);
-      });
-      setExpandedGroups(groupIds);
+    fetchOrders().catch(() => setLoading(false));
+    fetch('/api/products').then(r => r.json()).then(d => setProducts(Array.isArray(d) ? d : d.products || [])).catch(() => {});
+    fetch('/api/customers').then(r => r.json()).then(d => setCustomers(Array.isArray(d) ? d : d.customers || [])).catch(() => {});
+    fetch('/api/warehouses').then(r => r.json()).then(d => setWarehouses(Array.isArray(d) ? d : d.warehouses || [])).catch(() => {});
+  }, [fetchOrders]);
+
+  /* ---------- helpers ---------- */
+  const filteredOrders = orders.filter((o) => {
+    if (filterProductId !== 'all' && o.product_id !== filterProductId) return false;
+    return true;
+  });
+
+  const ordersByStatus = (status: string) => filteredOrders.filter((o) => o.status === status);
+
+  // 物料下拉列表
+  const productMap = new Map<string, { id: string; code: string; name: string }>();
+  orders.forEach((o) => {
+    if (o.product_id && o.products && !productMap.has(o.product_id)) {
+      const p = o.products as unknown as { id: string; code: string; name: string };
+      productMap.set(o.product_id, { id: p.id, code: p.code, name: p.name });
     }
-  }, [orders.length]);
+  });
+  const productList = Array.from(productMap.values());
+  const finishedProducts = products.filter((p) => p.type === 'finished_product' || p.type === 'semi_finished');
 
-  const generateOrderNo = () => {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const d = String(now.getDate()).padStart(2, '0');
-    const seq = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
-    return `PO-${y}${m}${d}-${seq}`;
-  };
-
+  /* ---------- handlers ---------- */
   const handleAdd = () => {
     setEditOrder(null);
-    setFormCustomerId('');
-    setFormProductId('');
-    setFormQuantity('');
-    setFormStartDate('');
-    setFormDueDate('');
-    setFormRemark('');
+    setFormCustomerId(''); setFormProductId(''); setFormQuantity('');
+    setFormStartDate(''); setFormDueDate(''); setFormRemark('');
     setFormMaterials([]);
     setSheetOpen(true);
   };
 
-  const handleSelectProduct = (productId: string) => {
-    setFormProductId(productId);
+  const handleSelectProduct = (pid: string) => {
+    setFormProductId(pid);
     // 自动从 BOM 加载子料
-    fetch(`/api/bom`)
-      .then((r) => r.json())
-      .then((bomData) => {
-        if (Array.isArray(bomData)) {
-          const related = bomData.filter((b: { parent_product_id: string }) => b.parent_product_id === productId);
-          if (related.length > 0) {
-            setFormMaterials(
-              related.map((b: { child_product_id: string; quantity: string; remark: string | null }) => ({
-                product_id: b.child_product_id,
-                required_qty: b.quantity,
-                remark: b.remark || '',
-              }))
-            );
-          }
+    const prod = products.find((p) => p.id === pid);
+    if (prod) {
+      fetch(`/api/bom?parent_id=${pid}`).then(r => r.json()).then(data => {
+        const bomList = Array.isArray(data) ? data : data.bom || [];
+        if (bomList.length > 0) {
+          setFormMaterials(bomList.map((b: { child_product_id: string; quantity: number }) => ({
+            product_id: b.child_product_id,
+            required_qty: String(b.quantity),
+          })));
         }
-      });
+      }).catch(() => {});
+    }
   };
 
-  const handleEdit = (order: ProductionOrder) => {
-    setEditOrder(order);
-    setFormCustomerId(order.customer_id || '');
-    setFormProductId(order.product_id);
-    setFormQuantity(order.quantity);
-    setFormStartDate(order.start_date ? order.start_date.slice(0, 10) : '');
-    setFormDueDate(order.due_date ? order.due_date.slice(0, 10) : '');
-    setFormRemark(order.remark || '');
-    setFormMaterials(
-      (order.production_order_materials || []).map((m) => ({
-        product_id: m.product_id,
-        required_qty: m.required_qty,
-        remark: m.remark || '',
-      }))
-    );
-    setSheetOpen(true);
+  const addMaterialRow = () => setFormMaterials([...formMaterials, { product_id: '', required_qty: '' }]);
+  const removeMaterialRow = (idx: number) => setFormMaterials(formMaterials.filter((_, i) => i !== idx));
+  const updateMaterialRow = (idx: number, field: string, value: string) => {
+    const updated = [...formMaterials];
+    updated[idx] = { ...updated[idx], [field]: value };
+    setFormMaterials(updated);
   };
 
   const handleSave = async () => {
     setSaving(true);
     const body = {
-      order_no: editOrder ? editOrder.order_no : generateOrderNo(),
       customer_id: formCustomerId || null,
       product_id: formProductId,
-      quantity: formQuantity,
-      status: editOrder ? editOrder.status : 'pending',
+      quantity: Number(formQuantity),
       start_date: formStartDate || null,
       due_date: formDueDate || null,
       remark: formRemark || null,
-      materials: formMaterials.map((m) => ({
+      materials: formMaterials.filter((m) => m.product_id && m.required_qty).map((m) => ({
         product_id: m.product_id,
-        required_qty: m.required_qty,
-        prepared_qty: '0',
-        remark: m.remark || null,
+        required_qty: Number(m.required_qty),
       })),
-      ...(editOrder ? { id: editOrder.id } : {}),
     };
-    const res = await fetch('/api/production', {
-      method: editOrder ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) {
+    try {
+      if (editOrder) {
+        await fetch('/api/production', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editOrder.id, ...body }) });
+      } else {
+        await fetch('/api/production', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      }
       setSheetOpen(false);
-      loadData();
-    } else {
-      const err = await res.json();
-      alert(err.error || '保存失败');
-    }
+      fetchOrders();
+    } catch { /* ignore */ }
     setSaving(false);
   };
 
-  const handleStatusChange = async (orderId: string, newStatus: string) => {
-    const body: Record<string, string> = { id: orderId, status: newStatus };
-    if (newStatus === 'completed') {
-      body.completed_at = new Date().toISOString();
-    }
-    await fetch('/api/production', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    loadData();
-    setDetailOrder(null);
+  const handleStatusChange = async (id: string, status: string) => {
+    await fetch('/api/production', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status }) });
+    fetchOrders();
   };
 
   const handleDelete = async () => {
     if (!deleteId) return;
     await fetch(`/api/production?id=${deleteId}`, { method: 'DELETE' });
     setDeleteId(null);
-    loadData();
+    fetchOrders();
   };
 
-  // 完成生产 → 自动入库
   const handleCompleteInbound = async () => {
     if (!completeOrderId || !completeWarehouseId) return;
     setCompleting(true);
@@ -284,438 +210,345 @@ export default function ProductionPage() {
       const res = await fetch('/api/production/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: completeOrderId, warehouse_id: completeWarehouseId }),
+        body: JSON.stringify({ production_order_id: completeOrderId, warehouse_id: completeWarehouseId }),
       });
       const data = await res.json();
-      if (res.ok) {
-        alert(`生产完成！已自动入库: ${data.product?.name || ''} × ${data.quantity}`);
-        setCompleteOrderId(null);
-        setDetailOrder(null);
-        loadData();
-      } else {
-        alert(data.error || '完成入库失败');
-      }
-    } catch (e) {
-      alert('请求失败: ' + String(e));
-    }
+      if (data.error) { alert(data.error); }
+      setCompleteOrderId(null);
+      fetchOrders();
+    } catch { /* ignore */ }
     setCompleting(false);
   };
 
-  const addMaterialRow = () => {
-    setFormMaterials([...formMaterials, { product_id: '', required_qty: '', remark: '' }]);
+  /* ---------- 日期格式化 ---------- */
+  const fmtDate = (d: string | null | undefined) => d ? d.slice(0, 10) : '-';
+  const isOverdue = (d: string | null | undefined) => d && new Date(d) < new Date();
+
+  /* ---------- 渲染卡片 ---------- */
+  const renderCard = (order: Order) => {
+    const prod = order.products;
+    const cust = order.customers;
+    const st = statusMap[order.status] || { label: order.status, color: '', bg: '' };
+    const overdue = order.status !== 'completed' && order.status !== 'cancelled' && isOverdue(order.due_date);
+
+    return (
+      <div key={order.id} className={`bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow ${overdue ? 'border-red-300' : 'border-gray-200'}`}>
+        {/* 卡片头部 */}
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-mono text-xs text-gray-500">{order.order_no}</span>
+            <Badge variant="outline" className={`text-[11px] px-1.5 py-0 ${st.color}`}>{st.label}</Badge>
+          </div>
+          <div className="text-sm font-medium text-gray-900 mb-1 truncate" title={prod?.name}>
+            {prod?.code && <span className="font-mono text-gray-500 mr-1">{prod.code}</span>}
+            {prod?.name || '未知物料'}
+          </div>
+          <div className="flex items-center justify-between text-xs text-gray-500">
+            <span>数量: <span className="font-mono font-medium text-gray-800">{order.quantity}</span> {translateUnit(prod?.unit || '')}</span>
+            {cust && <span>{cust.name}</span>}
+          </div>
+          <div className="flex items-center justify-between mt-1.5 text-xs text-gray-400">
+            <span>交期: <span className={overdue ? 'text-red-600 font-medium' : ''}>{fmtDate(order.due_date)}</span></span>
+            {order.customer_order && <span className="font-mono">客户单号: {order.customer_order.order_no}</span>}
+          </div>
+        </div>
+
+        {/* 操作按钮 */}
+        <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50/50 flex items-center gap-2 flex-wrap">
+          {order.status === 'pending' && (
+            <button onClick={() => handleStatusChange(order.id, 'in_progress')} className="text-xs px-2.5 py-1 rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors">
+              开始生产
+            </button>
+          )}
+          {order.status === 'in_progress' && (
+            <button onClick={() => { setCompleteOrderId(order.id); setCompleteWarehouseId(warehouses.length > 0 ? warehouses[0].id : ''); }} className="text-xs px-2.5 py-1 rounded bg-green-600 text-white hover:bg-green-700 transition-colors">
+              完成入库
+            </button>
+          )}
+          {(order.status === 'pending' || order.status === 'in_progress') && (
+            <button onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-xs px-2.5 py-1 rounded border border-red-300 text-red-500 hover:bg-red-50 transition-colors">
+              取消
+            </button>
+          )}
+          <button onClick={() => setDetailOrder(order)} className="text-xs px-2.5 py-1 rounded border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors ml-auto">
+            详情
+          </button>
+        </div>
+      </div>
+    );
   };
 
-  const removeMaterialRow = (idx: number) => {
-    setFormMaterials(formMaterials.filter((_, i) => i !== idx));
-  };
-
-  const updateMaterialRow = (idx: number, field: string, value: string) => {
-    const updated = [...formMaterials];
-    updated[idx] = { ...updated[idx], [field]: value };
-    setFormMaterials(updated);
-  };
-
-  const toggleGroup = (key: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  const expandAll = () => {
-    const allKeys = new Set<string>();
-    filteredOrders.forEach((o) => allKeys.add(o.customer_id || '__no_customer__'));
-    setExpandedGroups(allKeys);
-  };
-
-  const collapseAll = () => setExpandedGroups(new Set());
-
-  // 过滤
-  let filteredOrders = orders;
-  if (filterStatus !== 'all') filteredOrders = filteredOrders.filter((o) => o.status === filterStatus);
-  if (filterProductId !== 'all') filteredOrders = filteredOrders.filter((o) => o.product_id === filterProductId);
-
-  // 按物料分组
-  const grouped = new Map<string, { product: ProductionOrder['products']; orders: ProductionOrder[] }>();
-  filteredOrders.forEach((o) => {
-    const key = o.product_id || '__no_product__';
-    if (!grouped.has(key)) {
-      grouped.set(key, { product: o.products, orders: [] });
-    }
-    grouped.get(key)!.orders.push(o);
-  });
-
-  const finishedProducts = products.filter((p) => p.type === 'finished_product' || p.type === 'semi_finished');
-  // 用于筛选下拉的物料列表（从全部订单中提取去重产品）
-  const productMap = new Map<string, Record<string, unknown>>();
-  orders.forEach((o) => {
-    if (o.product_id && o.products && !productMap.has(o.product_id)) {
-      productMap.set(o.product_id, o.products as unknown as Record<string, unknown>);
-    }
-  });
-  const productList = Array.from(productMap.values()) as Array<{ id: string; code: string; name: string; unit?: string }>;
-
+  /* ---------- 渲染 ---------- */
   return (
     <>
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-          <h1 className="text-xl font-semibold text-gray-900">生产订单</h1>
-          <Button onClick={handleAdd}>新建订单</Button>
-        </div>
-
-        <div className="flex items-center gap-4 mb-4 flex-wrap">
-          <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-36">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部状态</SelectItem>
-              <SelectItem value="pending">待生产</SelectItem>
-              <SelectItem value="in_progress">生产中</SelectItem>
-              <SelectItem value="completed">已完成</SelectItem>
-              <SelectItem value="cancelled">已取消</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={filterProductId} onValueChange={setFilterProductId}>
-            <SelectTrigger className="w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部物料</SelectItem>
-              {productList.map((p) => (
-                <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="flex gap-2 ml-auto">
-            <Button variant="outline" size="sm" onClick={expandAll}>全部展开</Button>
-            <Button variant="outline" size="sm" onClick={collapseAll}>全部收缩</Button>
-          </div>
-        </div>
-
-        {/* 按物料分组展示 */}
-        {loading ? (
-          <div className="py-12 text-center text-gray-400">加载中...</div>
-        ) : grouped.size === 0 ? (
-          <div className="py-12 text-center text-gray-400">暂无数据</div>
-        ) : (
-          <div className="space-y-4">
-            {Array.from(grouped.entries()).map(([key, group]) => {
-              const isExpanded = expandedGroups.has(key);
-              const product = group.product;
-              const productCode = product?.code || '未知编码';
-              const productName = product?.name || '未知物料';
-              const productUnit = product?.unit || '';
-              const totalQty = group.orders.reduce((sum, o) => sum + (Number(o.quantity) || 0), 0);
-              const orderCount = group.orders.length;
-              const statusCounts: Record<string, number> = {};
-              group.orders.forEach((o) => { statusCounts[o.status] = (statusCounts[o.status] || 0) + 1; });
-
-              return (
-                <div key={key} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                  {/* 物料组标题 */}
-                  <button
-                    onClick={() => toggleGroup(key)}
-                    className="w-full flex items-center justify-between px-5 py-3.5 bg-gray-50/80 hover:bg-gray-100/80 transition-colors text-left"
-                  >
-                    <div className="flex items-center gap-3">
-                      <svg
-                        className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
-                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                      </svg>
-                      <span className="font-mono text-sm text-gray-500">{productCode}</span>
-                      <span className="font-medium text-gray-900">{productName}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-mono text-gray-700">合计: {totalQty} {translateUnit(productUnit)}</span>
-                      {Object.entries(statusCounts).map(([s, c]) => (
-                        <Badge key={s} variant="outline" className={statusMap[s]?.color || ''}>
-                          {statusMap[s]?.label || s} {c}
-                        </Badge>
-                      ))}
-                      <span className="text-xs text-gray-400">共 {orderCount} 单</span>
-                    </div>
-                  </button>
-
-                  {/* 订单列表 */}
-                  {isExpanded && (
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-t border-b border-gray-200 bg-gray-50/30">
-                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">订单号</th>
-                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">客户</th>
-                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">客户订单号</th>
-                          <th className="text-right px-5 py-2.5 font-medium text-gray-500">数量</th>
-                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">状态</th>
-                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">计划开始</th>
-                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">计划完成</th>
-                          <th className="text-center px-5 py-2.5 font-medium text-gray-500">操作</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {group.orders.map((order) => (
-                          <tr key={order.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                            <td className="px-5 py-3 font-mono text-gray-900">{order.order_no}</td>
-                            <td className="px-5 py-3 text-gray-900">{order.customers?.name || '未分配'}</td>
-                            <td className="px-5 py-3 font-mono text-gray-600">{order.customer_order?.order_no || '-'}</td>
-                            <td className="px-5 py-3 text-right font-mono text-gray-900">{order.quantity} {translateUnit(order.products?.unit || '')}</td>
-                            <td className="px-5 py-3">
-                              <Badge variant="outline" className={statusMap[order.status]?.color || ''}>
-                                {statusMap[order.status]?.label || order.status}
-                              </Badge>
-                            </td>
-                            <td className="px-5 py-3 text-gray-600">{order.start_date ? order.start_date.slice(0, 10) : '-'}</td>
-                            <td className="px-5 py-3 text-gray-600">{order.due_date ? order.due_date.slice(0, 10) : '-'}</td>
-                            <td className="px-5 py-3 text-center">
-                              <div className="flex items-center justify-center gap-1 flex-wrap">
-                                {order.status === 'pending' && (
-                                  <button onClick={() => handleStatusChange(order.id, 'in_progress')} className="text-green-600 hover:text-green-800 text-xs px-2 py-0.5 rounded border border-green-300 bg-green-50">开始生产</button>
-                                )}
-                                {order.status === 'in_progress' && (
-                                  <button onClick={() => { setCompleteOrderId(order.id); setCompleteWarehouseId(warehouses.length > 0 ? warehouses[0].id : ''); }} className="text-blue-600 hover:text-blue-800 text-xs px-2 py-0.5 rounded border border-blue-300 bg-blue-50">完成入库</button>
-                                )}
-                                {(order.status === 'pending' || order.status === 'in_progress') && (
-                                  <button onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-red-500 hover:text-red-700 text-xs px-2 py-0.5 rounded border border-red-300 bg-red-50">取消</button>
-                                )}
-                                <button onClick={() => setDetailOrder(order)} className="text-gray-500 hover:text-gray-700 text-xs px-2 py-0.5 rounded border border-gray-300 bg-gray-50">详情</button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="mt-3 text-xs text-gray-400">共 {filteredOrders.length} 条生产订单</div>
+    <div className="p-8 h-full flex flex-col">
+      {/* 顶部 */}
+      <div className="flex items-center justify-between mb-4 shrink-0">
+        <h1 className="text-xl font-semibold text-gray-900">生产订单</h1>
+        <Button onClick={handleAdd}>新建订单</Button>
       </div>
 
-      {/* 订单详情 */}
-      <Sheet open={!!detailOrder} onOpenChange={() => setDetailOrder(null)}>
-        <SheetContent className="w-[600px]">
-          {detailOrder && (
-            <>
-              <SheetHeader>
-                <SheetTitle>订单详情 - {detailOrder.order_no}</SheetTitle>
-              </SheetHeader>
-              <div className="mt-6 space-y-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div><span className="text-gray-500">客户：</span>{detailOrder.customers?.name || '未分配'}</div>
-                  <div><span className="text-gray-500">产品：</span>{detailOrder.products?.name}</div>
-                  <div><span className="text-gray-500">数量：</span><span className="font-mono">{detailOrder.quantity}</span></div>
-                  <div><span className="text-gray-500">状态：</span>
-                    <Badge variant="outline" className={statusMap[detailOrder.status]?.color || ''}>
-                      {statusMap[detailOrder.status]?.label || detailOrder.status}
-                    </Badge>
-                  </div>
-                  <div><span className="text-gray-500">备注：</span>{detailOrder.remark || '-'}</div>
+      {/* 筛选栏 */}
+      <div className="flex items-center gap-4 mb-4 flex-wrap shrink-0">
+        <Select value={filterProductId} onValueChange={setFilterProductId}>
+          <SelectTrigger className="w-52">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部物料</SelectItem>
+            {productList.map((p) => (
+              <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="text-xs text-gray-400 ml-auto">
+          共 {filteredOrders.length} 条生产订单
+        </div>
+      </div>
+
+      {/* 看板矩阵 */}
+      {loading ? (
+        <div className="py-12 text-center text-gray-400">加载中...</div>
+      ) : filteredOrders.length === 0 ? (
+        <div className="py-12 text-center text-gray-400">暂无数据</div>
+      ) : (
+        <div className="grid grid-cols-3 gap-5 flex-1 min-h-0">
+          {columns.map((col) => {
+            const colOrders = ordersByStatus(col.key);
+            return (
+              <div key={col.key} className="flex flex-col min-h-0">
+                {/* 列标题 */}
+                <div className={`${col.headerBg} ${col.headerText} px-4 py-2.5 rounded-t-lg flex items-center justify-between`}>
+                  <span className="font-medium text-sm">{col.label}</span>
+                  <span className="text-xs opacity-80 bg-white/20 px-2 py-0.5 rounded-full">{colOrders.length}</span>
                 </div>
-
-                {detailOrder.status !== 'completed' && detailOrder.status !== 'cancelled' && (
-                  <div className="flex gap-2 pt-2">
-                    {detailOrder.status === 'pending' && (
-                      <Button size="sm" onClick={() => handleStatusChange(detailOrder.id, 'in_progress')}>开始生产</Button>
-                    )}
-                    {detailOrder.status === 'in_progress' && (
-                      <Button
-                        size="sm"
-                        className="bg-green-600 hover:bg-green-700"
-                        onClick={() => {
-                          setCompleteOrderId(detailOrder.id);
-                          setCompleteWarehouseId(warehouses[0]?.id || '');
-                        }}
-                      >
-                        完成入库
-                      </Button>
-                    )}
-                    <Button size="sm" variant="outline" onClick={() => handleStatusChange(detailOrder.id, 'cancelled')}>取消订单</Button>
-                  </div>
-                )}
-
-                <div>
-                  <h3 className="text-sm font-medium text-gray-700 mb-2">用料清单</h3>
-                  <table className="w-full text-sm border border-gray-200 rounded">
-                    <thead>
-                      <tr className="bg-gray-50">
-                        <th className="text-left px-3 py-2 font-medium text-gray-500">物料编码</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-500">物料名称</th>
-                        <th className="text-right px-3 py-2 font-medium text-gray-500">需求数量</th>
-                        <th className="text-right px-3 py-2 font-medium text-gray-500">已备料</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-500">单位</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(detailOrder.production_order_materials || []).map((m, i) => (
-                        <tr key={i} className="border-t border-gray-100">
-                          <td className="px-3 py-2 font-mono">{m.products?.code || '-'}</td>
-                          <td className="px-3 py-2">{m.products?.name || '-'}</td>
-                          <td className="px-3 py-2 text-right font-mono">{m.required_qty}</td>
-                          <td className="px-3 py-2 text-right font-mono">{m.prepared_qty}</td>
-                          <td className="px-3 py-2">{translateUnit(m.products?.unit || '-')}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                {/* 卡片列表 */}
+                <div className="flex-1 overflow-y-auto bg-gray-50/50 rounded-b-lg border border-t-0 border-gray-200 p-3 space-y-3">
+                  {colOrders.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-gray-300">暂无订单</div>
+                  ) : (
+                    colOrders.map(renderCard)
+                  )}
                 </div>
               </div>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
+            );
+          })}
+        </div>
+      )}
 
-      {/* 新增/编辑 */}
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent className="w-[560px]">
-          <SheetHeader>
-            <SheetTitle>{editOrder ? '编辑生产订单' : '新建生产订单'}</SheetTitle>
-          </SheetHeader>
-          <div className="mt-6 space-y-4 px-1">
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1.5 block">客户</label>
-              <Select value={formCustomerId} onValueChange={setFormCustomerId}>
-                <SelectTrigger><SelectValue placeholder="选择客户（可选）" /></SelectTrigger>
-                <SelectContent>
-                  {customers.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}{c.code ? ` (${c.code})` : ''}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1.5 block">生产产品 *</label>
-              <Select value={formProductId} onValueChange={handleSelectProduct}>
-                <SelectTrigger><SelectValue placeholder="选择成品" /></SelectTrigger>
-                <SelectContent>
-                  {finishedProducts.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1.5 block">生产数量 *</label>
-                <Input value={formQuantity} onChange={(e) => setFormQuantity(e.target.value)} type="number" step="0.01" />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1.5 block">单位</label>
-                <Input value={translateUnit(products.find((p) => p.id === formProductId)?.unit || '')} disabled />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1.5 block">计划开始日期</label>
-                <Input value={formStartDate} onChange={(e) => setFormStartDate(e.target.value)} type="date" />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1.5 block">计划完成日期</label>
-                <Input value={formDueDate} onChange={(e) => setFormDueDate(e.target.value)} type="date" />
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1.5 block">备注</label>
-              <Input value={formRemark} onChange={(e) => setFormRemark(e.target.value)} />
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-gray-700">用料清单</label>
-                <Button variant="outline" size="sm" onClick={addMaterialRow}>添加子料</Button>
-              </div>
-              <div className="space-y-2 max-h-[240px] overflow-y-auto">
-                {formMaterials.map((m, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <Select value={m.product_id} onValueChange={(v) => updateMaterialRow(idx, 'product_id', v)}>
-                      <SelectTrigger className="flex-1 h-9 text-xs"><SelectValue placeholder="选择物料" /></SelectTrigger>
-                      <SelectContent>
-                        {products.filter((p) => p.id !== formProductId).map((p) => (
-                          <SelectItem key={p.id} value={p.id} className="text-xs">{p.code} - {p.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      value={m.required_qty}
-                      onChange={(e) => updateMaterialRow(idx, 'required_qty', e.target.value)}
-                      placeholder="用量"
-                      type="number"
-                      step="0.01"
-                      className="w-24 h-9 text-xs"
-                    />
-                    <button onClick={() => removeMaterialRow(idx)} className="text-red-400 hover:text-red-600 text-sm">x</button>
-                  </div>
-                ))}
-                {formMaterials.length === 0 && (
-                  <div className="text-xs text-gray-400 py-2">选择成品后自动从 BOM 加载，或手动添加</div>
-                )}
-              </div>
-            </div>
-
-            <div className="pt-4 flex gap-3">
-              <Button onClick={handleSave} disabled={saving || !formProductId || !formQuantity} className="flex-1">
-                {saving ? '保存中...' : '保存'}
-              </Button>
-              <Button variant="outline" onClick={() => setSheetOpen(false)} className="flex-1">取消</Button>
-            </div>
+      {/* 已取消订单折叠 */}
+      {ordersByStatus('cancelled').length > 0 && (
+        <details className="mt-4">
+          <summary className="text-sm text-gray-400 cursor-pointer hover:text-gray-600">
+            已取消订单 ({ordersByStatus('cancelled').length})
+          </summary>
+          <div className="mt-2 grid grid-cols-3 gap-3">
+            {ordersByStatus('cancelled').map(renderCard)}
           </div>
-        </SheetContent>
-      </Sheet>
+        </details>
+      )}
+    </div>
 
-      {/* 删除确认 */}
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>确认删除</AlertDialogTitle>
-            <AlertDialogDescription>确认删除该生产订单及其用料明细吗？</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>确认删除</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+    {/* 订单详情 */}
+    <Sheet open={!!detailOrder} onOpenChange={() => setDetailOrder(null)}>
+      <SheetContent className="w-[600px]">
+        {detailOrder && (
+          <>
+            <SheetHeader>
+              <SheetTitle>订单详情 - {detailOrder.order_no}</SheetTitle>
+            </SheetHeader>
+            <div className="mt-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><span className="text-gray-500">客户：</span>{detailOrder.customers?.name || '未分配'}</div>
+                <div><span className="text-gray-500">产品：</span>{detailOrder.products?.name}</div>
+                <div><span className="text-gray-500">数量：</span><span className="font-mono">{detailOrder.quantity} {translateUnit(detailOrder.products?.unit || '')}</span></div>
+                <div><span className="text-gray-500">状态：</span>
+                  <Badge variant="outline" className={statusMap[detailOrder.status]?.color || ''}>
+                    {statusMap[detailOrder.status]?.label || detailOrder.status}
+                  </Badge>
+                </div>
+                <div><span className="text-gray-500">计划开始：</span>{fmtDate(detailOrder.start_date)}</div>
+                <div><span className="text-gray-500">计划完成：</span>{fmtDate(detailOrder.due_date)}</div>
+                <div className="col-span-2"><span className="text-gray-500">备注：</span>{detailOrder.remark || '-'}</div>
+              </div>
 
-      {/* 完成入库对话框 */}
-      <Dialog open={!!completeOrderId} onOpenChange={(open) => { if (!open) setCompleteOrderId(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>完成生产 - 自动入库</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-gray-600">
-            完成生产后将自动创建入库单，成品入库到指定仓库，并扣减原材料库存。
-          </p>
-          <div className="mt-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">入库仓库 *</label>
-            <Select value={completeWarehouseId} onValueChange={setCompleteWarehouseId}>
-              <SelectTrigger>
-                <SelectValue placeholder="选择仓库" />
-              </SelectTrigger>
+              {detailOrder.status !== 'completed' && detailOrder.status !== 'cancelled' && (
+                <div className="flex gap-2 pt-2">
+                  {detailOrder.status === 'pending' && (
+                    <Button size="sm" onClick={() => handleStatusChange(detailOrder.id, 'in_progress')}>开始生产</Button>
+                  )}
+                  {detailOrder.status === 'in_progress' && (
+                    <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => { setCompleteOrderId(detailOrder.id); setCompleteWarehouseId(warehouses[0]?.id || ''); }}>
+                      完成入库
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" onClick={() => handleStatusChange(detailOrder.id, 'cancelled')}>取消订单</Button>
+                </div>
+              )}
+
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-2">用料清单</h3>
+                <table className="w-full text-sm border border-gray-200 rounded">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left px-3 py-2 font-medium text-gray-500">物料编码</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-500">物料名称</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-500">需求数量</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-500">已备料</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-500">单位</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(detailOrder.production_order_materials || []).map((m, i) => (
+                      <tr key={i} className="border-t border-gray-100">
+                        <td className="px-3 py-2 font-mono">{m.products?.code || '-'}</td>
+                        <td className="px-3 py-2">{m.products?.name || '-'}</td>
+                        <td className="px-3 py-2 text-right font-mono">{m.required_qty}</td>
+                        <td className="px-3 py-2 text-right font-mono">{m.prepared_qty}</td>
+                        <td className="px-3 py-2">{translateUnit(m.products?.unit || '-')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+
+    {/* 新增/编辑 */}
+    <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+      <SheetContent className="w-[560px]">
+        <SheetHeader>
+          <SheetTitle>{editOrder ? '编辑生产订单' : '新建生产订单'}</SheetTitle>
+        </SheetHeader>
+        <div className="mt-6 space-y-4 px-1">
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1.5 block">客户</label>
+            <Select value={formCustomerId} onValueChange={setFormCustomerId}>
+              <SelectTrigger><SelectValue placeholder="选择客户（可选）" /></SelectTrigger>
               <SelectContent>
-                {warehouses.map((w) => (
-                  <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                {customers.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}{c.code ? ` (${c.code})` : ''}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCompleteOrderId(null)}>取消</Button>
-            <Button
-              className="bg-green-600 hover:bg-green-700"
-              onClick={handleCompleteInbound}
-              disabled={completing || !completeWarehouseId}
-            >
-              {completing ? '处理中...' : '确认完成入库'}
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1.5 block">生产产品 *</label>
+            <Select value={formProductId} onValueChange={handleSelectProduct}>
+              <SelectTrigger><SelectValue placeholder="选择成品" /></SelectTrigger>
+              <SelectContent>
+                {finishedProducts.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">生产数量 *</label>
+              <Input value={formQuantity} onChange={(e) => setFormQuantity(e.target.value)} type="number" step="0.01" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">单位</label>
+              <Input value={translateUnit(products.find((p) => p.id === formProductId)?.unit || '')} disabled />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">计划开始日期</label>
+              <Input value={formStartDate} onChange={(e) => setFormStartDate(e.target.value)} type="date" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">计划完成日期</label>
+              <Input value={formDueDate} onChange={(e) => setFormDueDate(e.target.value)} type="date" />
+            </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1.5 block">备注</label>
+            <Input value={formRemark} onChange={(e) => setFormRemark(e.target.value)} />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-gray-700">用料清单</label>
+              <Button variant="outline" size="sm" onClick={addMaterialRow}>添加子料</Button>
+            </div>
+            <div className="space-y-2 max-h-[240px] overflow-y-auto">
+              {formMaterials.map((m, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <Select value={m.product_id} onValueChange={(v) => updateMaterialRow(idx, 'product_id', v)}>
+                    <SelectTrigger className="flex-1 h-9 text-xs"><SelectValue placeholder="选择物料" /></SelectTrigger>
+                    <SelectContent>
+                      {products.filter((p) => p.id !== formProductId).map((p) => (
+                        <SelectItem key={p.id} value={p.id} className="text-xs">{p.code} - {p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input value={m.required_qty} onChange={(e) => updateMaterialRow(idx, 'required_qty', e.target.value)} placeholder="用量" type="number" step="0.01" className="w-24 h-9 text-xs" />
+                  <button onClick={() => removeMaterialRow(idx)} className="text-red-400 hover:text-red-600 text-sm">x</button>
+                </div>
+              ))}
+              {formMaterials.length === 0 && (
+                <div className="text-xs text-gray-400 py-2">选择成品后自动从 BOM 加载，或手动添加</div>
+              )}
+            </div>
+          </div>
+
+          <div className="pt-4 flex gap-3">
+            <Button onClick={handleSave} disabled={saving || !formProductId || !formQuantity} className="flex-1">
+              {saving ? '保存中...' : '保存'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <Button variant="outline" onClick={() => setSheetOpen(false)} className="flex-1">取消</Button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+
+    {/* 删除确认 */}
+    <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>确认删除</AlertDialogTitle>
+          <AlertDialogDescription>确认删除该生产订单及其用料明细吗？</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>取消</AlertDialogCancel>
+          <AlertDialogAction onClick={handleDelete}>确认删除</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    {/* 完成入库对话框 */}
+    <Dialog open={!!completeOrderId} onOpenChange={(open) => { if (!open) setCompleteOrderId(null); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>完成生产 - 自动入库</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-gray-600">
+          完成生产后将自动创建入库单，成品入库到指定仓库，并扣减原材料库存。
+        </p>
+        <div className="mt-2">
+          <label className="block text-sm font-medium text-gray-700 mb-1">入库仓库 *</label>
+          <Select value={completeWarehouseId} onValueChange={setCompleteWarehouseId}>
+            <SelectTrigger><SelectValue placeholder="选择仓库" /></SelectTrigger>
+            <SelectContent>
+              {warehouses.map((w) => (
+                <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setCompleteOrderId(null)}>取消</Button>
+          <Button className="bg-green-600 hover:bg-green-700" onClick={handleCompleteInbound} disabled={completing || !completeWarehouseId}>
+            {completing ? '处理中...' : '确认完成入库'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     </>
   );
 }
