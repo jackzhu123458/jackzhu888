@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { translateUnit } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -125,6 +125,9 @@ export default function OrdersPage() {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterCustomer, setFilterCustomer] = useState<string>('all');
+
+  // 缓存今天日期，避免渲染中调用 Date.now()
+  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   // 编辑相关
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -824,10 +827,10 @@ export default function OrdersPage() {
                           order.customer_order_items?.map((item, itemIdx) => {
                             const totalScheduled = getTotalScheduled(item);
                             const unscheduledQty = item.quantity - totalScheduled;
-                            const isDeadlinePast = order.delivery_deadline && new Date(order.delivery_deadline) < new Date();
+                            const isDeadlinePast = order.delivery_deadline && order.delivery_deadline < today;
                             const isDeadlineSoon = order.delivery_deadline &&
                               !isDeadlinePast &&
-                              new Date(order.delivery_deadline).getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000;
+                              new Date(order.delivery_deadline).getTime() - new Date(today).getTime() < 7 * 24 * 60 * 60 * 1000;
 
                             return (
                               <tr

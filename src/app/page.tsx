@@ -75,10 +75,9 @@ function getRelName<T>(val: T | T[] | null | undefined): T | null {
   return val;
 }
 
-function formatTime(iso: string): string {
+function formatTime(iso: string, nowMs: number): string {
   const d = new Date(iso);
-  const now = new Date();
-  const diff = now.getTime() - d.getTime();
+  const diff = nowMs - d.getTime();
   if (diff < 60000) return '刚刚';
   if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
@@ -92,8 +91,12 @@ function formatNumber(n: number): string {
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [todayStr, setTodayStr] = useState('');
+  const [now, setNow] = useState<number>(0);
 
   useEffect(() => {
+    setTodayStr(new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }));
+    setNow(Date.now());
     fetch('/api/dashboard')
       .then(res => res.json())
       .then(setData)
@@ -117,7 +120,7 @@ export default function DashboardPage() {
       {/* 页面标题 */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">工作台</h1>
-        <span className="text-sm text-gray-500">{new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</span>
+        <span className="text-sm text-gray-500">{todayStr}</span>
       </div>
 
       {/* 顶部核心指标 */}
@@ -315,7 +318,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm text-gray-900 truncate">{act.detail}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">{formatTime(act.time)}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">{formatTime(act.time, now)}</div>
                   </div>
                 </div>
               ))}
