@@ -231,19 +231,29 @@ export default function OrdersPage() {
   }, {});
 
   // 判断订单是否已完全送货（所有明细 delivered_qty >= quantity）
+  const isItemFullyDelivered = (item: OrderItem): boolean => {
+    return Number(item.delivered_qty || 0) >= Number(item.quantity || 0);
+  };
+
   const isOrderFullyDelivered = (order: Order): boolean => {
     const items = order.customer_order_items;
     if (!items || items.length === 0) return false;
-    return items.every((item) => Number(item.delivered_qty || 0) >= Number(item.quantity || 0));
+    return items.every((item) => isItemFullyDelivered(item));
   };
 
-  // 过滤
+  // 过滤：隐藏已送货时，按物料行级别过滤（已送货的物料行隐藏，未送货的仍显示）
   const filteredGrouped = Object.entries(groupedOrders).reduce<Record<string, Order[]>>(
     (acc, [customerId, customerOrders]) => {
-      const filtered = customerOrders.filter((o) => {
+      const filtered = customerOrders.map((o) => {
+        if (!hideDelivered) return o;
+        // 过滤掉已完全送货的物料行
+        const filteredItems = o.customer_order_items?.filter((item) => !isItemFullyDelivered(item)) || [];
+        return { ...o, customer_order_items: filteredItems };
+      }).filter((o) => {
+        // 如果订单的所有物料行都被过滤掉了，则隐藏整个订单
+        if (o.customer_order_items && o.customer_order_items.length === 0) return false;
         if (filterStatus !== 'all' && o.status !== filterStatus) return false;
         if (filterCustomer !== 'all' && o.customer_id !== filterCustomer) return false;
-        if (hideDelivered && isOrderFullyDelivered(o)) return false;
         if (searchKeyword) {
           const kw = searchKeyword.toLowerCase();
           const matchOrder = o.order_no.toLowerCase().includes(kw) || (o.remark || '').toLowerCase().includes(kw);
@@ -832,12 +842,16 @@ export default function OrdersPage() {
 
       {/* 统计 */}
       <div className="flex items-center gap-4 mb-4 text-sm text-gray-500">
-        <span>订单总数：{orders.length}</span>
-        <span>客户数：{Object.keys(groupedOrders).length}</span>
-        <span>物料条目：{orders.reduce((s, o) => s + (o.customer_order_items?.length || 0), 0)}</span>
-        {hideDelivered && orders.filter(o => isOrderFullyDelivered(o)).length > 0 && (
-          <span className="text-gray-400">（已隐藏 {orders.filter(o => isOrderFullyDelivered(o)).length} 条已送货订单）</span>
-        )}
+        <span>订单总数：{Object.values(filteredGrouped).reduce((s, arr) => s + arr.length, 0)}</span>
+        <span>客户数：{Object.keys(filteredGrouped).length}</span>
+        <span>物料条目：{Object.values(filteredGrouped).reduce((s, arr) => s + arr.reduce((s2, o) => s2 + (o.customer_order_items?.length || 0), 0), 0)}</span>
+        {hideDelivered && (() => {
+          const hiddenItems = orders.reduce((count, o) => 
+            count + (o.customer_order_items?.filter(i => isItemFullyDelivered(i)).length || 0), 0);
+          return hiddenItems > 0 ? (
+            <span className="text-gray-400">（已隐藏 {hiddenItems} 条已送货物料）</span>
+          ) : null;
+        })()}
       </div>
 
       {/* 按客户分组展示排程表 */}
