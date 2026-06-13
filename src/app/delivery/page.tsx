@@ -615,6 +615,12 @@ export default function DeliveryPage() {
         setShipDialogOpen(false);
         setEditMode(false);
         await fetchNotes();
+        // 重新加载当前表单以更新状态显示
+        if (form.id) {
+          const freshRes = await fetch(`/api/delivery?id=${form.id}`);
+          const freshData = await freshRes.json();
+          if (freshData.id) loadForm(freshData);
+        }
       } else {
         alert(data.error || '出货失败');
       }
