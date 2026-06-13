@@ -299,7 +299,7 @@ export default function OrdersPage() {
     setFormOrderNo('');
     setFormOrderDate(new Date().toISOString().split('T')[0]);
     setFormRemark('');
-    setFormItems([]);
+    setFormItems([{ product_id: '', quantity: 0, unit_price: null, delivery_date: '', remark: '', schedules: [] }]);
     setItemSearches({});
     setItemNameSearches({});
     setIsFormOpen(true);
@@ -1067,11 +1067,8 @@ export default function OrdersPage() {
 
             {/* 物料明细 */}
             <div className="border-t pt-4">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center mb-3">
                 <h3 className="text-sm font-medium text-gray-700">物料明细</h3>
-                <Button size="sm" variant="outline" onClick={addFormItem}>
-                  <Plus className="w-3 h-3 mr-1" />添加物料
-                </Button>
               </div>
 
               {/* 表头 */}
@@ -1239,8 +1236,19 @@ export default function OrdersPage() {
                     size="sm"
                     className="h-10 w-10 p-0 text-red-400 hover:text-red-600"
                     onClick={() => removeFormItem(itemIdx)}
+                    disabled={formItems.length <= 1}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                  {/* 插入行/新增行 */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-10 w-10 p-0 text-blue-500 hover:text-blue-700"
+                    onClick={() => addFormItem()}
+                    title="新增一行物料"
+                  >
+                    <Plus className="w-4 h-4" />
                   </Button>
                 </div>
               ))}
