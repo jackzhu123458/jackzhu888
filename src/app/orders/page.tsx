@@ -30,6 +30,7 @@ import {
   Package,
   ArrowDownToLine,
   ScanLine,
+  History,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -125,6 +126,7 @@ export default function OrdersPage() {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterCustomer, setFilterCustomer] = useState<string>('all');
+  const [hideDelivered, setHideDelivered] = useState(true);
 
   // 缓存今天日期，避免渲染中调用 Date.now()
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
@@ -179,6 +181,15 @@ export default function OrdersPage() {
   } | null>(null);
   const [warehouses, setWarehouses] = useState<Array<{ id: string; name: string }>>([]);
 
+  // 追溯相关
+  const [traceOrderId, setTraceOrderId] = useState<string | null>(null);
+  const [traceData, setTraceData] = useState<{
+    order: Record<string, unknown>;
+    production_orders: Array<Record<string, unknown>>;
+    delivery_notes: Array<Record<string, unknown>>;
+  } | null>(null);
+  const [traceLoading, setTraceLoading] = useState(false);
+
   const loadData = useCallback(async () => {
     const [ordersRes, customersRes, productsRes, warehousesRes, bomRes] = await Promise.all([
       fetch('/api/orders'),
@@ -221,6 +232,7 @@ export default function OrdersPage() {
       const filtered = customerOrders.filter((o) => {
         if (filterStatus !== 'all' && o.status !== filterStatus) return false;
         if (filterCustomer !== 'all' && o.customer_id !== filterCustomer) return false;
+        if (hideDelivered && isOrderFullyDelivered(o)) return false;
         if (searchKeyword) {
           const kw = searchKeyword.toLowerCase();
           const matchOrder = o.order_no.toLowerCase().includes(kw) || (o.remark || '').toLowerCase().includes(kw);
@@ -597,6 +609,33 @@ export default function OrdersPage() {
   // 获取BOM父产品ID集合（有BOM的成品）
   const bomParentIds = new Set(bomData.map((b) => b.parent_product_id));
 
+  // 判断订单是否已完全送货（所有明细 delivered_qty >= quantity）
+  const isOrderFullyDelivered = (order: Order): boolean => {
+    const items = order.customer_order_items;
+    if (!items || items.length === 0) return false;
+    return items.every((item) => Number(item.delivered_qty || 0) >= Number(item.quantity || 0));
+  };
+
+  // 追溯处理
+  const handleTrace = async (orderId: string) => {
+    setTraceOrderId(orderId);
+    setTraceLoading(true);
+    try {
+      const res = await fetch(`/api/orders/trace?order_id=${orderId}`);
+      const data = await res.json();
+      if (data.error) {
+        alert(data.error);
+        setTraceOrderId(null);
+      } else {
+        setTraceData(data);
+      }
+    } catch {
+      alert('追溯查询失败');
+      setTraceOrderId(null);
+    }
+    setTraceLoading(false);
+  };
+
   // 获取某BOM父产品的所有子物料
   const getBomChildren = (parentId: string) => bomData.filter((b) => b.parent_product_id === parentId);
 
@@ -752,6 +791,34 @@ export default function OrdersPage() {
             ))}
           </SelectContent>
         </Select>
+        <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer select-none whitespace-nowrap">
+          <input
+            type="checkbox"
+            checked={hideDelivered}
+            onChange={(e) => setHideDelivered(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          隐藏已送货
+        </label>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const orderNo = prompt('请输入要追溯的订单号：');
+            if (orderNo) {
+              const found = orders.find(o => o.order_no === orderNo.trim());
+              if (found) {
+                handleTrace(found.id);
+              } else {
+                alert('未找到该订单号');
+              }
+            }
+          }}
+          className="flex items-center gap-1"
+        >
+          <History className="w-3.5 h-3.5" />
+          追溯
+        </Button>
         <div className="flex items-center gap-2 ml-auto">
           <Button variant="outline" size="sm" onClick={expandAll}>全部展开</Button>
           <Button variant="outline" size="sm" onClick={collapseAll}>全部收缩</Button>
@@ -763,6 +830,9 @@ export default function OrdersPage() {
         <span>订单总数：{orders.length}</span>
         <span>客户数：{Object.keys(groupedOrders).length}</span>
         <span>物料条目：{orders.reduce((s, o) => s + (o.customer_order_items?.length || 0), 0)}</span>
+        {hideDelivered && orders.filter(o => isOrderFullyDelivered(o)).length > 0 && (
+          <span className="text-gray-400">（已隐藏 {orders.filter(o => isOrderFullyDelivered(o)).length} 条已送货订单）</span>
+        )}
       </div>
 
       {/* 按客户分组展示排程表 */}
@@ -931,6 +1001,13 @@ export default function OrdersPage() {
                                         title="删除"
                                       >
                                         <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleTrace(order.id)}
+                                        className="p-1 text-gray-400 hover:text-indigo-600"
+                                        title="追溯"
+                                      >
+                                        <History className="w-3.5 h-3.5" />
                                       </button>
                                     </div>
                                   )}
@@ -1416,6 +1493,231 @@ export default function OrdersPage() {
               </DialogFooter>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 追溯对话框 */}
+      <Dialog open={!!traceOrderId} onOpenChange={(open) => { if (!open) { setTraceOrderId(null); setTraceData(null); } }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="w-5 h-5 text-indigo-600" />
+              订单追溯
+            </DialogTitle>
+          </DialogHeader>
+          {traceLoading ? (
+            <div className="py-8 text-center text-gray-400">加载中...</div>
+          ) : traceData ? (
+            <div className="space-y-5 max-h-[70vh] overflow-y-auto">
+              {/* 订单基本信息 */}
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                  客户订单
+                </h4>
+                <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><span className="text-gray-500">订单号：</span><span className="font-mono font-medium">{(traceData.order as Record<string, unknown>).order_no as string}</span></div>
+                    <div><span className="text-gray-500">客户：</span>{((traceData.order as Record<string, unknown>).customers as Record<string, string>)?.name || '-'}</div>
+                    <div><span className="text-gray-500">状态：</span>
+                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${STATUS_MAP[(traceData.order as Record<string, unknown>).status as string]?.color || 'bg-gray-100 text-gray-700'}`}>
+                        {STATUS_MAP[(traceData.order as Record<string, unknown>).status as string]?.label || (traceData.order as Record<string, unknown>).status as string}
+                      </span>
+                    </div>
+                    <div><span className="text-gray-500">交货期限：</span>{((traceData.order as Record<string, unknown>).delivery_deadline as string) || '-'}</div>
+                  </div>
+                  {/* 订单物料明细 */}
+                  {Array.isArray((traceData.order as Record<string, unknown>).customer_order_items) && (
+                    <table className="w-full text-xs mt-3 border border-gray-200 rounded">
+                      <thead>
+                        <tr className="bg-white">
+                          <th className="px-2 py-1.5 text-left font-medium text-gray-500">物料编码</th>
+                          <th className="px-2 py-1.5 text-left font-medium text-gray-500">物料名称</th>
+                          <th className="px-2 py-1.5 text-right font-medium text-gray-500">数量</th>
+                          <th className="px-2 py-1.5 text-right font-medium text-gray-500">已交</th>
+                          <th className="px-2 py-1.5 text-right font-medium text-gray-500">未交</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {((traceData.order as Record<string, unknown>).customer_order_items as Array<Record<string, unknown>>).map((item, i) => {
+                          const prod = item.products as Record<string, unknown> | null;
+                          return (
+                            <tr key={i} className="border-t border-gray-100">
+                              <td className="px-2 py-1.5 font-mono">{(prod?.code as string) || '-'}</td>
+                              <td className="px-2 py-1.5">{(prod?.name as string) || '-'}</td>
+                              <td className="px-2 py-1.5 text-right font-mono">{Number(item.quantity || 0)}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-green-700">{Number(item.delivered_qty || 0)}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-yellow-700">{Number(item.quantity || 0) - Number(item.delivered_qty || 0)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+
+              {/* 关联生产订单 */}
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-500" />
+                  生产订单
+                  <span className="text-xs text-gray-400 ml-1">({traceData.production_orders.length})</span>
+                </h4>
+                {traceData.production_orders.length === 0 ? (
+                  <p className="text-xs text-gray-400 py-2 pl-4">无关联生产订单</p>
+                ) : (
+                  <table className="w-full text-xs border border-gray-200 rounded">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="px-2 py-1.5 text-left font-medium text-gray-500">生产单号</th>
+                        <th className="px-2 py-1.5 text-left font-medium text-gray-500">产品</th>
+                        <th className="px-2 py-1.5 text-right font-medium text-gray-500">数量</th>
+                        <th className="px-2 py-1.5 text-center font-medium text-gray-500">状态</th>
+                        <th className="px-2 py-1.5 text-left font-medium text-gray-500">交期</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {traceData.production_orders.map((po, i) => {
+                        const prod = po.products as Record<string, unknown> | null;
+                        const poStatusMap: Record<string, { label: string; color: string }> = {
+                          pending: { label: '待生产', color: 'text-amber-700 border-amber-300' },
+                          in_progress: { label: '生产中', color: 'text-blue-700 border-blue-300' },
+                          completed: { label: '已完成', color: 'text-green-700 border-green-300' },
+                          cancelled: { label: '已取消', color: 'text-red-600 border-red-300' },
+                        };
+                        const poStatus = poStatusMap[po.status as string] || { label: po.status as string, color: 'text-gray-600 border-gray-300' };
+                        return (
+                          <tr key={i} className="border-t border-gray-100">
+                            <td className="px-2 py-1.5 font-mono">{po.order_no as string}</td>
+                            <td className="px-2 py-1.5">{(prod?.name as string) || '-'}</td>
+                            <td className="px-2 py-1.5 text-right font-mono">{Number(po.quantity || 0)}</td>
+                            <td className="px-2 py-1.5 text-center">
+                              <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${poStatus.color}`}>{poStatus.label}</Badge>
+                            </td>
+                            <td className="px-2 py-1.5 text-gray-500">{po.due_date ? String(po.due_date).slice(0, 10) : '-'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* 关联送货单 */}
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-green-500" />
+                  送货单
+                  <span className="text-xs text-gray-400 ml-1">({traceData.delivery_notes.length})</span>
+                </h4>
+                {traceData.delivery_notes.length === 0 ? (
+                  <p className="text-xs text-gray-400 py-2 pl-4">无关联送货单</p>
+                ) : (
+                  <div className="space-y-2">
+                    {traceData.delivery_notes.map((dn, i) => {
+                      const dnStatus = dn.status as string;
+                      const statusLabel = dnStatus === 'shipped' ? '已发货' : dnStatus === 'draft' ? '草稿' : dnStatus;
+                      const statusColor = dnStatus === 'shipped' ? 'text-green-700 border-green-300 bg-green-50' : 'text-gray-600 border-gray-300 bg-gray-50';
+                      return (
+                        <div key={i} className="bg-gray-50 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-mono text-xs font-medium">{dn.note_no as string}</span>
+                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${statusColor}`}>{statusLabel}</Badge>
+                          </div>
+                          <div className="text-xs text-gray-500 mb-1">送货日期：{dn.delivery_date ? String(dn.delivery_date).slice(0, 10) : '-'}</div>
+                          {Array.isArray(dn.delivery_note_items) && (dn.delivery_note_items as Array<Record<string, unknown>>).length > 0 && (
+                            <table className="w-full text-xs border border-gray-200 rounded bg-white">
+                              <thead>
+                                <tr>
+                                  <th className="px-2 py-1 text-left font-medium text-gray-500">物料</th>
+                                  <th className="px-2 py-1 text-right font-medium text-gray-500">数量</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(dn.delivery_note_items as Array<Record<string, unknown>>).map((item, j) => {
+                                  const itemProd = item.products as Record<string, unknown> | null;
+                                  return (
+                                    <tr key={j} className="border-t border-gray-100">
+                                      <td className="px-2 py-1">{(itemProd?.name as string) || '-'}</td>
+                                      <td className="px-2 py-1 text-right font-mono">{Number(item.quantity || 0)}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* 流程时间线 */}
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-gray-500" />
+                  流程时间线
+                </h4>
+                <div className="pl-4 space-y-3">
+                  {/* 订单创建 */}
+                  <div className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-gray-800">创建客户订单</div>
+                      <div className="text-xs text-gray-400">{(traceData.order as Record<string, unknown>).order_no as string} · {((traceData.order as Record<string, unknown>).created_at as string)?.slice(0, 10) || '-'}</div>
+                    </div>
+                  </div>
+                  {/* 下推 */}
+                  {traceData.production_orders.length > 0 && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center shrink-0 mt-0.5">
+                        <span className="w-2 h-2 rounded-full bg-blue-500" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-800">下推生成生产订单</div>
+                        <div className="text-xs text-gray-400">{traceData.production_orders.map(po => po.order_no as string).join('、')}</div>
+                      </div>
+                    </div>
+                  )}
+                  {/* 生产完成 */}
+                  {traceData.production_orders.some(po => po.status === 'completed') && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center shrink-0 mt-0.5">
+                        <span className="w-2 h-2 rounded-full bg-green-500" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-800">生产完成入库</div>
+                        <div className="text-xs text-gray-400">
+                          {traceData.production_orders.filter(po => po.status === 'completed').map(po => `${po.order_no as string}${po.completed_at ? ' · ' + String(po.completed_at).slice(0, 10) : ''}`).join('、')}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {/* 送货 */}
+                  {traceData.delivery_notes.length > 0 && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 mt-0.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-800">创建送货单出库</div>
+                        <div className="text-xs text-gray-400">
+                          {traceData.delivery_notes.map(dn => `${dn.note_no as string}${dn.delivery_date ? ' · ' + String(dn.delivery_date).slice(0, 10) : ''}`).join('、')}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setTraceOrderId(null); setTraceData(null); }}>关闭</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
