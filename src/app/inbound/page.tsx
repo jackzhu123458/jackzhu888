@@ -171,6 +171,7 @@ export default function InboundPage() {
               <th className="text-left px-4 py-3 font-medium text-gray-500 w-36">入库单号</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500 w-24">类型</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500 w-24">仓库</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-500 w-36">入库时间</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500 w-28">物料编码</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500">物料描述</th>
               <th className="text-center px-4 py-3 font-medium text-gray-500 w-16">单位</th>
@@ -204,6 +205,10 @@ export default function InboundPage() {
                     {/* 仓库 */}
                     <td className={`px-4 py-3 text-gray-700 ${idx > 0 ? 'text-transparent' : ''}`}>
                       {note.warehouses?.name || '-'}
+                    </td>
+                    {/* 入库时间 */}
+                    <td className={`px-4 py-3 text-gray-700 text-xs ${idx > 0 ? 'text-transparent' : ''}`}>
+                      {note.created_at ? new Date(note.created_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}
                     </td>
                     {/* 物料编码 */}
                     <td className="px-4 py-3 font-mono text-gray-900 text-xs">
