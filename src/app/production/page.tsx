@@ -97,6 +97,9 @@ export default function ProductionPage() {
   // 详情
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
 
+  // 今天的时间戳，用于计算紧急度（避免渲染中调用 Date.now()）
+  const [todayMs] = useState(() => Date.now());
+
   /* ---------- fetch ---------- */
   const fetchOrders = useCallback(async () => {
     const res = await fetch('/api/production');
@@ -222,22 +225,60 @@ export default function ProductionPage() {
 
   /* ---------- 日期格式化 ---------- */
   const fmtDate = (d: string | null | undefined) => d ? d.slice(0, 10) : '-';
-  const isOverdue = (d: string | null | undefined) => d && new Date(d) < new Date();
+  const isOverdue = (d: string | null | undefined) => d && new Date(d).getTime() < todayMs;
+  const getUrgency = (dueDate: string | null | undefined, status: string) => {
+    if (!dueDate || status === 'completed' || status === 'cancelled') return 'normal';
+    const now = new Date(todayMs); now.setHours(0,0,0,0);
+    const due = new Date(dueDate); due.setHours(0,0,0,0);
+    const diff = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    if (diff < 0) return 'overdue';      // 已逾期
+    if (diff <= 3) return 'urgent';      // 3天内紧急
+    return 'normal';
+  };
+  const urgencyConfig: Record<string, { label: string; color: string; bg: string; border: string; pulse: string }> = {
+    overdue: { label: '已逾期', color: 'text-red-700', bg: 'bg-red-100', border: 'border-red-400', pulse: '' },
+    urgent:  { label: '紧急', color: 'text-orange-700', bg: 'bg-orange-100', border: 'border-orange-400', pulse: 'animate-pulse' },
+    normal:  { label: '', color: '', bg: '', border: '', pulse: '' },
+  };
+  const getRequiredCompleteDate = (dueDate: string | null | undefined) => {
+    if (!dueDate) return null;
+    const due = new Date(dueDate);
+    due.setDate(due.getDate() - 3);
+    return due.toISOString().slice(0, 10);
+  };
 
   /* ---------- 渲染卡片 ---------- */
   const renderCard = (order: Order) => {
     const prod = order.products;
     const cust = order.customers;
     const st = statusMap[order.status] || { label: order.status, color: '', bg: '' };
-    const overdue = order.status !== 'completed' && order.status !== 'cancelled' && isOverdue(order.due_date);
+    const urgency = getUrgency(order.due_date, order.status);
+    const uc = urgencyConfig[urgency];
+    const reqDate = getRequiredCompleteDate(order.due_date);
+    const isReqOverdue = reqDate && new Date(reqDate).getTime() < todayMs;
+    const daysDiff = order.due_date
+      ? Math.ceil((new Date(order.due_date).getTime() - todayMs) / 86400000)
+      : 0;
 
     return (
-      <div key={order.id} className={`bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow ${overdue ? 'border-red-300' : 'border-gray-200'}`}>
+      <div key={order.id} className={`bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow ${urgency === 'overdue' ? 'border-red-400' : urgency === 'urgent' ? 'border-orange-300' : 'border-gray-200'}`}>
+        {/* 紧急提示条 */}
+        {urgency !== 'normal' && (
+          <div className={`px-4 py-1.5 text-xs font-medium ${uc.color} ${uc.bg} rounded-t-lg flex items-center gap-1.5 ${uc.pulse}`}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
+            {urgency === 'overdue' ? `已逾期 ${Math.abs(daysDiff)} 天` : `距交期仅 ${daysDiff} 天`}
+          </div>
+        )}
         {/* 卡片头部 */}
-        <div className="px-4 py-3">
+        <div className={`px-4 py-3 ${urgency !== 'normal' ? 'pt-2' : ''}`}>
           <div className="flex items-center justify-between mb-2">
             <span className="font-mono text-xs text-gray-500">{order.order_no}</span>
-            <Badge variant="outline" className={`text-[11px] px-1.5 py-0 ${st.color}`}>{st.label}</Badge>
+            <div className="flex items-center gap-1.5">
+              {urgency !== 'normal' && (
+                <Badge className={`text-[10px] px-1.5 py-0 ${uc.bg} ${uc.color} border ${uc.border}`}>{uc.label}</Badge>
+              )}
+              <Badge variant="outline" className={`text-[11px] px-1.5 py-0 ${st.color}`}>{st.label}</Badge>
+            </div>
           </div>
           <div className="text-sm font-medium text-gray-900 mb-1 truncate" title={prod?.name}>
             {prod?.code && <span className="font-mono text-gray-500 mr-1">{prod.code}</span>}
@@ -248,9 +289,16 @@ export default function ProductionPage() {
             {cust && <span>{cust.name}</span>}
           </div>
           <div className="flex items-center justify-between mt-1.5 text-xs text-gray-400">
-            <span>交期: <span className={overdue ? 'text-red-600 font-medium' : ''}>{fmtDate(order.due_date)}</span></span>
-            {order.customer_order && <span className="font-mono">客户单号: {order.customer_order.order_no}</span>}
+            <span>交期: <span className={urgency !== 'normal' ? 'text-red-600 font-medium' : ''}>{fmtDate(order.due_date)}</span></span>
+            {reqDate && (
+              <span>要求完成: <span className={`font-medium ${isReqOverdue && order.status !== 'completed' && order.status !== 'cancelled' ? 'text-red-600' : 'text-orange-600'}`}>{reqDate}</span></span>
+            )}
           </div>
+          {order.customer_order && (
+            <div className="mt-1 text-xs text-gray-400">
+              <span className="font-mono">客户单号: {order.customer_order.order_no}</span>
+            </div>
+          )}
         </div>
 
         {/* 操作按钮 */}
@@ -314,7 +362,16 @@ export default function ProductionPage() {
       ) : (
         <div className="grid grid-cols-3 gap-5 flex-1 min-h-0">
           {columns.map((col) => {
-            const colOrders = ordersByStatus(col.key);
+            const colOrders = ordersByStatus(col.key).sort((a, b) => {
+              // 紧急/逾期排前面
+              const ua = getUrgency(a.due_date, a.status);
+              const ub = getUrgency(b.due_date, b.status);
+              const priority: Record<string, number> = { overdue: 0, urgent: 1, normal: 2 };
+              const pa = priority[ua] ?? 2, pb = priority[ub] ?? 2;
+              if (pa !== pb) return pa - pb;
+              // 同紧急度按交期排序
+              return (a.due_date || '').localeCompare(b.due_date || '');
+            });
             return (
               <div key={col.key} className="flex flex-col min-h-0">
                 {/* 列标题 */}
