@@ -301,7 +301,7 @@ export default function InventoryPage() {
 
       {/* 物料进出记录弹窗 */}
       <Dialog open={!!txProductId} onOpenChange={(open) => { if (!open) setTxProductId(''); }}>
-        <DialogContent className="max-w-[1800px] w-[99vw]">
+        <DialogContent className="max-w-[95vw] w-auto" style={{ maxHeight: '92vh' }}>
           <DialogHeader>
             <DialogTitle className="text-lg">
               进出记录 - {txProductCode} / {txProductName}
@@ -332,10 +332,11 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              {/* 进出记录表格 */}
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <table className="w-full text-sm" style={{ tableLayout: 'auto' }}>
-                  <thead>
+              {/* 进出记录表格 - 隐藏滚动条但可滚动 */}
+              <div className="border border-gray-200 rounded-lg overflow-auto" style={{ maxHeight: 'calc(92vh - 220px)', scrollbarWidth: 'none' }}>
+                <style>{`div::-webkit-scrollbar { display: none; }`}</style>
+                <table className="w-full text-sm" style={{ tableLayout: 'auto', minWidth: '800px' }}>
+                  <thead className="sticky top-0 z-10">
                     <tr className="border-b border-gray-200" style={{ backgroundColor: '#1E40AF' }}>
                       <th className="text-left px-4 py-3 font-medium text-white whitespace-nowrap">日期</th>
                       <th className="text-center px-4 py-3 font-medium text-white whitespace-nowrap">类型</th>
