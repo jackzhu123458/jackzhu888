@@ -59,20 +59,20 @@ export async function GET(request: NextRequest) {
   }
 
   type FlatRow = {
-    单号: string;
-    单据日期: string;
-    订单号码: string;
-    商品编号: string;
-    商品名称: string;
-    单位: string;
-    数量: number;
-    不含税单价: number;
-    单价: number;
-    金额: number;
-    不含税金额: number;
-    类目: string;
-    类目名称: string;
-    明细备注: string;
+    note_no: string;
+    delivery_date: string;
+    order_no: string;
+    product_code: string;
+    product_name: string;
+    unit: string;
+    quantity: number;
+    price_ex_tax: number;
+    price_inc_tax: number;
+    amount_inc_tax: number;
+    amount_ex_tax: number;
+    category: string;
+    category_name: string;
+    remark: string;
   };
 
   const allRows: FlatRow[] = [];
@@ -105,152 +105,119 @@ export async function GET(request: NextRequest) {
       }
 
       allRows.push({
-        单号: note.note_no || '',
-        单据日期: note.delivery_date ? new Date(note.delivery_date).toLocaleDateString('zh-CN') : '',
-        订单号码: orderNo,
-        商品编号: (product.code as string) || '',
-        商品名称: (product.name as string) || '',
-        单位: (product.unit as string) || '',
-        数量: qty,
-        不含税单价: priceExTax,
-        单价: price,
-        金额: amount,
-        不含税金额: amountExTax,
-        类目: pCategory,
-        类目名称: categoryMap.get(pCategory) || pCategory,
-        明细备注: (item.remark as string) || '',
+        note_no: note.note_no || '',
+        delivery_date: note.delivery_date ? new Date(note.delivery_date).toLocaleDateString('zh-CN') : '',
+        order_no: orderNo,
+        product_code: (product.code as string) || '',
+        product_name: (product.name as string) || '',
+        unit: (product.unit as string) || '',
+        quantity: qty,
+        price_ex_tax: priceExTax,
+        price_inc_tax: price,
+        amount_inc_tax: amount,
+        amount_ex_tax: amountExTax,
+        category: pCategory,
+        category_name: categoryMap.get(pCategory) || pCategory,
+        remark: (item.remark as string) || '',
       });
     }
   }
 
   // Sort by category → product code → date
   allRows.sort((a, b) => {
-    if (a.类目 !== b.类目) return a.类目.localeCompare(b.类目);
-    if (a.商品编号 !== b.商品编号) return a.商品编号.localeCompare(b.商品编号);
-    return a.单据日期.localeCompare(b.单据日期);
+    if (a.category !== b.category) return a.category.localeCompare(b.category);
+    if (a.product_code !== b.product_code) return a.product_code.localeCompare(b.product_code);
+    return a.delivery_date.localeCompare(b.delivery_date);
   });
 
   const wb = XLSX.utils.book_new();
 
-  // ====== Sheet 1: 数据透视表（按类目分类汇总）======
-  const pivotRows: Record<string, unknown>[] = [];
+  // ====== Sheet 1: 对账汇总（数据透视表 + Excel分组折叠）======
+  // Structure like the reference image:
+  // 行标签 | 求和项:数量 | 不含税单价 | 含税单价 | 求和项:金额
+  // ▸支撑片 | 500 | 0.1593 | 0.180 | ¥90.00
+  //   30.019.01.0005 支撑片/8# | 500 | 0.1593 | 0.180 | ¥90.00
+  //     XS260124001 | 50 | 0.1593 | 0.180 | ¥9.00
+  // ...
+  // 总计 | xxx | | | ¥xxx
 
-  // Group by category
-  const categoryGroups = new Map<string, FlatRow[]>();
+  // Group by category → product
+  const categoryGroups = new Map<string, Map<string, FlatRow[]>>();
   for (const row of allRows) {
-    let group = categoryGroups.get(row.类目);
-    if (!group) {
-      group = [];
-      categoryGroups.set(row.类目, group);
+    let catMap = categoryGroups.get(row.category);
+    if (!catMap) {
+      catMap = new Map();
+      categoryGroups.set(row.category, catMap);
     }
-    group.push(row);
+    let prodRows = catMap.get(row.product_code);
+    if (!prodRows) {
+      prodRows = [];
+      catMap.set(row.product_code, prodRows);
+    }
+    prodRows.push(row);
   }
+
+  // Build rows for pivot table
+  const pivotData: (string | number)[][] = [];
+  const rowLevels: number[] = []; // outline level per row
+
+  // Header row
+  pivotData.push(['行标签', '求和项:数量', '不含税单价', '含税单价', '求和项:金额']);
+  rowLevels.push(0);
 
   let grandTotalQty = 0;
   let grandTotalAmount = 0;
   let grandTotalAmountExTax = 0;
 
-  for (const [cat, rows] of categoryGroups) {
-    const catName = rows[0]?.类目名称 || cat;
+  for (const [cat, prodMap] of categoryGroups) {
+    const catName = allRows.find(r => r.category === cat)?.category_name || cat;
     let catTotalQty = 0;
     let catTotalAmount = 0;
     let catTotalAmountExTax = 0;
 
-    // Category header row
-    pivotRows.push({
-      单号: `类目: ${catName}`,
-      单据日期: '',
-      订单号码: '',
-      商品编号: '',
-      商品名称: '',
-      单位: '',
-      数量: '',
-      不含税单价: '',
-      单价: '',
-      金额: '',
-      不含税金额: '',
-      明细备注: '',
-    });
+    // Calculate weighted average unit prices for category
+    let catWeightedPriceIncTax = 0;
+    let catWeightedPriceExTax = 0;
 
-    // Group by product within category
-    const productGroups = new Map<string, FlatRow[]>();
-    for (const row of rows) {
-      let pg = productGroups.get(row.商品编号);
-      if (!pg) {
-        pg = [];
-        productGroups.set(row.商品编号, pg);
+    // Category summary row (level 0)
+    for (const [, prodRows] of prodMap) {
+      for (const row of prodRows) {
+        catTotalQty += row.quantity;
+        catTotalAmount += row.amount_inc_tax;
+        catTotalAmountExTax += row.amount_ex_tax;
       }
-      pg.push(row);
     }
+    catWeightedPriceExTax = catTotalQty > 0 ? round4(catTotalAmountExTax / catTotalQty) : 0;
+    catWeightedPriceIncTax = catTotalQty > 0 ? round4(catTotalAmount / catTotalQty) : 0;
 
-    for (const [, prodRows] of productGroups) {
+    pivotData.push([catName, catTotalQty, catWeightedPriceExTax, catWeightedPriceIncTax, catTotalAmount]);
+    rowLevels.push(0); // Category row at level 0
+
+    for (const [prodCode, prodRows] of prodMap) {
       let prodTotalQty = 0;
       let prodTotalAmount = 0;
       let prodTotalAmountExTax = 0;
 
       for (const row of prodRows) {
-        prodTotalQty += row.数量;
-        prodTotalAmount += row.金额;
-        prodTotalAmountExTax += row.不含税金额;
-
-        pivotRows.push({
-          单号: row.单号,
-          单据日期: row.单据日期,
-          订单号码: row.订单号码,
-          商品编号: row.商品编号,
-          商品名称: row.商品名称,
-          单位: row.单位,
-          数量: row.数量,
-          不含税单价: row.不含税单价,
-          单价: row.单价,
-          金额: row.金额,
-          不含税金额: row.不含税金额,
-          明细备注: row.明细备注,
-        });
+        prodTotalQty += row.quantity;
+        prodTotalAmount += row.amount_inc_tax;
+        prodTotalAmountExTax += row.amount_ex_tax;
       }
 
-      // Product subtotal row
-      pivotRows.push({
-        单号: '',
-        单据日期: '',
-        订单号码: '',
-        商品编号: '',
-        商品名称: `小计（${prodRows[0].商品名称}）`,
-        单位: '',
-        数量: prodTotalQty,
-        不含税单价: '',
-        单价: '',
-        金额: prodTotalAmount,
-        不含税金额: round4(prodTotalAmountExTax),
-        明细备注: '',
-      });
+      const prodPriceIncTax = prodTotalQty > 0 ? round4(prodTotalAmount / prodTotalQty) : 0;
+      const prodPriceExTax = prodTotalQty > 0 ? round4(prodTotalAmountExTax / prodTotalQty) : 0;
+      const prodName = prodRows[0].product_name;
 
-      catTotalQty += prodTotalQty;
-      catTotalAmount += prodTotalAmount;
-      catTotalAmountExTax += prodTotalAmountExTax;
+      // Product summary row (level 1)
+      pivotData.push([`  ${prodCode} ${prodName}`, prodTotalQty, prodPriceExTax, prodPriceIncTax, prodTotalAmount]);
+      rowLevels.push(1);
+
+      for (const row of prodRows) {
+        // Delivery detail row (level 2)
+        pivotData.push([`    ${row.note_no} ${row.delivery_date} ${row.order_no}`, row.quantity, row.price_ex_tax, row.price_inc_tax, row.amount_inc_tax]);
+        rowLevels.push(2);
+      }
     }
-
-    // Category subtotal row
-    pivotRows.push({
-      单号: `类目合计: ${catName}`,
-      单据日期: '',
-      订单号码: '',
-      商品编号: '',
-      商品名称: '',
-      单位: '',
-      数量: catTotalQty,
-      不含税单价: '',
-      单价: '',
-      金额: catTotalAmount,
-      不含税金额: round4(catTotalAmountExTax),
-      明细备注: '',
-    });
-
-    // Empty separator row
-    pivotRows.push({
-      单号: '', 单据日期: '', 订单号码: '', 商品编号: '', 商品名称: '',
-      单位: '', 数量: '', 不含税单价: '', 单价: '', 金额: '', 不含税金额: '', 明细备注: '',
-    });
 
     grandTotalQty += catTotalQty;
     grandTotalAmount += catTotalAmount;
@@ -258,122 +225,51 @@ export async function GET(request: NextRequest) {
   }
 
   // Grand total row
-  pivotRows.push({
-    单号: '总计',
-    单据日期: '',
-    订单号码: '',
-    商品编号: '',
-    商品名称: '',
-    单位: '',
-    数量: grandTotalQty,
-    不含税单价: '',
-    单价: '',
-    金额: grandTotalAmount,
-    不含税金额: round4(grandTotalAmountExTax),
-    明细备注: '',
-  });
+  const grandWeightedExTax = grandTotalQty > 0 ? round4(grandTotalAmountExTax / grandTotalQty) : 0;
+  const grandWeightedIncTax = grandTotalQty > 0 ? round4(grandTotalAmount / grandTotalQty) : 0;
+  pivotData.push(['总计', grandTotalQty, grandWeightedExTax, grandWeightedIncTax, grandTotalAmount]);
+  rowLevels.push(0);
 
-  const pivotWs = XLSX.utils.json_to_sheet(pivotRows);
+  // Create worksheet
+  const pivotWs = XLSX.utils.aoa_to_sheet(pivotData);
   pivotWs['!cols'] = [
-    { wch: 16 }, // 单号
-    { wch: 12 }, // 单据日期
-    { wch: 12 }, // 订单号码
-    { wch: 18 }, // 商品编号
-    { wch: 22 }, // 商品名称
-    { wch: 6 },  // 单位
-    { wch: 10 }, // 数量
+    { wch: 40 }, // 行标签
+    { wch: 14 }, // 求和项:数量
     { wch: 14 }, // 不含税单价
-    { wch: 10 }, // 单价
-    { wch: 14 }, // 金额
-    { wch: 14 }, // 不含税金额
-    { wch: 14 }, // 明细备注
+    { wch: 12 }, // 含税单价
+    { wch: 16 }, // 求和项:金额
   ];
 
-  // Merge cells for category headers and subtotals
-  const merges: XLSX.Range[] = [];
-  let rowIdx = 0;
-  for (const [cat, rows] of categoryGroups) {
-    // Category header row
-    merges.push({ s: { r: rowIdx, c: 0 }, e: { r: rowIdx, c: 11 } });
-    rowIdx++;
-
-    // Count detail + subtotal rows for this category
-    const productGroups = new Map<string, FlatRow[]>();
-    for (const row of rows) {
-      let pg = productGroups.get(row.商品编号);
-      if (!pg) { pg = []; productGroups.set(row.商品编号, pg); }
-      pg.push(row);
-    }
-
-    for (const [, prodRows] of productGroups) {
-      rowIdx += prodRows.length; // detail rows
-      rowIdx++; // product subtotal row
-    }
-
-    // Category subtotal row
-    merges.push({ s: { r: rowIdx, c: 0 }, e: { r: rowIdx, c: 11 } });
-    rowIdx++;
-
-    // Empty separator row
-    rowIdx++;
+  // Set outline levels for row grouping (collapsible in Excel)
+  const rowConfigs: XLSX.RowInfo[] = [];
+  for (let i = 0; i < pivotData.length; i++) {
+    const level = rowLevels[i];
+    rowConfigs.push({
+      level: level > 0 ? level : undefined,
+      hidden: false,
+    });
   }
+  pivotWs['!rows'] = rowConfigs;
 
-  // Grand total row
-  merges.push({ s: { r: rowIdx, c: 0 }, e: { r: rowIdx, c: 11 } });
-
-  pivotWs['!merges'] = merges;
-
-  // Bold styling for header/subtotal rows - using cell styles
-  // xlsx community edition has limited style support, we mark them via cell objects
-  let styleRowIdx = 0;
-  for (const [cat] of categoryGroups) {
-    // Category header - make bold
-    for (let c = 0; c < 12; c++) {
-      const cell = pivotWs[XLSX.utils.encode_cell({ r: styleRowIdx, c })];
-      if (cell) {
-        cell.s = { font: { bold: true, sz: 11 } };
-      }
-    }
-    styleRowIdx++;
-
-    const productGroups = new Map<string, FlatRow[]>();
-    const catRows = categoryGroups.get(cat) || [];
-    for (const row of catRows) {
-      let pg = productGroups.get(row.商品编号);
-      if (!pg) { pg = []; productGroups.set(row.商品编号, pg); }
-      pg.push(row);
-    }
-
-    for (const [, prodRows] of productGroups) {
-      styleRowIdx += prodRows.length;
-      // Product subtotal - make bold
-      for (let c = 0; c < 12; c++) {
-        const cell = pivotWs[XLSX.utils.encode_cell({ r: styleRowIdx, c })];
+  // Apply cell styles - bold for category rows and total
+  // xlsx community edition has limited style support, but we try
+  for (let r = 0; r < pivotData.length; r++) {
+    const level = rowLevels[r];
+    if (level === 0 && r > 0) { // Category rows and total row (not header)
+      for (let c = 0; c < 5; c++) {
+        const cell = pivotWs[XLSX.utils.encode_cell({ r, c })];
         if (cell) {
-          cell.s = { font: { bold: true } };
+          cell.s = { font: { bold: true, sz: 11 } };
         }
       }
-      styleRowIdx++;
     }
-
-    // Category subtotal - make bold
-    for (let c = 0; c < 12; c++) {
-      const cell = pivotWs[XLSX.utils.encode_cell({ r: styleRowIdx, c })];
-      if (cell) {
-        cell.s = { font: { bold: true, sz: 11 } };
+    if (r === 0) { // Header row
+      for (let c = 0; c < 5; c++) {
+        const cell = pivotWs[XLSX.utils.encode_cell({ r, c })];
+        if (cell) {
+          cell.s = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 }, fill: { fgColor: { rgb: '1E40AF' } } };
+        }
       }
-    }
-    styleRowIdx++;
-
-    // Empty separator
-    styleRowIdx++;
-  }
-
-  // Grand total - make bold
-  for (let c = 0; c < 12; c++) {
-    const cell = pivotWs[XLSX.utils.encode_cell({ r: styleRowIdx, c })];
-    if (cell) {
-      cell.s = { font: { bold: true, sz: 12 } };
     }
   }
 
@@ -381,18 +277,19 @@ export async function GET(request: NextRequest) {
 
   // ====== Sheet 2: 送货明细（原始流水）======
   const detailRows = allRows.map(row => ({
-    单号: row.单号,
-    单据日期: row.单据日期,
-    订单号码: row.订单号码,
-    商品编号: row.商品编号,
-    商品名称: row.商品名称,
-    单位: row.单位,
-    数量: row.数量,
-    不含税单价: row.不含税单价,
-    单价: row.单价,
-    金额: row.金额,
-    不含税金额: row.不含税金额,
-    明细备注: row.明细备注,
+    单号: row.note_no,
+    单据日期: row.delivery_date,
+    订单号码: row.order_no,
+    商品编号: row.product_code,
+    商品名称: row.product_name,
+    单位: row.unit,
+    数量: row.quantity,
+    不含税单价: row.price_ex_tax,
+    含税单价: row.price_inc_tax,
+    金额: row.amount_inc_tax,
+    不含税金额: row.amount_ex_tax,
+    类目: row.category_name,
+    明细备注: row.remark,
   }));
 
   const detailWs = XLSX.utils.json_to_sheet(detailRows);
@@ -405,15 +302,25 @@ export async function GET(request: NextRequest) {
     { wch: 6 },  // 单位
     { wch: 10 }, // 数量
     { wch: 14 }, // 不含税单价
-    { wch: 10 }, // 单价
+    { wch: 12 }, // 含税单价
     { wch: 14 }, // 金额
     { wch: 14 }, // 不含税金额
+    { wch: 10 }, // 类目
     { wch: 14 }, // 明细备注
   ];
+
+  // Header style for detail sheet
+  for (let c = 0; c < 13; c++) {
+    const cell = detailWs[XLSX.utils.encode_cell({ r: 0, c })];
+    if (cell) {
+      cell.s = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 }, fill: { fgColor: { rgb: '1E40AF' } } };
+    }
+  }
+
   XLSX.utils.book_append_sheet(wb, detailWs, '送货明细');
 
-  // Generate buffer
-  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  // Generate buffer with cellStyles enabled
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellStyles: true });
 
   // Build filename
   const dateRange = startDate && endDate
