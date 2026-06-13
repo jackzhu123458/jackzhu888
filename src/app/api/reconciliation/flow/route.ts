@@ -107,10 +107,28 @@ export async function GET(request: NextRequest) {
   const totalPages = Math.ceil(total / pageSize);
   const pagedRows = rows.slice((page - 1) * pageSize, page * pageSize);
 
-  // Fetch filter options
-  const [custRes] = await Promise.all([
+  // Fetch filter options + category names
+  const [custRes, catProdRes] = await Promise.all([
     supabase.from('customers').select('id, name, code').order('name'),
+    supabase.from('products').select('category, name').not('category', 'is', null).not('category', 'eq', ''),
   ]);
+
+  // Build category name map
+  const categoryNameMap: Record<string, string> = {};
+  for (const p of (catProdRes.data || [])) {
+    const cat = p.category as string;
+    if (!categoryNameMap[cat] && (p.name as string)?.includes('/')) {
+      categoryNameMap[cat] = (p.name as string).split('/')[0];
+    }
+  }
+  categoryNameMap['五金'] = '五金';
+  categoryNameMap['成品'] = '成品';
+  if (!categoryNameMap['0']) categoryNameMap['0'] = '安装板';
+
+  // Enrich rows with category_name
+  for (const row of pagedRows) {
+    (row as Record<string, unknown>).category_name = categoryNameMap[row.category] || row.category;
+  }
 
   return NextResponse.json({
     filters: {

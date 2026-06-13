@@ -33,6 +33,7 @@ interface FlowRow {
   spec: string | null;
   unit: string;
   category: string;
+  category_name: string;
   quantity: number;
   unit_price: number;
   amount: number;
@@ -66,6 +67,7 @@ interface AggItem {
 
 interface CategoryGroup {
   category: string;
+  category_name: string;
   items: AggItem[];
   category_total_quantity: number;
   category_total_amount: number;
@@ -80,7 +82,7 @@ interface CustomerGroup {
 }
 
 interface ReconciliationData {
-  filters: { customers: Customer[]; categories: string[] };
+  filters: { customers: Customer[]; categories: Array<{ code: string; name: string }> };
   data: CustomerGroup[];
   summary: { total_customers: number; total_quantity: number; total_amount: number };
 }
@@ -437,7 +439,7 @@ export default function ReconciliationPage() {
                     <SelectContent>
                       <SelectItem value="all">全部类目</SelectItem>
                       {sumData?.filters?.categories?.map(cat => (
-                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                        <SelectItem key={cat.code} value={cat.code}>{cat.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -530,7 +532,7 @@ export default function ReconciliationPage() {
                       >
                         <div className="flex items-center gap-2">
                           {catExpanded ? <ChevronDown className="w-3.5 h-3.5 text-gray-400" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-400" />}
-                          <span className="text-sm font-medium text-gray-700">类目: {catGroup.category}</span>
+                          <span className="text-sm font-medium text-gray-700">类目: {catGroup.category_name || catGroup.category}</span>
                           <span className="text-xs text-gray-400">{catGroup.items.length}种商品</span>
                         </div>
                         <div className="flex items-center gap-4 text-xs text-gray-500">

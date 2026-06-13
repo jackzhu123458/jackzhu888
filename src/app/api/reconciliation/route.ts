@@ -1,6 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
 
+// Build category name mapping from products table
+async function getCategoryNameMap(supabase: ReturnType<typeof getSupabaseClient>): Promise<Record<string, string>> {
+  const { data: products } = await supabase
+    .from('products')
+    .select('category, name')
+    .not('category', 'is', null)
+    .not('category', 'eq', '');
+
+  const map: Record<string, string> = {};
+  for (const p of (products || [])) {
+    const cat = p.category as string;
+    if (!map[cat] && (p.name as string)?.includes('/')) {
+      // Extract prefix before '/' as category name (e.g. "连接板/L18005" → "连接板")
+      map[cat] = (p.name as string).split('/')[0];
+    }
+  }
+  // Manual overrides for known categories
+  const overrides: Record<string, string> = {
+    '0': '安装板',
+    '五金': '五金',
+    '成品': '成品',
+  };
+  for (const [k, v] of Object.entries(overrides)) {
+    if (!map[k]) map[k] = v;
+  }
+  return map;
+}
+
 export async function GET(request: NextRequest) {
   const supabase = getSupabaseClient();
   const { searchParams } = new URL(request.url);
@@ -197,10 +225,20 @@ export async function GET(request: NextRequest) {
 
   const uniqueCategories = [...new Set((allCategories || []).map((p: { category: string }) => p.category))].sort();
 
+  // Get category name mapping
+  const categoryNameMap = await getCategoryNameMap(supabase);
+
+  // Enrich categories with names
+  for (const cust of result) {
+    for (const cat of cust.categories) {
+      (cat as Record<string, unknown>).category_name = categoryNameMap[cat.category] || cat.category;
+    }
+  }
+
   return NextResponse.json({
     filters: {
       customers: allCustomers || [],
-      categories: uniqueCategories,
+      categories: uniqueCategories.map(c => ({ code: c, name: categoryNameMap[c] || c })),
     },
     data: result,
     summary: {
