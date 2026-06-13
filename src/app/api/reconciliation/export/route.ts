@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
       allRows.push({
         note_no: note.note_no || '',
         delivery_date: note.delivery_date ? new Date(note.delivery_date).toLocaleDateString('zh-CN') : '',
-        order_no: orderNo,
+        order_no: orderNo || '-',
         product_code: (product.code as string) || '',
         product_name: (product.name as string) || '',
         unit: (product.unit as string) || '',
@@ -123,25 +123,20 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Sort by category → product code → date
+  // Sort by category → order_no → product_code
   allRows.sort((a, b) => {
     if (a.category !== b.category) return a.category.localeCompare(b.category);
-    if (a.product_code !== b.product_code) return a.product_code.localeCompare(b.product_code);
-    return a.delivery_date.localeCompare(b.delivery_date);
+    if (a.order_no !== b.order_no) return a.order_no.localeCompare(b.order_no);
+    return a.product_code.localeCompare(b.product_code);
   });
 
   const wb = XLSX.utils.book_new();
 
   // ====== Sheet 1: 对账汇总（数据透视表 + Excel分组折叠）======
-  // Structure like the reference image:
+  // Hierarchy: 类目 → 订单号码 → 商品明细
   // 行标签 | 求和项:数量 | 不含税单价 | 含税单价 | 求和项:金额
-  // ▸支撑片 | 500 | 0.1593 | 0.180 | ¥90.00
-  //   30.019.01.0005 支撑片/8# | 500 | 0.1593 | 0.180 | ¥90.00
-  //     XS260124001 | 50 | 0.1593 | 0.180 | ¥9.00
-  // ...
-  // 总计 | xxx | | | ¥xxx
 
-  // Group by category → product
+  // Group by category → order_no
   const categoryGroups = new Map<string, Map<string, FlatRow[]>>();
   for (const row of allRows) {
     let catMap = categoryGroups.get(row.category);
@@ -149,73 +144,73 @@ export async function GET(request: NextRequest) {
       catMap = new Map();
       categoryGroups.set(row.category, catMap);
     }
-    let prodRows = catMap.get(row.product_code);
-    if (!prodRows) {
-      prodRows = [];
-      catMap.set(row.product_code, prodRows);
+    let orderRows = catMap.get(row.order_no);
+    if (!orderRows) {
+      orderRows = [];
+      catMap.set(row.order_no, orderRows);
     }
-    prodRows.push(row);
+    orderRows.push(row);
   }
 
   // Build rows for pivot table
   const pivotData: (string | number)[][] = [];
   const rowLevels: number[] = []; // outline level per row
+  const rowTypes: ('header' | 'category' | 'order' | 'detail' | 'total')[] = [];
 
   // Header row
   pivotData.push(['行标签', '求和项:数量', '不含税单价', '含税单价', '求和项:金额']);
   rowLevels.push(0);
+  rowTypes.push('header');
 
   let grandTotalQty = 0;
   let grandTotalAmount = 0;
   let grandTotalAmountExTax = 0;
 
-  for (const [cat, prodMap] of categoryGroups) {
+  for (const [cat, orderMap] of categoryGroups) {
     const catName = allRows.find(r => r.category === cat)?.category_name || cat;
     let catTotalQty = 0;
     let catTotalAmount = 0;
     let catTotalAmountExTax = 0;
 
-    // Calculate weighted average unit prices for category
-    let catWeightedPriceIncTax = 0;
-    let catWeightedPriceExTax = 0;
-
-    // Category summary row (level 0)
-    for (const [, prodRows] of prodMap) {
-      for (const row of prodRows) {
+    for (const [, orderRows] of orderMap) {
+      for (const row of orderRows) {
         catTotalQty += row.quantity;
         catTotalAmount += row.amount_inc_tax;
         catTotalAmountExTax += row.amount_ex_tax;
       }
     }
-    catWeightedPriceExTax = catTotalQty > 0 ? round4(catTotalAmountExTax / catTotalQty) : 0;
-    catWeightedPriceIncTax = catTotalQty > 0 ? round4(catTotalAmount / catTotalQty) : 0;
+    const catWeightedPriceExTax = catTotalQty > 0 ? round4(catTotalAmountExTax / catTotalQty) : 0;
+    const catWeightedPriceIncTax = catTotalQty > 0 ? round4(catTotalAmount / catTotalQty) : 0;
 
+    // Category summary row (level 0)
     pivotData.push([catName, catTotalQty, catWeightedPriceExTax, catWeightedPriceIncTax, catTotalAmount]);
-    rowLevels.push(0); // Category row at level 0
+    rowLevels.push(0);
+    rowTypes.push('category');
 
-    for (const [prodCode, prodRows] of prodMap) {
-      let prodTotalQty = 0;
-      let prodTotalAmount = 0;
-      let prodTotalAmountExTax = 0;
+    for (const [orderNo, orderRows] of orderMap) {
+      let orderTotalQty = 0;
+      let orderTotalAmount = 0;
+      let orderTotalAmountExTax = 0;
 
-      for (const row of prodRows) {
-        prodTotalQty += row.quantity;
-        prodTotalAmount += row.amount_inc_tax;
-        prodTotalAmountExTax += row.amount_ex_tax;
+      for (const row of orderRows) {
+        orderTotalQty += row.quantity;
+        orderTotalAmount += row.amount_inc_tax;
+        orderTotalAmountExTax += row.amount_ex_tax;
       }
+      const orderWeightedPriceExTax = orderTotalQty > 0 ? round4(orderTotalAmountExTax / orderTotalQty) : 0;
+      const orderWeightedPriceIncTax = orderTotalQty > 0 ? round4(orderTotalAmount / orderTotalQty) : 0;
 
-      const prodPriceIncTax = prodTotalQty > 0 ? round4(prodTotalAmount / prodTotalQty) : 0;
-      const prodPriceExTax = prodTotalQty > 0 ? round4(prodTotalAmountExTax / prodTotalQty) : 0;
-      const prodName = prodRows[0].product_name;
-
-      // Product summary row (level 1)
-      pivotData.push([`  ${prodCode} ${prodName}`, prodTotalQty, prodPriceExTax, prodPriceIncTax, prodTotalAmount]);
+      // Order summary row (level 1)
+      pivotData.push([`  ${orderNo}`, orderTotalQty, orderWeightedPriceExTax, orderWeightedPriceIncTax, orderTotalAmount]);
       rowLevels.push(1);
+      rowTypes.push('order');
 
-      for (const row of prodRows) {
-        // Delivery detail row (level 2)
-        pivotData.push([`    ${row.note_no} ${row.delivery_date} ${row.order_no}`, row.quantity, row.price_ex_tax, row.price_inc_tax, row.amount_inc_tax]);
+      for (const row of orderRows) {
+        // Product detail row (level 2)
+        const label = `${row.product_code} ${row.product_name}`;
+        pivotData.push([`    ${label}`, row.quantity, row.price_ex_tax, row.price_inc_tax, row.amount_inc_tax]);
         rowLevels.push(2);
+        rowTypes.push('detail');
       }
     }
 
@@ -229,11 +224,12 @@ export async function GET(request: NextRequest) {
   const grandWeightedIncTax = grandTotalQty > 0 ? round4(grandTotalAmount / grandTotalQty) : 0;
   pivotData.push(['总计', grandTotalQty, grandWeightedExTax, grandWeightedIncTax, grandTotalAmount]);
   rowLevels.push(0);
+  rowTypes.push('total');
 
   // Create worksheet
   const pivotWs = XLSX.utils.aoa_to_sheet(pivotData);
   pivotWs['!cols'] = [
-    { wch: 40 }, // 行标签
+    { wch: 42 }, // 行标签
     { wch: 14 }, // 求和项:数量
     { wch: 14 }, // 不含税单价
     { wch: 12 }, // 含税单价
@@ -251,24 +247,51 @@ export async function GET(request: NextRequest) {
   }
   pivotWs['!rows'] = rowConfigs;
 
-  // Apply cell styles - bold for category rows and total
-  // xlsx community edition has limited style support, but we try
+  // Apply cell styles with colors
+  // Colors:
+  // Header: dark blue bg, white text
+  // Category: light blue bg (#DBEAFE), bold
+  // Order: light green bg (#DCFCE7), semibold
+  // Detail: white bg (default)
+  // Total: light yellow bg (#FEF9C3), bold
   for (let r = 0; r < pivotData.length; r++) {
-    const level = rowLevels[r];
-    if (level === 0 && r > 0) { // Category rows and total row (not header)
-      for (let c = 0; c < 5; c++) {
-        const cell = pivotWs[XLSX.utils.encode_cell({ r, c })];
-        if (cell) {
-          cell.s = { font: { bold: true, sz: 11 } };
-        }
-      }
-    }
-    if (r === 0) { // Header row
-      for (let c = 0; c < 5; c++) {
-        const cell = pivotWs[XLSX.utils.encode_cell({ r, c })];
-        if (cell) {
-          cell.s = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 }, fill: { fgColor: { rgb: '1E40AF' } } };
-        }
+    const type = rowTypes[r];
+    for (let c = 0; c < 5; c++) {
+      const cell = pivotWs[XLSX.utils.encode_cell({ r, c })];
+      if (!cell) continue;
+
+      switch (type) {
+        case 'header':
+          cell.s = {
+            font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
+            fill: { fgColor: { rgb: '1E40AF' } },
+            alignment: { horizontal: 'center' },
+          };
+          break;
+        case 'category':
+          cell.s = {
+            font: { bold: true, sz: 11 },
+            fill: { fgColor: { rgb: 'DBEAFE' } },
+          };
+          break;
+        case 'order':
+          cell.s = {
+            font: { bold: true, sz: 10 },
+            fill: { fgColor: { rgb: 'DCFCE7' } },
+          };
+          break;
+        case 'detail':
+          cell.s = {
+            font: { sz: 10 },
+            fill: { fgColor: { rgb: 'FFFFFF' } },
+          };
+          break;
+        case 'total':
+          cell.s = {
+            font: { bold: true, sz: 12 },
+            fill: { fgColor: { rgb: 'FEF9C3' } },
+          };
+          break;
       }
     }
   }
