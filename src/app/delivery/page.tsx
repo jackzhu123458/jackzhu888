@@ -1321,18 +1321,18 @@ export default function DeliveryPage() {
                           </div>
                         </>
                       )}
-                      {/* 表格+联单 并排布局，避免rowSpan导致列错位 */}
-                      <div style={{ display: 'flex' }}>
-                        {/* 主表格 7列 */}
-                        <table style={{ flex: 1, tableLayout: 'fixed', borderCollapse: 'collapse', border: '1px solid #000' }}>
+                      {/* 表格 8列（含联单列），不用rowSpan避免错位 */}
+                      <div style={{ position: 'relative' }}>
+                        <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', border: '1px solid #000' }}>
                           <colgroup>
-                            <col style={{ width: '6%' }} />
-                            <col style={{ width: '16%' }} />
-                            <col style={{ width: '15%' }} />
-                            <col style={{ width: '28%' }} />
-                            <col style={{ width: '7%' }} />
-                            <col style={{ width: '10%' }} />
-                            <col style={{ width: '18%' }} />
+                            <col style={{ width: '30px' }} />
+                            <col style={{ width: '82px' }} />
+                            <col style={{ width: '78px' }} />
+                            <col style={{ width: '145px' }} />
+                            <col style={{ width: '36px' }} />
+                            <col style={{ width: '52px' }} />
+                            <col style={{ width: '82px' }} />
+                            <col style={{ width: '22px' }} />
                           </colgroup>
                           <tbody>
                             <tr style={{ background: '#f0f0f0' }}>
@@ -1343,6 +1343,11 @@ export default function DeliveryPage() {
                               <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>单位</th>
                               <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>数量</th>
                               <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>备注</th>
+                              <th style={{ border: '1px solid #000', padding: '2px 0', fontWeight: 'bold', fontSize: '9px', writingMode: 'vertical-rl', letterSpacing: '1px', lineHeight: '1.4', textAlign: 'center' }}>
+                                <span style={{ color: '#333' }}>(一)存根白</span>
+                                <span style={{ color: '#cc0000' }}>(二)客户红</span>
+                                <span style={{ color: '#cc8800' }}>(三)回单黄</span>
+                              </th>
                             </tr>
                             {pageItems.map((item, idx) => {
                               const prod = getProduct(item);
@@ -1367,6 +1372,7 @@ export default function DeliveryPage() {
                                   <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {item.remark || ''}
                                   </td>
+                                  <td style={{ border: '1px solid #000', padding: '0', fontSize: '1px', height: '16px' }}></td>
                                 </tr>
                               );
                             })}
@@ -1380,29 +1386,11 @@ export default function DeliveryPage() {
                                 <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
                                 <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
                                 <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
+                                <td style={{ border: '1px solid #000', padding: '0', fontSize: '1px', height: '16px' }}></td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
-                        {/* 联单竖排文字 — 独立于表格，避免rowSpan错位 */}
-                        <div style={{
-                          border: '1px solid #000',
-                          borderLeft: 'none',
-                          width: '20px',
-                          minWidth: '20px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          writingMode: 'vertical-rl',
-                          fontSize: '9px',
-                          letterSpacing: '1px',
-                          lineHeight: '1.6',
-                          padding: '4px 1px',
-                        }}>
-                          <span style={{ color: '#333' }}>(一)存根白</span>
-                          <span style={{ color: '#cc0000' }}>(二)客户红</span>
-                          <span style={{ color: '#cc8800' }}>(三)回单黄</span>
-                        </div>
                       </div>
 
                       {/* 底部备注 + 签署（仅最后一页） */}
