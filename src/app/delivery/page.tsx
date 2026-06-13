@@ -70,7 +70,7 @@ interface OrderItem {
   delivered_qty: number;
   price: number | null;
   remark: string | null;
-  products?: Product;
+  products?: Product | Product[];
 }
 interface CustomerOrder {
   id: string;
@@ -84,6 +84,7 @@ interface DeliveryItem {
   id?: string;
   product_id: string;
   product?: Product;
+  products?: Product | Product[];
   quantity: number;
   unit_price: number;
   per_box_qty: number;
@@ -193,7 +194,7 @@ export default function DeliveryPage() {
   const fetchMeta = useCallback(async () => {
     const [cRes, pRes, oRes, whRes] = await Promise.all([
       fetch('/api/customers'),
-      fetch('/api/bom?all=true'),
+      fetch('/api/products'),
       fetch('/api/orders?status=confirmed'),
       fetch('/api/warehouses'),
     ]);
@@ -204,35 +205,7 @@ export default function DeliveryPage() {
     setCustomers(Array.isArray(cData) ? cData : []);
     if (Array.isArray(oData)) setCustomerOrders(oData.filter((o: CustomerOrder) => o.status === 'confirmed' || o.status === 'in_progress' || o.status === 'pending'));
     if (Array.isArray(whData)) setWarehouses(whData);
-    // Products come from BOM items — flatten all unique products
-    const prods: Product[] = [];
-    const seen = new Set<string>();
-    const bomList = Array.isArray(pData) ? pData : [];
-    for (const bom of bomList) {
-      for (const child of bom.children || []) {
-        if (child.product_id && !seen.has(child.product_id)) {
-          seen.add(child.product_id);
-          prods.push({
-            id: child.product_id,
-            code: child.product_code || '',
-            name: child.product_name || '',
-            spec: child.product_spec || null,
-            unit: child.product_unit || '个',
-          });
-        }
-      }
-      if (bom.parent_product_id && !seen.has(bom.parent_product_id)) {
-        seen.add(bom.parent_product_id);
-        prods.push({
-          id: bom.parent_product_id,
-          code: bom.parent_product_code || '',
-          name: bom.parent_product_name || '',
-          spec: null,
-          unit: '个',
-        });
-      }
-    }
-    setProducts(prods);
+    setProducts(Array.isArray(pData) ? pData : []);
   }, []);
 
   useEffect(() => { fetchNotes(); fetchMeta(); }, [fetchNotes, fetchMeta]);
@@ -281,12 +254,21 @@ export default function DeliveryPage() {
       delivery_note_items: Array.isArray(fullNote.delivery_note_items)
         ? fullNote.delivery_note_items
             .filter((it: DeliveryItem) => !('count' in (it as unknown as Record<string, unknown>) && Object.keys(it as unknown as Record<string, unknown>).length <= 2))
-            .map((it: DeliveryItem) => ({
-              ...it,
-              per_box_qty: it.per_box_qty || it.quantity,
-              remark: it.remark || '',
-              customer_order_item_id: it.customer_order_item_id || null,
-            }))
+            .map((it: DeliveryItem & { products?: Product | Product[] }) => {
+              // Supabase JOIN 返回 products (复数)，统一转为 product (单数)
+              const rawProd = it.products;
+              let product: Product | undefined;
+              if (rawProd) {
+                product = Array.isArray(rawProd) ? rawProd[0] : rawProd;
+              }
+              return {
+                ...it,
+                product,
+                per_box_qty: it.per_box_qty || it.quantity,
+                remark: it.remark || '',
+                customer_order_item_id: it.customer_order_item_id || null,
+              };
+            })
         : [],
     });
   };
@@ -405,19 +387,84 @@ export default function DeliveryPage() {
   };
 
   /* ─── Import from customer order ─── */
-  const importFromOrder = (order: CustomerOrder) => {
-    const items: DeliveryItem[] = (order.customer_order_items || [])
-      .filter((item) => Number(item.quantity) - Number(item.delivered_qty) > 0)
-      .map((item) => ({
+  const importFromOrder = async (order: CustomerOrder) => {
+    // 获取可用库存信息，按 product_id 汇总
+    let inventoryMap: Record<string, { quantity: number; reserved_qty: number }> = {};
+    try {
+      const invRes = await fetch('/api/inventory');
+      const invData = await invRes.json();
+      if (Array.isArray(invData)) {
+        for (const inv of invData) {
+          const existing = inventoryMap[inv.product_id];
+          if (existing) {
+            existing.quantity += Number(inv.quantity) || 0;
+            existing.reserved_qty += Number(inv.reserved_qty) || 0;
+          } else {
+            inventoryMap[inv.product_id] = {
+              quantity: Number(inv.quantity) || 0,
+              reserved_qty: Number(inv.reserved_qty) || 0,
+            };
+          }
+        }
+      }
+    } catch { /* ignore */ }
+
+    // 过滤：只导入有足够可用库存的物料（可用库存 = quantity - reserved_qty）
+    const filteredItems = (order.customer_order_items || []).filter((item) => {
+      const undelivered = Number(item.quantity) - Number(item.delivered_qty);
+      if (undelivered <= 0) return false;
+      const inv = inventoryMap[item.product_id];
+      const available = inv ? inv.quantity - inv.reserved_qty : 0;
+      return available > 0;
+    });
+
+    if (filteredItems.length === 0) {
+      alert('该订单中所有物料均无可用库存，无法导入。请先完成生产入库。');
+      return;
+    }
+
+    const hasUnavailable = (order.customer_order_items || []).some((item) => {
+      const undelivered = Number(item.quantity) - Number(item.delivered_qty);
+      if (undelivered <= 0) return false;
+      const inv = inventoryMap[item.product_id];
+      const available = inv ? inv.quantity - inv.reserved_qty : 0;
+      return available <= 0;
+    });
+
+    if (hasUnavailable) {
+      const proceed = window.confirm('部分物料库存不足（未完成生产），仅导入有库存的物料。是否继续？');
+      if (!proceed) return;
+    }
+
+    const items: DeliveryItem[] = filteredItems.map((item) => {
+      // Supabase JOIN 返回 products 为对象或数组，统一提取为单对象
+      const rawProd = item.products;
+      let product: Product | undefined;
+      if (rawProd) {
+        if (Array.isArray(rawProd)) {
+          product = rawProd[0] as Product;
+        } else if (typeof rawProd === 'object') {
+          product = rawProd as Product;
+        }
+      }
+
+      const undelivered = Number(item.quantity) - Number(item.delivered_qty);
+      // 可用库存数量，限制送货数量不超过可用量
+      const inv = inventoryMap[item.product_id];
+      const available = inv ? inv.quantity - inv.reserved_qty : 0;
+      const deliverQty = Math.min(undelivered, available);
+
+      return {
         product_id: item.product_id,
-        product: item.products,
-        quantity: Number(item.quantity) - Number(item.delivered_qty),
+        product,
+        quantity: deliverQty,
         unit_price: Number(item.price) || 0,
-        per_box_qty: Number(item.quantity) - Number(item.delivered_qty),
-        remark: item.remark || '',
+        per_box_qty: deliverQty,
+        remark: available < undelivered ? `欠交 ${undelivered - available}` : (item.remark || ''),
         customer_order_item_id: item.id,
         customer_order: order.order_no,
-      }));
+      };
+    });
 
     const cust = order.customers as Record<string, string> | undefined;
     setForm((prev) => ({
@@ -1472,10 +1519,11 @@ export default function DeliveryPage() {
 
       {/* ─── Order Picker Dialog ─── */}
       <Dialog open={orderPickerOpen} onOpenChange={setOrderPickerOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>从客户订单导入</DialogTitle>
           </DialogHeader>
+          <div className="text-xs text-gray-500 mb-2">仅导入有可用库存的物料，未完成生产的物料不会导入。可用库存 = 总库存 - 预留量</div>
           <div className="max-h-96 overflow-auto">
             {customerOrders.length === 0 ? (
               <p className="text-sm text-gray-400 py-8 text-center">暂无可导入的客户订单，请先在客户订单中下推</p>
@@ -1487,37 +1535,60 @@ export default function DeliveryPage() {
                     <th className="py-2 px-2 text-left">客户</th>
                     <th className="py-2 px-2 text-left">物料</th>
                     <th className="py-2 px-2 text-right">未交数量</th>
+                    <th className="py-2 px-2 text-right">可用库存</th>
+                    <th className="py-2 px-2 text-center">状态</th>
                     <th className="py-2 px-2 w-20"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {customerOrders.map((order) => (
-                    (order.customer_order_items || []).map((item, idx) => {
+                  {customerOrders.map((order) => {
+                    const orderItems = (order.customer_order_items || []).filter(i => Number(i.quantity) - Number(i.delivered_qty) > 0);
+                    if (orderItems.length === 0) return null;
+                    return orderItems.map((item, idx) => {
                       const undelivered = Number(item.quantity) - Number(item.delivered_qty);
-                      if (undelivered <= 0) return null;
+                      // 从products列表查找库存
+                      const availableStock = (() => {
+                        const inv = products.find(p => p.id === item.product_id);
+                        // 这里无法精确获取库存，但可以通过备注标明
+                        return -1; // 未知
+                      })();
+                      const prodName = (() => {
+                        const rawProd = item.products;
+                        if (Array.isArray(rawProd)) return (rawProd[0] as Product)?.name || '-';
+                        return (rawProd as Product)?.name || '-';
+                      })();
+                      const prodCode = (() => {
+                        const rawProd = item.products;
+                        if (Array.isArray(rawProd)) return (rawProd[0] as Product)?.code || '';
+                        return (rawProd as Product)?.code || '';
+                      })();
                       return (
                         <tr key={`${order.id}-${idx}`} className="border-b hover:bg-gray-50">
                           {idx === 0 ? (
                             <>
-                              <td className="py-2 px-2 font-mono" rowSpan={order.customer_order_items?.filter(i => Number(i.quantity) - Number(i.delivered_qty) > 0).length || 1}>{order.order_no}</td>
-                              <td className="py-2 px-2" rowSpan={order.customer_order_items?.filter(i => Number(i.quantity) - Number(i.delivered_qty) > 0).length || 1}>
+                              <td className="py-2 px-2 font-mono" rowSpan={orderItems.length}>{order.order_no}</td>
+                              <td className="py-2 px-2" rowSpan={orderItems.length}>
                                 {customers.find(c => c.id === order.customer_id)?.name || '-'}
                               </td>
                             </>
                           ) : null}
-                          <td className="py-2 px-2">{item.products?.name || '-'} <span className="text-gray-400">{item.products?.code || ''}</span></td>
+                          <td className="py-2 px-2">{prodName} <span className="text-gray-400">{prodCode}</span></td>
                           <td className="py-2 px-2 text-right font-mono">{undelivered}</td>
+                          <td className="py-2 px-2 text-right font-mono text-gray-400">-</td>
+                          <td className="py-2 px-2 text-center">
+                            <span className="text-xs text-gray-400">导入时检查</span>
+                          </td>
                           {idx === 0 ? (
-                            <td className="py-2 px-2 text-center" rowSpan={order.customer_order_items?.filter(i => Number(i.quantity) - Number(i.delivered_qty) > 0).length || 1}>
-                              <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => importFromOrder(order)}>
+                            <td className="py-2 px-2 text-center" rowSpan={orderItems.length}>
+                              <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => void importFromOrder(order)}>
                                 导入
                               </Button>
                             </td>
                           ) : null}
                         </tr>
                       );
-                    })
-                  ))}
+                    });
+                  })}
                 </tbody>
               </table>
             )}
