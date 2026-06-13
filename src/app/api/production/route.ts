@@ -59,6 +59,11 @@ export async function GET(request: NextRequest) {
       if (o.customer_order_item_id && itemMap[o.customer_order_item_id as string]) {
         (o as Record<string, unknown>).order_item = itemMap[o.customer_order_item_id as string];
       }
+      // 判断是否已送货：客户订单明细的 delivered_qty >= quantity
+      const orderItem = o.customer_order_item_id ? itemMap[o.customer_order_item_id as string] : null;
+      (o as Record<string, unknown>).delivered = orderItem
+        ? Number(orderItem.delivered_qty) >= Number(orderItem.quantity)
+        : false;
     });
   }
 

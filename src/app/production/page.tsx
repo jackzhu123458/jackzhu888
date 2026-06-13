@@ -23,6 +23,7 @@ interface Order {
   start_date: string | null;
   remark: string | null;
   customer_order_id: string | null;
+  delivered?: boolean;
   created_at?: string;
   customers?: { id: string; name: string } | null;
   customer_order?: { id: string; order_no: string } | null;
@@ -74,6 +75,7 @@ export default function ProductionPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterProductId, setFilterProductId] = useState('all');
+  const [hideDelivered, setHideDelivered] = useState(true);
 
   // 新增/编辑
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -129,6 +131,7 @@ export default function ProductionPage() {
   /* ---------- helpers ---------- */
   const filteredOrders = orders.filter((o) => {
     if (filterProductId !== 'all' && o.product_id !== filterProductId) return false;
+    if (hideDelivered && o.delivered) return false;
     return true;
   });
 
@@ -291,7 +294,14 @@ export default function ProductionPage() {
       const isExpanded = expandedGroups.has(groupKey);
 
       result.push(
-        <div key={productId} className={`bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow ${urgency === 'overdue' ? 'border-red-400' : urgency === 'urgent' ? 'border-orange-300' : 'border-gray-200'}`}>
+        <div key={productId} className={`bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow ${groupOrders.some(o => o.delivered) && !hideDelivered ? 'opacity-60 border-gray-300' : ''} ${urgency === 'overdue' ? 'border-red-400' : urgency === 'urgent' ? 'border-orange-300' : 'border-gray-200'}`}>
+          {/* 已送货标记 */}
+          {groupOrders.some(o => o.delivered) && !hideDelivered && (
+            <div className="px-4 py-1 text-xs font-medium text-gray-500 bg-gray-100 rounded-t-lg flex items-center gap-1.5">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-400" />
+              已送货
+            </div>
+          )}
           {/* 紧急提示条 */}
           {urgency !== 'normal' && (
             <div className={`px-4 py-1.5 text-xs font-medium ${uc.color} ${uc.bg} rounded-t-lg flex items-center gap-1.5 ${uc.pulse}`}>
@@ -336,10 +346,15 @@ export default function ProductionPage() {
                   ? Math.ceil((new Date(order.due_date).getTime() - todayMs) / 86400000)
                   : 0;
                 return (
-                  <div key={order.id} className="px-4 py-2.5 border-b border-gray-50 last:border-b-0 bg-gray-50/30">
+                  <div key={order.id} className={`px-4 py-2.5 border-b border-gray-50 last:border-b-0 ${order.delivered && !hideDelivered ? 'bg-gray-100/50' : 'bg-gray-50/30'}`}>
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-mono text-xs text-gray-500">{order.order_no}</span>
-                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${st.color}`}>{st.label}</Badge>
+                      <div className="flex items-center gap-1.5">
+                        {order.delivered && !hideDelivered && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-gray-500 border-gray-300 bg-gray-50">已送货</Badge>
+                        )}
+                        <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${st.color}`}>{st.label}</Badge>
+                      </div>
                     </div>
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-gray-600">
@@ -410,8 +425,22 @@ export default function ProductionPage() {
             ))}
           </SelectContent>
         </Select>
+        <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={hideDelivered}
+            onChange={(e) => setHideDelivered(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          隐藏已送货
+        </label>
         <div className="text-xs text-gray-400 ml-auto">
           共 {filteredOrders.length} 条生产订单
+          {hideDelivered && orders.filter(o => o.delivered).length > 0 && (
+            <span className="text-gray-400 ml-1">
+              （已隐藏 {orders.filter(o => o.delivered).length} 条已送货）
+            </span>
+          )}
         </div>
       </div>
 
