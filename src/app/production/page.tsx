@@ -110,8 +110,12 @@ export default function ProductionPage() {
     });
   };
 
-  // 今天的时间戳，用于计算紧急度（避免渲染中调用 Date.now()）
-  const [todayMs] = useState(() => Date.now());
+  // 今天的时间戳，用于计算紧急度
+  // 初始为0，客户端挂载后再设置，避免 SSR/客户端 hydration 不一致
+  const [todayMs, setTodayMs] = useState(0);
+  useEffect(() => {
+    setTodayMs(Date.now());
+  }, []);
 
   /* ---------- fetch ---------- */
   const fetchOrders = useCallback(async () => {
@@ -239,9 +243,9 @@ export default function ProductionPage() {
 
   /* ---------- 日期格式化 ---------- */
   const fmtDate = (d: string | null | undefined) => d ? d.slice(0, 10) : '-';
-  const isOverdue = (d: string | null | undefined) => d && new Date(d).getTime() < todayMs;
+  const isOverdue = (d: string | null | undefined) => todayMs > 0 && !!d && new Date(d).getTime() < todayMs;
   const getUrgency = (dueDate: string | null | undefined, status: string) => {
-    if (!dueDate || status === 'completed' || status === 'cancelled') return 'normal';
+    if (!dueDate || status === 'completed' || status === 'cancelled' || todayMs === 0) return 'normal';
     const now = new Date(todayMs); now.setHours(0,0,0,0);
     const due = new Date(dueDate); due.setHours(0,0,0,0);
     const diff = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);

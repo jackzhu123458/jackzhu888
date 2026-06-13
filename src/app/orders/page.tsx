@@ -129,7 +129,11 @@ export default function OrdersPage() {
   const [hideDelivered, setHideDelivered] = useState(true);
 
   // 缓存今天日期，避免渲染中调用 Date.now()
-  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+  // 初始值为空字符串，客户端挂载后再设置，避免 SSR/客户端 hydration 不一致
+  const [today, setToday] = useState('');
+  useEffect(() => {
+    setToday(new Date().toISOString().split('T')[0]);
+  }, []);
 
   // 编辑相关
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -277,7 +281,8 @@ export default function OrdersPage() {
       });
     });
     if (allDates.length === 0) {
-      // 默认显示当月（使用缓存的today避免hydration不一致）
+      // todayStrParam 为空时返回空数组（SSR 阶段）
+      if (!todayStrParam) return [];
       const now = new Date(todayStrParam);
       return getDateRange(new Date(now.getFullYear(), now.getMonth(), 1), new Date(now.getFullYear(), now.getMonth() + 1, 0));
     }
@@ -290,7 +295,7 @@ export default function OrdersPage() {
     return getDateRange(minDate, maxDate);
   };
 
-  const dateRange = getScheduleDateRange(today);
+  const dateRange = useMemo(() => getScheduleDateRange(today), [today, orders]);
 
   // 获取某明细在某日期的排程数量
   const getScheduleQty = (item: OrderItem, date: string): number => {
