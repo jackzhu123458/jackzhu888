@@ -1321,7 +1321,7 @@ export default function DeliveryPage() {
                           </div>
                         </>
                       )}
-                      {/* 表格 8列（含联单列），不用rowSpan避免错位 */}
+                      {/* 表格 8列（含联单列） */}
                       <div style={{ position: 'relative' }}>
                         <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', border: '1px solid #000' }}>
                           <colgroup>
@@ -1343,7 +1343,7 @@ export default function DeliveryPage() {
                               <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>单位</th>
                               <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>数量</th>
                               <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>备注</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 0', fontWeight: 'bold', fontSize: '9px', writingMode: 'vertical-rl', letterSpacing: '1px', lineHeight: '1.4', textAlign: 'center' }}>
+                              <th rowSpan={totalRows + 1} style={{ border: '1px solid #000', padding: '6px 2px', fontSize: '9px', writingMode: 'vertical-rl', letterSpacing: '1px', lineHeight: '1.6', textAlign: 'center' }}>
                                 <span style={{ color: '#333' }}>(一)存根白</span>
                                 <span style={{ color: '#cc0000' }}>(二)客户红</span>
                                 <span style={{ color: '#cc8800' }}>(三)回单黄</span>
@@ -1372,7 +1372,6 @@ export default function DeliveryPage() {
                                   <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {item.remark || ''}
                                   </td>
-                                  <td style={{ border: '1px solid #000', padding: '0', fontSize: '1px', height: '16px' }}></td>
                                 </tr>
                               );
                             })}
@@ -1386,7 +1385,6 @@ export default function DeliveryPage() {
                                 <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
                                 <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
                                 <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '0', fontSize: '1px', height: '16px' }}></td>
                               </tr>
                             ))}
                           </tbody>
