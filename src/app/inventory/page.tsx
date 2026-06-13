@@ -301,9 +301,9 @@ export default function InventoryPage() {
 
       {/* 物料进出记录弹窗 */}
       <Dialog open={!!txProductId} onOpenChange={(open) => { if (!open) setTxProductId(''); }}>
-        <DialogContent className="max-w-[900px]">
+        <DialogContent className="max-w-[1200px] w-[95vw]">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-lg">
               进出记录 - {txProductCode} / {txProductName}
             </DialogTitle>
           </DialogHeader>
@@ -315,59 +315,59 @@ export default function InventoryPage() {
           ) : (
             <>
               {/* 汇总统计 */}
-              <div className="flex gap-6 mb-4 px-1">
+              <div className="flex gap-8 mb-5 px-1">
                 <div className="flex items-center gap-2">
-                  <ArrowDownCircle className="w-4 h-4 text-green-600" />
+                  <ArrowDownCircle className="w-5 h-5 text-green-600" />
                   <span className="text-sm text-gray-600">累计入库:</span>
-                  <span className="font-mono font-medium text-green-700">{totalIn.toFixed(2)}</span>
+                  <span className="font-mono font-semibold text-green-700 text-base">{totalIn.toFixed(2)}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <ArrowUpCircle className="w-4 h-4 text-red-500" />
+                  <ArrowUpCircle className="w-5 h-5 text-red-500" />
                   <span className="text-sm text-gray-600">累计出库:</span>
-                  <span className="font-mono font-medium text-red-600">{totalOut.toFixed(2)}</span>
+                  <span className="font-mono font-semibold text-red-600 text-base">{totalOut.toFixed(2)}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-600">净库存:</span>
-                  <span className="font-mono font-medium text-gray-900">{(totalIn - totalOut).toFixed(2)}</span>
+                  <span className="font-mono font-semibold text-gray-900 text-base">{(totalIn - totalOut).toFixed(2)}</span>
                 </div>
               </div>
 
               {/* 进出记录表格 */}
-              <div className="border border-gray-200 rounded-lg max-h-[500px] overflow-y-auto">
+              <div className="border border-gray-200 rounded-lg">
                 <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-gray-50/95 backdrop-blur-sm">
-                    <tr className="border-b border-gray-200">
-                      <th className="text-left px-4 py-2.5 font-medium text-gray-500 w-28">日期</th>
-                      <th className="text-center px-4 py-2.5 font-medium text-gray-500 w-20">类型</th>
-                      <th className="text-left px-4 py-2.5 font-medium text-gray-500">单号</th>
-                      <th className="text-right px-4 py-2.5 font-medium text-gray-500 w-24">数量</th>
-                      <th className="text-left px-4 py-2.5 font-medium text-gray-500">仓库</th>
-                      <th className="text-left px-4 py-2.5 font-medium text-gray-500">关联单据</th>
-                      <th className="text-left px-4 py-2.5 font-medium text-gray-500">备注</th>
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="text-left px-5 py-3 font-medium text-gray-500 w-32">日期</th>
+                      <th className="text-center px-5 py-3 font-medium text-gray-500 w-24">类型</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500 w-40">单号</th>
+                      <th className="text-right px-5 py-3 font-medium text-gray-500 w-28">数量</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500 w-28">仓库</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500 w-40">关联单据</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">备注</th>
                     </tr>
                   </thead>
                   <tbody>
                     {transactions.map((tx) => (
                       <tr key={tx.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                        <td className="px-4 py-2.5 text-gray-700 font-mono text-xs">
+                        <td className="px-5 py-3 text-gray-700 font-mono text-xs">
                           {tx.date ? new Date(tx.date).toLocaleDateString('zh-CN') : '-'}
                         </td>
-                        <td className="px-4 py-2.5 text-center">
+                        <td className="px-5 py-3 text-center">
                           {tx.type === 'inbound' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700">
-                              <ArrowDownCircle className="w-3 h-3" />入库
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700">
+                              <ArrowDownCircle className="w-3.5 h-3.5" />入库
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-600">
-                              <ArrowUpCircle className="w-3 h-3" />出库
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-xs font-medium bg-red-50 text-red-600">
+                              <ArrowUpCircle className="w-3.5 h-3.5" />出库
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-2.5 font-mono text-xs text-gray-700">{tx.note_no || '-'}</td>
-                        <td className="px-4 py-2.5 text-right font-mono text-gray-900">{tx.quantity.toFixed(2)}</td>
-                        <td className="px-4 py-2.5 text-gray-600 text-xs">{tx.warehouse}</td>
-                        <td className="px-4 py-2.5 text-gray-600 text-xs">{tx.related_order || '-'}</td>
-                        <td className="px-4 py-2.5 text-gray-500 text-xs max-w-[150px] truncate">{tx.remark || '-'}</td>
+                        <td className="px-5 py-3 font-mono text-xs text-gray-700">{tx.note_no || '-'}</td>
+                        <td className="px-5 py-3 text-right font-mono text-gray-900">{tx.quantity.toFixed(2)}</td>
+                        <td className="px-5 py-3 text-gray-600 text-xs">{tx.warehouse}</td>
+                        <td className="px-5 py-3 text-gray-600 text-xs">{tx.related_order || '-'}</td>
+                        <td className="px-5 py-3 text-gray-500 text-xs">{tx.remark || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
