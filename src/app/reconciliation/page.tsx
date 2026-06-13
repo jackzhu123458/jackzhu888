@@ -339,47 +339,43 @@ export default function ReconciliationPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b bg-gray-50 text-gray-500">
-                    <th className="py-2.5 px-3 text-left font-medium w-28">送货单号</th>
-                    <th className="py-2.5 px-3 text-left font-medium w-24">送货日期</th>
-                    <th className="py-2.5 px-3 text-left font-medium">客户名称</th>
-                    <th className="py-2.5 px-3 text-left font-medium w-28">客户订单号</th>
-                    <th className="py-2.5 px-3 text-left font-medium w-28">物料编号</th>
-                    <th className="py-2.5 px-3 text-left font-medium">物料名称</th>
-                    <th className="py-2.5 px-3 text-left font-medium w-16">单位</th>
+                  <tr className="bg-[#1E40AF] text-white text-xs">
+                    <th className="py-2.5 px-3 text-left font-medium w-28">单号</th>
+                    <th className="py-2.5 px-3 text-left font-medium w-24">单据日期</th>
+                    <th className="py-2.5 px-3 text-left font-medium w-24">订单号码</th>
+                    <th className="py-2.5 px-3 text-left font-medium w-32">商品编号</th>
+                    <th className="py-2.5 px-3 text-left font-medium">商品名称</th>
+                    <th className="py-2.5 px-3 text-center font-medium w-14">单位</th>
                     <th className="py-2.5 px-3 text-right font-medium w-16">数量</th>
+                    <th className="py-2.5 px-3 text-right font-medium w-24">不含税单价</th>
                     <th className="py-2.5 px-3 text-right font-medium w-20">单价</th>
                     <th className="py-2.5 px-3 text-right font-medium w-24">金额</th>
-                    <th className="py-2.5 px-3 text-center font-medium w-16">状态</th>
-                    <th className="py-2.5 px-3 text-left font-medium w-24">备注</th>
+                    <th className="py-2.5 px-3 text-left font-medium w-28">明细备注</th>
                   </tr>
                 </thead>
                 <tbody>
                   {flowData?.rows?.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="py-16 text-center text-gray-400">
+                      <td colSpan={11} className="py-16 text-center text-gray-400">
                         <FileText className="w-10 h-10 mx-auto mb-2 opacity-30" />
                         <p>暂无送货流水数据</p>
                       </td>
                     </tr>
                   ) : (
                     flowData?.rows?.map((row) => {
-                      const st = statusLabel(row.status);
+                      const noTaxPrice = Math.round(row.unit_price / 1.13 * 10000) / 10000;
                       return (
                         <tr key={row.item_id} className="border-b border-gray-100 hover:bg-[#F9FAFB]">
-                          <td className="py-2 px-3 font-mono text-xs">{row.note_no}</td>
-                          <td className="py-2 px-3 text-xs">{formatDate(row.delivery_date)}</td>
-                          <td className="py-2 px-3">{row.customer_name}</td>
-                          <td className="py-2 px-3 font-mono text-xs">{row.order_no || '-'}</td>
+                          <td className="py-2 px-3 font-mono text-xs text-[#1E40AF]">{row.note_no}</td>
+                          <td className="py-2 px-3 text-xs text-gray-700">{formatDate(row.delivery_date)}</td>
+                          <td className="py-2 px-3 font-mono text-xs text-gray-700">{row.order_no || '-'}</td>
                           <td className="py-2 px-3 font-mono text-xs">{row.product_code}</td>
                           <td className="py-2 px-3">{row.product_name}{row.spec ? <span className="text-gray-400 ml-1">/{row.spec}</span> : ''}</td>
                           <td className="py-2 px-3 text-gray-500 text-center">{row.unit}</td>
                           <td className="py-2 px-3 text-right font-mono">{row.quantity.toLocaleString()}</td>
+                          <td className="py-2 px-3 text-right font-mono text-gray-600">{noTaxPrice.toFixed(4)}</td>
                           <td className="py-2 px-3 text-right font-mono">{formatAmount(row.unit_price)}</td>
-                          <td className="py-2 px-3 text-right font-mono font-semibold text-[#1E40AF]">¥{formatAmount(row.amount)}</td>
-                          <td className="py-2 px-3 text-center">
-                            <span className={`text-xs px-1.5 py-0.5 rounded ${st.cls}`}>{st.label}</span>
-                          </td>
+                          <td className="py-2 px-3 text-right font-mono font-semibold text-[#1E40AF]">{formatAmount(row.amount)}</td>
                           <td className="py-2 px-3 text-gray-500 text-xs">{row.item_remark || '-'}</td>
                         </tr>
                       );
@@ -554,28 +550,34 @@ export default function ReconciliationPage() {
                                   <th className="text-left py-2 font-medium w-12">单位</th>
                                   <th className="text-right py-2 font-medium w-16">送货次数</th>
                                   <th className="text-right py-2 font-medium w-20">合计数量</th>
-                                  <th className="text-right py-2 font-medium w-20">单价</th>
+                                  <th className="text-right py-2 font-medium w-24">不含税单价</th>
+                                  <th className="text-right py-2 font-medium w-20">含税单价</th>
                                   <th className="text-right py-2 font-medium w-24">合计金额</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {catGroup.items.map(item => (
-                                  <tr key={item.product_id} className="border-b border-gray-100 hover:bg-gray-50/50">
-                                    <td className="py-2 font-mono text-xs">{item.product_code}</td>
-                                    <td className="py-2">{item.product_name}</td>
-                                    <td className="py-2 text-gray-500">{item.spec || '-'}</td>
-                                    <td className="py-2 text-gray-500">{item.unit}</td>
-                                    <td className="py-2 text-right font-mono">{item.delivery_count}</td>
-                                    <td className="py-2 text-right font-mono font-semibold">{item.total_quantity.toLocaleString()}</td>
-                                    <td className="py-2 text-right font-mono">{formatAmount(item.unit_price)}</td>
-                                    <td className="py-2 text-right font-mono font-semibold text-[#1E40AF]">¥{formatAmount(item.total_amount)}</td>
-                                  </tr>
-                                ))}
+                                {catGroup.items.map(item => {
+                                  const noTaxPrice = Math.round(item.unit_price / 1.13 * 10000) / 10000;
+                                  return (
+                                    <tr key={item.product_id} className="border-b border-gray-100 hover:bg-gray-50/50">
+                                      <td className="py-2 font-mono text-xs">{item.product_code}</td>
+                                      <td className="py-2">{item.product_name}</td>
+                                      <td className="py-2 text-gray-500">{item.spec || '-'}</td>
+                                      <td className="py-2 text-gray-500">{item.unit}</td>
+                                      <td className="py-2 text-right font-mono">{item.delivery_count}</td>
+                                      <td className="py-2 text-right font-mono font-semibold">{item.total_quantity.toLocaleString()}</td>
+                                      <td className="py-2 text-right font-mono text-gray-600">{noTaxPrice.toFixed(4)}</td>
+                                      <td className="py-2 text-right font-mono">{formatAmount(item.unit_price)}</td>
+                                      <td className="py-2 text-right font-mono font-semibold text-[#1E40AF]">¥{formatAmount(item.total_amount)}</td>
+                                    </tr>
+                                  );
+                                })}
                                 {/* Category subtotal */}
                                 <tr className="bg-gray-50 font-medium">
                                   <td colSpan={4} className="py-2 text-gray-600">类目小计</td>
                                   <td className="py-2 text-right font-mono">{catGroup.items.reduce((s, i) => s + i.delivery_count, 0)}</td>
                                   <td className="py-2 text-right font-mono">{catGroup.category_total_quantity.toLocaleString()}</td>
+                                  <td></td>
                                   <td></td>
                                   <td className="py-2 text-right font-mono text-[#1E40AF]">¥{formatAmount(catGroup.category_total_amount)}</td>
                                 </tr>
@@ -588,29 +590,40 @@ export default function ReconciliationPage() {
                             <div className="text-xs text-gray-400 mb-2">送货明细</div>
                             <table className="w-full text-xs">
                               <thead>
-                                <tr className="border-b text-gray-400">
-                                  <th className="text-left py-1.5 font-medium w-28">送货单号</th>
-                                  <th className="text-left py-1.5 font-medium w-24">送货日期</th>
-                                  <th className="text-left py-1.5 font-medium w-28">商品编号</th>
-                                  <th className="text-left py-1.5 font-medium">商品名称</th>
-                                  <th className="text-right py-1.5 font-medium w-16">数量</th>
-                                  <th className="text-right py-1.5 font-medium w-16">单价</th>
-                                  <th className="text-right py-1.5 font-medium w-20">金额</th>
+                                <tr className="bg-[#1E40AF] text-white">
+                                  <th className="text-left py-1.5 px-2 font-medium w-28">单号</th>
+                                  <th className="text-left py-1.5 px-2 font-medium w-24">单据日期</th>
+                                  <th className="text-left py-1.5 px-2 font-medium w-28">订单号码</th>
+                                  <th className="text-left py-1.5 px-2 font-medium w-28">商品编号</th>
+                                  <th className="text-left py-1.5 px-2 font-medium">商品名称</th>
+                                  <th className="text-center py-1.5 px-2 font-medium w-12">单位</th>
+                                  <th className="text-right py-1.5 px-2 font-medium w-16">数量</th>
+                                  <th className="text-right py-1.5 px-2 font-medium w-20">不含税单价</th>
+                                  <th className="text-right py-1.5 px-2 font-medium w-16">单价</th>
+                                  <th className="text-right py-1.5 px-2 font-medium w-20">金额</th>
+                                  <th className="text-left py-1.5 px-2 font-medium w-20">备注</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {catGroup.items.flatMap(item =>
-                                  item.details.map((d, idx) => (
-                                    <tr key={`${item.product_id}-${idx}`} className="border-b border-gray-50">
-                                      <td className="py-1 font-mono">{d.note_no}</td>
-                                      <td className="py-1">{formatDate(d.delivery_date)}</td>
-                                      <td className="py-1 font-mono">{item.product_code}</td>
-                                      <td className="py-1">{item.product_name}</td>
-                                      <td className="py-1 text-right font-mono">{d.quantity.toLocaleString()}</td>
-                                      <td className="py-1 text-right font-mono">{formatAmount(d.unit_price)}</td>
-                                      <td className="py-1 text-right font-mono">¥{formatAmount(d.quantity * d.unit_price)}</td>
-                                    </tr>
-                                  ))
+                                  item.details.map((d, idx) => {
+                                    const noTaxPrice = Math.round(d.unit_price / 1.13 * 10000) / 10000;
+                                    return (
+                                      <tr key={`${item.product_id}-${idx}`} className="border-b border-gray-50">
+                                        <td className="py-1 px-2 font-mono">{d.note_no}</td>
+                                        <td className="py-1 px-2">{formatDate(d.delivery_date)}</td>
+                                        <td className="py-1 px-2 font-mono text-gray-500">-</td>
+                                        <td className="py-1 px-2 font-mono">{item.product_code}</td>
+                                        <td className="py-1 px-2">{item.product_name}</td>
+                                        <td className="py-1 px-2 text-center text-gray-500">{item.unit}</td>
+                                        <td className="py-1 px-2 text-right font-mono">{d.quantity.toLocaleString()}</td>
+                                        <td className="py-1 px-2 text-right font-mono text-gray-600">{noTaxPrice.toFixed(4)}</td>
+                                        <td className="py-1 px-2 text-right font-mono">{formatAmount(d.unit_price)}</td>
+                                        <td className="py-1 px-2 text-right font-mono font-semibold text-[#1E40AF]">{formatAmount(d.quantity * d.unit_price)}</td>
+                                        <td className="py-1 px-2 text-gray-500">-</td>
+                                      </tr>
+                                    );
+                                  })
                                 )}
                               </tbody>
                             </table>
