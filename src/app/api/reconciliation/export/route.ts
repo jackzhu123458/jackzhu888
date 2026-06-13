@@ -133,8 +133,8 @@ export async function GET(request: NextRequest) {
   const wb = XLSX.utils.book_new();
 
   // ====== Sheet 1: 对账汇总（数据透视表 + Excel分组折叠）======
-  // Hierarchy: 类目 → 商品 → 订单号码
-  // 行标签 | 求和项:数量 | 不含税单价 | 含税单价 | 求和项:金额
+  // Hierarchy: 类目(level 0, outlineLevel=1) → 商品(level 1, outlineLevel=2) → 订单号码(level 2, outlineLevel=3)
+  // 列: 行标签 | 求和项:数量 | 不含税单价 | 含税单价 | 求和项:金额
 
   // Group by category → product_code
   const categoryGroups = new Map<string, Map<string, FlatRow[]>>();
@@ -154,12 +154,13 @@ export async function GET(request: NextRequest) {
 
   // Build rows for pivot table
   const pivotData: (string | number)[][] = [];
-  const rowLevels: number[] = [];
+  // For Excel outline: level 0 = no outline, 1 = outermost group, 2 = inner, 3 = innermost
+  const outlineLevels: number[] = [];
   const rowTypes: ('header' | 'category' | 'product' | 'detail' | 'total')[] = [];
 
-  // Header row
+  // Header row (no outline)
   pivotData.push(['行标签', '求和项:数量', '不含税单价', '含税单价', '求和项:金额']);
-  rowLevels.push(0);
+  outlineLevels.push(0);
   rowTypes.push('header');
 
   let grandTotalQty = 0;
@@ -182,9 +183,9 @@ export async function GET(request: NextRequest) {
     const catWeightedPriceExTax = catTotalQty > 0 ? round4(catTotalAmountExTax / catTotalQty) : 0;
     const catWeightedPriceIncTax = catTotalQty > 0 ? round4(catTotalAmount / catTotalQty) : 0;
 
-    // Category summary row (level 0)
+    // Category summary row — outline level 1 (outermost, clickable to collapse sub-items)
     pivotData.push([catName, catTotalQty, catWeightedPriceExTax, catWeightedPriceIncTax, catTotalAmount]);
-    rowLevels.push(0);
+    outlineLevels.push(1);
     rowTypes.push('category');
 
     for (const [productCode, productRows] of productMap) {
@@ -197,20 +198,19 @@ export async function GET(request: NextRequest) {
         productTotalAmount += row.amount_inc_tax;
         productTotalAmountExTax += row.amount_ex_tax;
       }
-      // Product row uses its own unit price (same product same price)
       const productPriceExTax = productRows[0]?.price_ex_tax || 0;
       const productPriceIncTax = productRows[0]?.price_inc_tax || 0;
 
-      // Product summary row (level 1)
+      // Product summary row — outline level 2 (sub-group)
       const productLabel = productRows[0]?.product_name || productCode;
-      pivotData.push([`  ${productLabel}`, productTotalQty, productPriceExTax, productPriceIncTax, productTotalAmount]);
-      rowLevels.push(1);
+      pivotData.push([productLabel, productTotalQty, productPriceExTax, productPriceIncTax, productTotalAmount]);
+      outlineLevels.push(2);
       rowTypes.push('product');
 
       for (const row of productRows) {
-        // Order detail row (level 2) - show order number
-        pivotData.push([`    ${row.order_no}`, row.quantity, row.price_ex_tax, row.price_inc_tax, row.amount_inc_tax]);
-        rowLevels.push(2);
+        // Order detail row — outline level 3 (innermost detail)
+        pivotData.push([row.order_no, row.quantity, row.price_ex_tax, row.price_inc_tax, row.amount_inc_tax]);
+        outlineLevels.push(3);
         rowTypes.push('detail');
       }
     }
@@ -224,7 +224,7 @@ export async function GET(request: NextRequest) {
   const grandWeightedExTax = grandTotalQty > 0 ? round4(grandTotalAmountExTax / grandTotalQty) : 0;
   const grandWeightedIncTax = grandTotalQty > 0 ? round4(grandTotalAmount / grandTotalQty) : 0;
   pivotData.push(['总计', grandTotalQty, grandWeightedExTax, grandWeightedIncTax, grandTotalAmount]);
-  rowLevels.push(0);
+  outlineLevels.push(0);
   rowTypes.push('total');
 
   // Create worksheet
@@ -237,16 +237,24 @@ export async function GET(request: NextRequest) {
     { wch: 16 }, // 求和项:金额
   ];
 
-  // Set outline levels for row grouping (collapsible in Excel)
-  const rowConfigs: XLSX.RowInfo[] = [];
+  // Set row outline levels for Excel grouping (collapsible +/- buttons)
+  // outlineLevel: 0 = no outline, 1 = outermost, 2 = inner, 3 = innermost
+  // Rows with higher outlineLevel can be collapsed by clicking their parent
+  const rowInfos: XLSX.RowInfo[] = [];
   for (let i = 0; i < pivotData.length; i++) {
-    const level = rowLevels[i];
-    rowConfigs.push({
-      level: level > 0 ? level : undefined,
+    const ol = outlineLevels[i];
+    rowInfos.push({
+      level: ol > 0 ? ol : undefined,
       hidden: false,
     });
   }
-  pivotWs['!rows'] = rowConfigs;
+  pivotWs['!rows'] = rowInfos;
+
+  // Set outline above (summary rows are ABOVE detail rows — this is key for proper grouping)
+  // In XLSX, this maps to <sheetPr outlinePr summaryBelow="0"/>
+  if (!pivotWs['!sheetPr']) pivotWs['!sheetPr'] = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (pivotWs['!sheetPr'] as Record<string, any>).outlinePr = { summaryBelow: false };
 
   // Apply cell styles with colors
   for (let r = 0; r < pivotData.length; r++) {
@@ -254,6 +262,17 @@ export async function GET(request: NextRequest) {
     for (let c = 0; c < 5; c++) {
       const cell = pivotWs[XLSX.utils.encode_cell({ r, c })];
       if (!cell) continue;
+
+      // Number format for amounts
+      if ((c === 2 || c === 3) && r > 0 && type !== 'header') {
+        cell.z = '0.0000';
+      }
+      if (c === 4 && r > 0 && type !== 'header') {
+        cell.z = '¥#,##0.00';
+      }
+      if (c === 1 && r > 0 && type !== 'header') {
+        cell.z = '#,##0';
+      }
 
       switch (type) {
         case 'header':
@@ -265,7 +284,7 @@ export async function GET(request: NextRequest) {
           break;
         case 'category':
           cell.s = {
-            font: { bold: true, sz: 11 },
+            font: { bold: true, sz: 11, color: { rgb: '1E40AF' } },
             fill: { fgColor: { rgb: 'DBEAFE' } },
           };
           break;
