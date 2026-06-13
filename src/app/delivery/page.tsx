@@ -653,12 +653,25 @@ export default function DeliveryPage() {
     });
   };
 
+  // Auto-distribute total quantity evenly into N boxes (all integers)
+  const autoDistribute = (total: number, boxCount: number): number[] => {
+    if (boxCount <= 0 || total <= 0) return [total];
+    const base = Math.floor(total / boxCount);
+    const remainder = total % boxCount;
+    const result: number[] = [];
+    for (let i = 0; i < boxCount; i++) {
+      result.push(i < remainder ? base + 1 : base);
+    }
+    return result;
+  };
+
   const addBox = (itemIdx: number) => {
     setLabelBoxes((prev) => {
       const newBoxes = prev.map((arr) => [...arr]);
       if (newBoxes[itemIdx]) {
-        newBoxes[itemIdx] = [...newBoxes[itemIdx]];
-        newBoxes[itemIdx].push(0);
+        const totalQty = form.delivery_note_items[itemIdx]?.quantity || 0;
+        const newCount = newBoxes[itemIdx].length + 1;
+        newBoxes[itemIdx] = autoDistribute(totalQty, newCount);
       }
       return newBoxes;
     });
@@ -668,8 +681,21 @@ export default function DeliveryPage() {
     setLabelBoxes((prev) => {
       const newBoxes = prev.map((arr) => [...arr]);
       if (newBoxes[itemIdx] && newBoxes[itemIdx].length > 1) {
-        newBoxes[itemIdx] = [...newBoxes[itemIdx]];
-        newBoxes[itemIdx].splice(boxIdx, 1);
+        const totalQty = form.delivery_note_items[itemIdx]?.quantity || 0;
+        const newCount = newBoxes[itemIdx].length - 1;
+        newBoxes[itemIdx] = autoDistribute(totalQty, newCount);
+      }
+      return newBoxes;
+    });
+  };
+
+  const redistributeBoxes = (itemIdx: number) => {
+    setLabelBoxes((prev) => {
+      const newBoxes = prev.map((arr) => [...arr]);
+      if (newBoxes[itemIdx]) {
+        const totalQty = form.delivery_note_items[itemIdx]?.quantity || 0;
+        const boxCount = newBoxes[itemIdx].length;
+        newBoxes[itemIdx] = autoDistribute(totalQty, boxCount);
       }
       return newBoxes;
     });
@@ -1519,9 +1545,14 @@ export default function DeliveryPage() {
                           ))}
                         </tbody>
                       </table>
-                      <Button size="sm" variant="outline" className="h-7 gap-1 text-xs mt-2" onClick={() => addBox(itemIdx)}>
-                        <Plus className="h-3 w-3" /> 增加一箱
-                      </Button>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => addBox(itemIdx)}>
+                          <Plus className="h-3 w-3" /> 增加一箱
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => redistributeBoxes(itemIdx)}>
+                          自动均分
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 );
