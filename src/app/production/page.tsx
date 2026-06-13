@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
+import { ChevronDown, ChevronRight, Plus, Play, CheckCircle2, XCircle, Eye } from 'lucide-react';
 import { translateUnit } from '@/lib/utils';
 
 /* ---------- 类型 ---------- */
@@ -96,6 +97,16 @@ export default function ProductionPage() {
 
   // 详情
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
+  // 合并卡片展开状态
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   // 今天的时间戳，用于计算紧急度（避免渲染中调用 Date.now()）
   const [todayMs] = useState(() => Date.now());
@@ -247,83 +258,133 @@ export default function ProductionPage() {
     return due.toISOString().slice(0, 10);
   };
 
-  /* ---------- 渲染卡片 ---------- */
-  const renderCard = (order: Order) => {
-    const prod = order.products;
-    const cust = order.customers;
-    const st = statusMap[order.status] || { label: order.status, color: '', bg: '' };
-    const urgency = getUrgency(order.due_date, order.status);
-    const uc = urgencyConfig[urgency];
-    const reqDate = getRequiredCompleteDate(order.due_date);
-    const isReqOverdue = reqDate && new Date(reqDate).getTime() < todayMs;
-    const daysDiff = order.due_date
-      ? Math.ceil((new Date(order.due_date).getTime() - todayMs) / 86400000)
-      : 0;
+  /* ---------- 按物料分组的渲染 ---------- */
 
-    return (
-      <div key={order.id} className={`bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow ${urgency === 'overdue' ? 'border-red-400' : urgency === 'urgent' ? 'border-orange-300' : 'border-gray-200'}`}>
-        {/* 紧急提示条 */}
-        {urgency !== 'normal' && (
-          <div className={`px-4 py-1.5 text-xs font-medium ${uc.color} ${uc.bg} rounded-t-lg flex items-center gap-1.5 ${uc.pulse}`}>
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
-            {urgency === 'overdue' ? `已逾期 ${Math.abs(daysDiff)} 天` : `距交期仅 ${daysDiff} 天`}
-          </div>
-        )}
-        {/* 卡片头部 */}
-        <div className={`px-4 py-3 ${urgency !== 'normal' ? 'pt-2' : ''}`}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-mono text-xs text-gray-500">{order.order_no}</span>
-            <div className="flex items-center gap-1.5">
-              {urgency !== 'normal' && (
-                <Badge className={`text-[10px] px-1.5 py-0 ${uc.bg} ${uc.color} border ${uc.border}`}>{uc.label}</Badge>
-              )}
-              <Badge variant="outline" className={`text-[11px] px-1.5 py-0 ${st.color}`}>{st.label}</Badge>
+  /** 按product_id分组，返回 { productId: Order[] } */
+  const groupByProduct = (orders: Order[]): Map<string, Order[]> => {
+    const map = new Map<string, Order[]>();
+    for (const o of orders) {
+      const pid = o.product_id || '__none__';
+      if (!map.has(pid)) map.set(pid, []);
+      map.get(pid)!.push(o);
+    }
+    return map;
+  };
+
+  /** 渲染分组卡片 */
+  const renderGroupedCards = (orders: Order[]) => {
+    const groups = groupByProduct(orders);
+    const result: React.ReactNode[] = [];
+    for (const [productId, groupOrders] of groups) {
+      const prod = groupOrders[0].products;
+      const totalQty = groupOrders.reduce((s, o) => s + (o.quantity || 0), 0);
+      // 最紧急的交期
+      const earliestOrder = groupOrders.reduce((a, b) => (!a.due_date || (b.due_date && a.due_date > b.due_date)) ? b : a);
+      const urgency = getUrgency(earliestOrder.due_date, earliestOrder.status);
+      const uc = urgencyConfig[urgency];
+      const daysDiff = earliestOrder.due_date
+        ? Math.ceil((new Date(earliestOrder.due_date).getTime() - todayMs) / 86400000)
+        : 0;
+      const reqDate = getRequiredCompleteDate(earliestOrder.due_date);
+      const isReqOverdue = reqDate && new Date(reqDate).getTime() < todayMs;
+      const groupKey = `${productId}_${earliestOrder.status}`;
+      const isExpanded = expandedGroups.has(groupKey);
+
+      result.push(
+        <div key={productId} className={`bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow ${urgency === 'overdue' ? 'border-red-400' : urgency === 'urgent' ? 'border-orange-300' : 'border-gray-200'}`}>
+          {/* 紧急提示条 */}
+          {urgency !== 'normal' && (
+            <div className={`px-4 py-1.5 text-xs font-medium ${uc.color} ${uc.bg} rounded-t-lg flex items-center gap-1.5 ${uc.pulse}`}>
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
+              {urgency === 'overdue' ? `已逾期 ${Math.abs(daysDiff)} 天` : `距交期仅 ${daysDiff} 天`}
             </div>
-          </div>
-          <div className="text-sm font-medium text-gray-900 mb-1 truncate" title={prod?.name}>
-            {prod?.code && <span className="font-mono text-gray-500 mr-1">{prod.code}</span>}
-            {prod?.name || '未知物料'}
-          </div>
-          <div className="flex items-center justify-between text-xs text-gray-500">
-            <span>数量: <span className="font-mono font-medium text-gray-800">{order.quantity}</span> {translateUnit(prod?.unit || '')}</span>
-            {cust && <span>{cust.name}</span>}
-          </div>
-          <div className="flex items-center justify-between mt-1.5 text-xs text-gray-400">
-            <span>交期: <span className={urgency !== 'normal' ? 'text-red-600 font-medium' : ''}>{fmtDate(order.due_date)}</span></span>
+          )}
+          {/* 卡片头部 - 可点击展开 */}
+          <button
+            onClick={() => toggleGroup(groupKey)}
+            className={`w-full text-left px-4 py-3 ${urgency !== 'normal' ? 'pt-2' : ''} hover:bg-gray-50/50 transition-colors`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-sm font-medium text-gray-900 truncate" title={prod?.name}>
+                {prod?.code && <span className="font-mono text-gray-500 mr-1">{prod.code}</span>}
+                {prod?.name || '未知物料'}
+              </div>
+              <div className="flex items-center gap-2 shrink-0 ml-2">
+                <span className="text-xs text-gray-400">{groupOrders.length}单</span>
+                <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-xs text-gray-500">
+              <span>合计: <span className="font-mono font-semibold text-gray-800">{totalQty}</span> {translateUnit(prod?.unit || '')}</span>
+              <span>交期: <span className={urgency !== 'normal' ? 'text-red-600 font-medium' : ''}>{fmtDate(earliestOrder.due_date)}</span></span>
+            </div>
             {reqDate && (
-              <span>要求完成: <span className={`font-medium ${isReqOverdue && order.status !== 'completed' && order.status !== 'cancelled' ? 'text-red-600' : 'text-orange-600'}`}>{reqDate}</span></span>
+              <div className="text-xs text-gray-400 mt-0.5">
+                要求完成: <span className={`font-medium ${isReqOverdue && earliestOrder.status !== 'completed' && earliestOrder.status !== 'cancelled' ? 'text-red-600' : 'text-orange-600'}`}>{reqDate}</span>
+              </div>
             )}
-          </div>
-          {order.customer_order && (
-            <div className="mt-1 text-xs text-gray-400">
-              <span className="font-mono">客户单号: {order.customer_order.order_no}</span>
+          </button>
+
+          {/* 展开的子订单列表 */}
+          {isExpanded && (
+            <div className="border-t border-gray-100">
+              {groupOrders.map((order) => {
+                const cust = order.customers;
+                const st = statusMap[order.status] || { label: order.status, color: '', bg: '' };
+                const oUrgency = getUrgency(order.due_date, order.status);
+                const oDaysDiff = order.due_date
+                  ? Math.ceil((new Date(order.due_date).getTime() - todayMs) / 86400000)
+                  : 0;
+                return (
+                  <div key={order.id} className="px-4 py-2.5 border-b border-gray-50 last:border-b-0 bg-gray-50/30">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-mono text-xs text-gray-500">{order.order_no}</span>
+                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${st.color}`}>{st.label}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-600">
+                        数量: <span className="font-mono font-medium">{order.quantity}</span> {translateUnit(prod?.unit || '')}
+                        {cust && <span className="text-gray-400 ml-2">{cust.name}</span>}
+                      </span>
+                      <span className="text-gray-400">
+                        {oUrgency === 'overdue' ? <span className="text-red-600 font-medium">逾期{oDaysDiff}天</span> :
+                         oUrgency === 'urgent' ? <span className="text-orange-600">剩{oDaysDiff}天</span> :
+                         fmtDate(order.due_date)}
+                      </span>
+                    </div>
+                    {order.customer_order && (
+                      <div className="text-[10px] text-gray-400 mt-0.5">客户单号: {order.customer_order.order_no}</div>
+                    )}
+                    {/* 子订单操作按钮 */}
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      {order.status === 'pending' && (
+                        <button onClick={() => handleStatusChange(order.id, 'in_progress')} className="text-[11px] px-2 py-0.5 rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors">
+                          开始生产
+                        </button>
+                      )}
+                      {order.status === 'in_progress' && (
+                        <button onClick={() => { setCompleteOrderId(order.id); setCompleteWarehouseId(warehouses.length > 0 ? warehouses[0].id : ''); }} className="text-[11px] px-2 py-0.5 rounded bg-green-600 text-white hover:bg-green-700 transition-colors">
+                          完成入库
+                        </button>
+                      )}
+                      {(order.status === 'pending' || order.status === 'in_progress') && (
+                        <button onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-[11px] px-2 py-0.5 rounded border border-red-300 text-red-500 hover:bg-red-50 transition-colors">
+                          取消
+                        </button>
+                      )}
+                      <button onClick={() => setDetailOrder(order)} className="text-[11px] px-2 py-0.5 rounded border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors ml-auto">
+                        详情
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
-
-        {/* 操作按钮 */}
-        <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50/50 flex items-center gap-2 flex-wrap">
-          {order.status === 'pending' && (
-            <button onClick={() => handleStatusChange(order.id, 'in_progress')} className="text-xs px-2.5 py-1 rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors">
-              开始生产
-            </button>
-          )}
-          {order.status === 'in_progress' && (
-            <button onClick={() => { setCompleteOrderId(order.id); setCompleteWarehouseId(warehouses.length > 0 ? warehouses[0].id : ''); }} className="text-xs px-2.5 py-1 rounded bg-green-600 text-white hover:bg-green-700 transition-colors">
-              完成入库
-            </button>
-          )}
-          {(order.status === 'pending' || order.status === 'in_progress') && (
-            <button onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-xs px-2.5 py-1 rounded border border-red-300 text-red-500 hover:bg-red-50 transition-colors">
-              取消
-            </button>
-          )}
-          <button onClick={() => setDetailOrder(order)} className="text-xs px-2.5 py-1 rounded border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors ml-auto">
-            详情
-          </button>
-        </div>
-      </div>
-    );
+      );
+    }
+    return result;
   };
 
   /* ---------- 渲染 ---------- */
@@ -384,7 +445,7 @@ export default function ProductionPage() {
                   {colOrders.length === 0 ? (
                     <div className="py-8 text-center text-xs text-gray-300">暂无订单</div>
                   ) : (
-                    colOrders.map(renderCard)
+                    renderGroupedCards(colOrders)
                   )}
                 </div>
               </div>
@@ -400,7 +461,7 @@ export default function ProductionPage() {
             已取消订单 ({ordersByStatus('cancelled').length})
           </summary>
           <div className="mt-2 grid grid-cols-3 gap-3">
-            {ordersByStatus('cancelled').map(renderCard)}
+            {renderGroupedCards(ordersByStatus('cancelled'))}
           </div>
         </details>
       )}
