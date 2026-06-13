@@ -8,6 +8,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { translateUnit } from '@/lib/utils';
+import { Search, Plus, Trash2 } from 'lucide-react';
 
 interface Product {
   id: string;
@@ -51,6 +52,7 @@ export default function InboundPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [searchText, setSearchText] = useState('');
 
   // 新建表单
   const [formWarehouse, setFormWarehouse] = useState('');
@@ -159,9 +161,20 @@ export default function InboundPage() {
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-gray-900">入库单</h1>
-        <Button onClick={() => setShowCreate(true)} className="bg-[#1E40AF] hover:bg-[#1D4ED8]">
-          新增入库单
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="搜索单号/物料编码/物料名称/仓库..."
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              className="pl-9 w-72 h-9"
+            />
+          </div>
+          <Button onClick={() => setShowCreate(true)} className="bg-[#1E40AF] hover:bg-[#1D4ED8]">
+            新增入库单
+          </Button>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -184,10 +197,29 @@ export default function InboundPage() {
           <tbody>
             {loading ? (
               <tr><td colSpan={10} className="px-4 py-12 text-center text-gray-400">加载中...</td></tr>
-            ) : notes.length === 0 ? (
-              <tr><td colSpan={10} className="px-4 py-12 text-center text-gray-400">暂无入库单</td></tr>
-            ) : (
-              notes.map((note) => {
+            ) : (() => {
+              const filtered = searchText.trim()
+                ? notes.filter(note => {
+                    const s = searchText.trim().toLowerCase();
+                    const warehouse = (note.warehouses as unknown as Record<string, unknown> | null)?.name;
+                    const items = note.inbound_note_items || [];
+                    // 匹配入库单号
+                    if (note.note_no?.toLowerCase().includes(s)) return true;
+                    // 匹配仓库名称
+                    if (warehouse && String(warehouse).toLowerCase().includes(s)) return true;
+                    // 匹配物料编码/名称
+                    return items.some(item => {
+                      const prod = item.products as unknown as Record<string, unknown> | null;
+                      const code = prod?.code ? String(prod.code).toLowerCase() : '';
+                      const name = prod?.name ? String(prod.name).toLowerCase() : '';
+                      return code.includes(s) || name.includes(s);
+                    });
+                  })
+                : notes;
+              return filtered.length === 0 ? (
+                <tr><td colSpan={10} className="px-4 py-12 text-center text-gray-400">{searchText.trim() ? '未找到匹配的入库单' : '暂无入库单'}</td></tr>
+              ) : (
+                filtered.map((note) => {
                 const items = note.inbound_note_items || [];
                 return items.map((item, idx) => (
                   <tr
@@ -247,7 +279,7 @@ export default function InboundPage() {
                   </tr>
                 ));
               })
-            )}
+            )})()}
           </tbody>
         </table>
       </div>

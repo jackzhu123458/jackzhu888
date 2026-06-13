@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
-import { ChevronDown, ChevronRight, Plus, Play, CheckCircle2, XCircle, Eye } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, Play, CheckCircle2, XCircle, Eye, Search } from 'lucide-react';
 import { translateUnit } from '@/lib/utils';
 
 /* ---------- 类型 ---------- */
@@ -76,6 +76,7 @@ export default function ProductionPage() {
   const [loading, setLoading] = useState(true);
   const [filterProductId, setFilterProductId] = useState('all');
   const [hideDelivered, setHideDelivered] = useState(true);
+  const [searchText, setSearchText] = useState('');
 
   // 新增/编辑
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -136,6 +137,18 @@ export default function ProductionPage() {
   const filteredOrders = orders.filter((o) => {
     if (filterProductId !== 'all' && o.product_id !== filterProductId) return false;
     if (hideDelivered && o.delivered) return false;
+    if (searchText.trim()) {
+      const q = searchText.trim().toLowerCase();
+      const prod = o.products as unknown as Record<string, unknown>;
+      const cust = o.customers as unknown as Record<string, unknown>;
+      const fields = [
+        o.order_no,
+        String(prod?.code ?? ''),
+        String(prod?.name ?? ''),
+        String(cust?.name ?? ''),
+      ].map(f => f.toLowerCase());
+      if (!fields.some(f => f.includes(q))) return false;
+    }
     return true;
   });
 
@@ -418,6 +431,16 @@ export default function ProductionPage() {
 
       {/* 筛选栏 */}
       <div className="flex items-center gap-4 mb-4 flex-wrap shrink-0">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="搜索订单号/物料/客户..."
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            className="pl-8 pr-3 py-1.5 border border-gray-300 rounded-md text-sm w-56 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
         <Select value={filterProductId} onValueChange={setFilterProductId}>
           <SelectTrigger className="w-52">
             <SelectValue />
