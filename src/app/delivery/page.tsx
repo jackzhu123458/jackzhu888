@@ -170,7 +170,6 @@ export default function DeliveryPage() {
 
   // Label printing
   const [labelOpen, setLabelOpen] = useState(false);
-  const [labelItemIdx, setLabelItemIdx] = useState(0);
   const [labelBoxes, setLabelBoxes] = useState<number[][]>([]);
   const [labelPreview, setLabelPreview] = useState(false);
 
@@ -623,107 +622,120 @@ export default function DeliveryPage() {
   };
 
   /* ─── Label printing ─── */
-  const openLabelDialog = (itemIdx: number) => {
-    setLabelItemIdx(itemIdx);
-    const item = form.delivery_note_items[itemIdx];
-    if (!item) return;
-    const qty = item.quantity;
-    const perBox = item.per_box_qty || qty;
-    const boxCount = perBox > 0 ? Math.ceil(qty / perBox) : 1;
-
-    const boxes: number[] = [];
-    let remaining = qty;
-    for (let i = 0; i < boxCount; i++) {
-      const bQty = Math.min(perBox, remaining);
-      boxes.push(bQty);
-      remaining -= bQty;
-    }
-    setLabelBoxes([boxes]);
+  const openLabelDialog = () => {
+    // Initialize boxes for ALL items
+    const allBoxes: number[][] = form.delivery_note_items.map((item) => {
+      const qty = item.quantity;
+      const perBox = item.per_box_qty || qty;
+      const boxCount = perBox > 0 ? Math.ceil(qty / perBox) : 1;
+      const boxes: number[] = [];
+      let remaining = qty;
+      for (let i = 0; i < boxCount; i++) {
+        const bQty = Math.min(perBox, remaining);
+        boxes.push(bQty);
+        remaining -= bQty;
+      }
+      return boxes;
+    });
+    setLabelBoxes(allBoxes);
     setLabelOpen(true);
     setLabelPreview(false);
   };
 
-  const updateBoxQty = (boxIdx: number, value: number) => {
+  const updateBoxQty = (itemIdx: number, boxIdx: number, value: number) => {
     setLabelBoxes((prev) => {
       const newBoxes = prev.map((arr) => [...arr]);
-      newBoxes[0][boxIdx] = value;
+      if (newBoxes[itemIdx]) {
+        newBoxes[itemIdx] = [...newBoxes[itemIdx]];
+        newBoxes[itemIdx][boxIdx] = value;
+      }
       return newBoxes;
     });
   };
 
-  const addBox = () => {
+  const addBox = (itemIdx: number) => {
     setLabelBoxes((prev) => {
       const newBoxes = prev.map((arr) => [...arr]);
-      newBoxes[0].push(0);
+      if (newBoxes[itemIdx]) {
+        newBoxes[itemIdx] = [...newBoxes[itemIdx]];
+        newBoxes[itemIdx].push(0);
+      }
       return newBoxes;
     });
   };
 
-  const removeBox = (boxIdx: number) => {
+  const removeBox = (itemIdx: number, boxIdx: number) => {
     setLabelBoxes((prev) => {
       const newBoxes = prev.map((arr) => [...arr]);
-      newBoxes[0].splice(boxIdx, 1);
+      if (newBoxes[itemIdx] && newBoxes[itemIdx].length > 1) {
+        newBoxes[itemIdx] = [...newBoxes[itemIdx]];
+        newBoxes[itemIdx].splice(boxIdx, 1);
+      }
       return newBoxes;
     });
   };
 
   const saveLabelSettings = () => {
-    const boxes = labelBoxes[0] || [];
-    const totalBoxQty = boxes.reduce((a, b) => a + b, 0);
-    if (totalBoxQty !== form.delivery_note_items[labelItemIdx]?.quantity) return;
-    // Save per_box_qty back to the form item
     const items = [...form.delivery_note_items];
-    if (items[labelItemIdx]) {
-      // If single box, per_box_qty = total qty; otherwise use first box qty
-      items[labelItemIdx] = { ...items[labelItemIdx], per_box_qty: boxes.length === 1 ? totalBoxQty : boxes[0] };
-      setForm((prev) => ({ ...prev, delivery_note_items: items }));
-    }
+    labelBoxes.forEach((boxes, idx) => {
+      const totalBoxQty = boxes.reduce((a, b) => a + b, 0);
+      if (items[idx] && totalBoxQty === items[idx].quantity) {
+        items[idx] = { ...items[idx], per_box_qty: boxes.length === 1 ? totalBoxQty : boxes[0] };
+      }
+    });
+    setForm((prev) => ({ ...prev, delivery_note_items: items }));
     setLabelOpen(false);
   };
 
-  const labelTotal = labelBoxes[0]?.reduce((a, b) => a + b, 0) || 0;
-  const labelDiff = labelTotal - (form.delivery_note_items[labelItemIdx]?.quantity || 0);
+  // Check if all items have matching totals
+  const allLabelsValid = form.delivery_note_items.every((item, idx) => {
+    const total = (labelBoxes[idx] || []).reduce((a, b) => a + b, 0);
+    return total === item.quantity;
+  });
 
   const generateLabels = () => {
     setLabelPreview(true);
     setTimeout(() => {
-      const item = form.delivery_note_items[labelItemIdx];
-      if (!item) return;
-      const boxes = labelBoxes[0] || [];
       const container = labelPrintRef.current;
       if (!container) return;
 
       container.innerHTML = '';
-      boxes.forEach((boxQty, i) => {
-        if (boxQty <= 0) return;
-        const label = document.createElement('div');
-        label.className = 'label-card';
-        label.innerHTML = `
-          <div class="label-customer">${form.customer_name || ''}</div>
-          <div class="label-divider"></div>
-          <div class="label-product">${item.product?.name || ''}</div>
-          <div class="label-spec">${item.product?.spec || '-'}</div>
-          <div class="label-row">
-            <span>编码: ${item.product?.code || ''}</span>
-          </div>
-          <div class="label-row">
-            <span>第 ${i + 1}/${boxes.filter(q => q > 0).length} 箱</span>
-            <span>${boxQty} ${item.product?.unit || '个'}</span>
-          </div>
-          <svg class="label-barcode" id="barcode-${i}"></svg>
-          <div class="label-note">${form.note_no || ''}</div>
-        `;
-        container.appendChild(label);
+      let globalBoxIdx = 0;
+      form.delivery_note_items.forEach((item, itemIdx) => {
+        const boxes = labelBoxes[itemIdx] || [];
+        const validBoxes = boxes.filter((q) => q > 0);
+        boxes.forEach((boxQty, i) => {
+          if (boxQty <= 0) return;
+          globalBoxIdx++;
+          const label = document.createElement('div');
+          label.className = 'label-card';
+          label.innerHTML = `
+            <div class="label-customer">${form.customer_name || ''}</div>
+            <div class="label-divider"></div>
+            <div class="label-product">${item.product?.name || ''}</div>
+            <div class="label-spec">${item.product?.spec || '-'}</div>
+            <div class="label-row">
+              <span>编码: ${item.product?.code || ''}</span>
+            </div>
+            <div class="label-row">
+              <span>第 ${i + 1}/${validBoxes.length} 箱</span>
+              <span>${boxQty} ${item.product?.unit || '个'}</span>
+            </div>
+            <svg class="label-barcode" id="barcode-${globalBoxIdx}"></svg>
+            <div class="label-note">${form.note_no || ''}</div>
+          `;
+          container.appendChild(label);
 
-        try {
-          JsBarcode(`#barcode-${i}`, `${item.product?.code || 'N/A'}-${i + 1}`, {
-            format: 'CODE128',
-            width: 1.5,
-            height: 35,
-            displayValue: false,
-            margin: 2,
-          });
-        } catch { /* ignore barcode errors */ }
+          try {
+            JsBarcode(`#barcode-${globalBoxIdx}`, `${item.product?.code || 'N/A'}-${i + 1}`, {
+              format: 'CODE128',
+              width: 1.5,
+              height: 35,
+              displayValue: false,
+              margin: 2,
+            });
+          } catch { /* ignore barcode errors */ }
+        });
       });
     }, 100);
   };
@@ -776,7 +788,7 @@ export default function DeliveryPage() {
               <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={handlePrintDelivery}>
                 <Printer className="h-3.5 w-3.5" /> 打印送货单
               </Button>
-              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => { if (form.delivery_note_items.length > 0) openLabelDialog(0); }} disabled={form.delivery_note_items.length === 0}>
+              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => { if (form.delivery_note_items.length > 0) openLabelDialog(); }} disabled={form.delivery_note_items.length === 0}>
                 <Tag className="h-3.5 w-3.5" /> 打印标签
               </Button>
             </>
@@ -790,7 +802,7 @@ export default function DeliveryPage() {
               <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={handlePrintDelivery}>
                 <Printer className="h-3.5 w-3.5" /> 打印送货单
               </Button>
-              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => { if (form.delivery_note_items.length > 0) openLabelDialog(0); }} disabled={form.delivery_note_items.length === 0}>
+              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => { if (form.delivery_note_items.length > 0) openLabelDialog(); }} disabled={form.delivery_note_items.length === 0}>
                 <Tag className="h-3.5 w-3.5" /> 打印标签
               </Button>
             </>
@@ -1106,7 +1118,7 @@ export default function DeliveryPage() {
                     {editMode && (
                       <td className="py-2 px-2 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openLabelDialog(idx)} title="标签打印">
+                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openLabelDialog()} title="标签打印">
                             <Tag className="h-3 w-3 text-gray-500" />
                           </Button>
                           <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => removeItem(idx)}>
@@ -1443,101 +1455,108 @@ export default function DeliveryPage() {
 
       {/* ─── Label Print Dialog ─── */}
       <Dialog open={labelOpen} onOpenChange={setLabelOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl max-h-[92vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>{editMode ? '标签设置' : '标签打印'} - {form.delivery_note_items[labelItemIdx]?.product?.name || ''}</DialogTitle>
+            <DialogTitle>{editMode ? '标签设置' : '标签打印'}</DialogTitle>
           </DialogHeader>
 
           {!labelPreview ? (
-            <div className="space-y-4">
-              {/* Item selector */}
-              {form.delivery_note_items.length > 1 && (
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-gray-500 shrink-0">选择物料:</label>
-                  <select
-                    className="text-xs border rounded px-2 py-1 flex-1"
-                    value={labelItemIdx}
-                    onChange={(e) => openLabelDialog(Number(e.target.value))}
-                  >
-                    {form.delivery_note_items.map((it, i) => (
-                      <option key={i} value={i}>{it.product?.name || it.product?.code || `物料${i + 1}`}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <div className="text-xs text-gray-500">
-                总数量: <span className="font-mono font-semibold text-[#111827]">{form.delivery_note_items[labelItemIdx]?.quantity || 0}</span>
-                {' '}{form.delivery_note_items[labelItemIdx]?.product?.unit || '个'}
-              </div>
+            <div className="space-y-4 overflow-auto flex-1 pr-1">
+              {form.delivery_note_items.map((item, itemIdx) => {
+                const boxes = labelBoxes[itemIdx] || [];
+                const boxTotal = boxes.reduce((a, b) => a + b, 0);
+                const diff = boxTotal - item.quantity;
+                return (
+                  <div key={itemIdx} className="border rounded-lg">
+                    {/* Item header */}
+                    <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-semibold text-[#111827]">{item.product?.name || `物料${itemIdx + 1}`}</span>
+                        <span className="text-xs text-gray-400 font-mono">{item.product?.code || ''}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-gray-500">总数量:</span>
+                        <span className="font-mono font-semibold text-[#111827]">{item.quantity}</span>
+                        <span className="text-gray-400">{item.product?.unit || '个'}</span>
+                        {diff === 0 ? (
+                          <span className="text-green-600 ml-2">✓ 匹配</span>
+                        ) : diff > 0 ? (
+                          <span className="text-red-600 ml-2">多出 {diff}</span>
+                        ) : (
+                          <span className="text-red-600 ml-2">不足 {Math.abs(diff)}</span>
+                        )}
+                      </div>
+                    </div>
+                    {/* Box table */}
+                    <div className="px-3 py-2">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="py-1.5 px-2 text-left text-gray-500 font-normal">箱号</th>
+                            <th className="py-1.5 px-2 text-left text-gray-500 font-normal">每箱数量</th>
+                            <th className="py-1.5 px-2 w-12 text-gray-500 font-normal"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {boxes.map((qty, bi) => (
+                            <tr key={bi} className="border-b last:border-0">
+                              <td className="py-1.5 px-2 font-mono text-gray-600">第 {bi + 1} 箱</td>
+                              <td className="py-1.5 px-2">
+                                <Input
+                                  type="number"
+                                  className="h-7 w-24 text-xs"
+                                  value={qty}
+                                  min={0}
+                                  onChange={(e) => updateBoxQty(itemIdx, bi, Number(e.target.value))}
+                                />
+                              </td>
+                              <td className="py-1.5 px-2 text-center">
+                                <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => removeBox(itemIdx, bi)} disabled={boxes.length <= 1}>
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <Button size="sm" variant="outline" className="h-7 gap-1 text-xs mt-2" onClick={() => addBox(itemIdx)}>
+                        <Plus className="h-3 w-3" /> 增加一箱
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
 
-              <div className="border rounded">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b bg-gray-50">
-                      <th className="py-2 px-3 text-left">箱号</th>
-                      <th className="py-2 px-3 text-left">每箱数量</th>
-                      <th className="py-2 px-3 w-16">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {labelBoxes[0]?.map((qty, i) => (
-                      <tr key={i} className="border-b">
-                        <td className="py-2 px-3 font-mono">第 {i + 1} 箱</td>
-                        <td className="py-2 px-3">
-                          <Input
-                            type="number"
-                            className="h-7 w-24 text-xs"
-                            value={qty}
-                            min={0}
-                            onChange={(e) => updateBoxQty(i, Number(e.target.value))}
-                          />
-                        </td>
-                        <td className="py-2 px-3 text-center">
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => removeBox(i)} disabled={labelBoxes[0].length <= 1}>
-                            <Minus className="h-3 w-3" />
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={addBox}>
-                  <Plus className="h-3 w-3" /> 增加一箱
-                </Button>
-                <div className="text-xs">
-                  {labelDiff === 0 ? (
-                    <span className="text-green-600">分配总量匹配</span>
-                  ) : labelDiff > 0 ? (
-                    <span className="text-red-600">多出 {labelDiff} 个</span>
-                  ) : (
-                    <span className="text-red-600">不足 {Math.abs(labelDiff)} 个</span>
-                  )}
-                </div>
+              {/* Summary */}
+              <div className="flex items-center justify-between px-1 text-xs">
+                <span className="text-gray-500">共 {form.delivery_note_items.length} 种物料，{labelBoxes.reduce((s, b) => s + b.length, 0)} 箱</span>
+                {allLabelsValid ? (
+                  <span className="text-green-600 font-semibold">所有物料分配匹配</span>
+                ) : (
+                  <span className="text-red-600 font-semibold">部分物料分配不匹配</span>
+                )}
               </div>
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => setLabelOpen(false)}>取消</Button>
                 {editMode ? (
-                  <Button className="bg-[#1E40AF] hover:bg-[#1D4ED8]" onClick={saveLabelSettings} disabled={labelDiff !== 0}>
+                  <Button className="bg-[#1E40AF] hover:bg-[#1D4ED8]" onClick={saveLabelSettings} disabled={!allLabelsValid}>
                     保存设置
                   </Button>
                 ) : (
-                  <Button className="bg-[#1E40AF] hover:bg-[#1D4ED8]" onClick={generateLabels} disabled={labelDiff !== 0}>
+                  <Button className="bg-[#1E40AF] hover:bg-[#1D4ED8]" onClick={generateLabels} disabled={!allLabelsValid}>
                     生成标签预览
                   </Button>
                 )}
               </DialogFooter>
             </div>
           ) : (
-            <div className="space-y-3">
-              <div ref={labelPrintRef} className="grid grid-cols-2 gap-3 max-h-[400px] overflow-auto" />
-              <DialogFooter>
+            <div className="space-y-3 flex-1 overflow-auto">
+              <div ref={labelPrintRef} className="grid grid-cols-2 gap-3" />
+              <DialogFooter className="shrink-0">
                 <Button variant="outline" onClick={() => setLabelPreview(false)}>返回修改</Button>
                 <Button className="bg-[#1E40AF] hover:bg-[#1D4ED8] gap-1" onClick={handlePrintLabels}>
-                  <Printer className="h-4 w-4" /> 打印标签
+                  <Printer className="h-4 w-4" /> 打印全部标签
                 </Button>
               </DialogFooter>
             </div>
