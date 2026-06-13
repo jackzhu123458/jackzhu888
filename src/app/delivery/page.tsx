@@ -1249,13 +1249,13 @@ export default function DeliveryPage() {
 
       {/* ─── Delivery Print Preview Dialog ─── */}
       <Dialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen}>
-        <DialogContent className="max-w-[95vw] p-0 overflow-auto" style={{ height: 'auto', maxHeight: '92vh' }}>
-          <DialogHeader className="px-6 pt-4 pb-2 no-print">
+        <DialogContent className="max-w-4xl p-0 flex flex-col" style={{ height: '85vh' }}>
+          <DialogHeader className="px-6 pt-4 pb-2 no-print shrink-0">
             <DialogTitle>打印预览 - 送货单（三联单 241mm×140mm）</DialogTitle>
           </DialogHeader>
-          <div className="px-6 pb-4 flex flex-col items-center" style={{ overflow: 'auto' }}>
-            {/* 打印区域 — 白纸效果，实际尺寸 241mm×140mm */}
-            <div id="delivery-print-area" className="bg-white" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '140mm', padding: '6mm 8mm', boxSizing: 'border-box', fontSize: '11px', lineHeight: '17px', boxShadow: '0 2px 12px rgba(0,0,0,0.12)', border: '1px solid #ddd' }}>
+          <div className="flex-1 overflow-auto flex justify-center py-4" style={{ background: '#E5E7EB' }}>
+            {/* 打印区域 — 白纸效果，实际尺寸 241mm×140mm，用zoom缩放适配视口 */}
+            <div id="delivery-print-area" className="bg-white" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '140mm', padding: '6mm 8mm', boxSizing: 'border-box', fontSize: '11px', lineHeight: '17px', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', zoom: 0.75 }}>
               {/* 抬头区域 — 从系统设置读取公司信息 */}
               <div style={{ textAlign: 'center', marginBottom: '2px' }}>
                 <div style={{ fontSize: '16px', fontWeight: 'bold', letterSpacing: '4px' }}>{companyInfo.name || '常州横林新顺电器配件厂'}</div>
@@ -1412,15 +1412,14 @@ export default function DeliveryPage() {
                 });
               })()}
             </div>
-
+            </div>
             {/* 操作按钮 */}
-            <div className="flex justify-end gap-2 mt-4 no-print">
+            <div className="flex justify-end gap-2 px-6 py-3 no-print shrink-0 border-t bg-white">
               <Button variant="outline" onClick={() => setPrintPreviewOpen(false)}>关闭</Button>
               <Button className="bg-[#1E40AF] hover:bg-[#1D4ED8] gap-1" onClick={doPrint}>
                 <Printer className="h-4 w-4" /> 打印
               </Button>
             </div>
-          </div>
           </DialogContent>
       </Dialog>
 
@@ -1670,12 +1669,13 @@ export default function DeliveryPage() {
             position: absolute;
             left: 0;
             top: 0;
-            width: 241mm;
-            min-height: 140mm;
-            padding: 6mm 8mm;
+            width: 241mm !important;
+            min-height: 140mm !important;
+            padding: 6mm 8mm !important;
             border: none;
             box-shadow: none;
             box-sizing: border-box;
+            zoom: 1 !important;
           }
           .label-card, .label-card * { visibility: visible; }
           .label-card { position: relative; }
