@@ -499,17 +499,17 @@ export default function ReconciliationPage() {
               <Card key={custKey}>
                 {/* Customer Header */}
                 <div
-                  className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 border-b"
+                  className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 border-b gap-3"
                   onClick={() => toggleCustomer(custKey)}
                 >
-                  <div className="flex items-center gap-2">
-                    {custExpanded ? <ChevronDown className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
-                    <span className="font-semibold text-gray-900">{customer.customer_name}</span>
-                    <span className="text-xs text-gray-400 ml-2">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {custExpanded ? <ChevronDown className="w-4 h-4 text-gray-500 shrink-0" /> : <ChevronRight className="w-4 h-4 text-gray-500 shrink-0" />}
+                    <span className="font-semibold text-gray-900 truncate">{customer.customer_name}</span>
+                    <span className="text-xs text-gray-400 shrink-0">
                       {customer.categories.length}个类目 · {customer.categories.reduce((s, c) => s + c.items.length, 0)}种商品
                     </span>
                   </div>
-                  <div className="flex items-center gap-6 text-sm">
+                  <div className="flex items-center gap-4 text-sm shrink-0">
                     <span className="text-gray-600">数量: <span className="font-mono font-semibold">{customer.customer_total_quantity.toLocaleString()}</span></span>
                     <span className="text-gray-600">金额: <span className="font-mono font-semibold text-[#1E40AF]">¥{formatAmount(customer.customer_total_amount)}</span></span>
                   </div>
@@ -523,15 +523,15 @@ export default function ReconciliationPage() {
                     <div key={catKey}>
                       {/* Category Header */}
                       <div
-                        className="flex items-center justify-between px-4 py-2 pl-10 cursor-pointer hover:bg-gray-50 bg-gray-50/50 border-b"
+                        className="flex items-center justify-between px-4 py-2 pl-10 cursor-pointer hover:bg-gray-50 bg-gray-50/50 border-b gap-3"
                         onClick={() => toggleCategory(catKey)}
                       >
-                        <div className="flex items-center gap-2">
-                          {catExpanded ? <ChevronDown className="w-3.5 h-3.5 text-gray-400" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-400" />}
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {catExpanded ? <ChevronDown className="w-3.5 h-3.5 text-gray-400 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />}
                           <span className="text-sm font-medium text-gray-700">类目: {catGroup.category_name || catGroup.category}</span>
-                          <span className="text-xs text-gray-400">{catGroup.items.length}种商品</span>
+                          <span className="text-xs text-gray-400 shrink-0">{catGroup.items.length}种商品</span>
                         </div>
-                        <div className="flex items-center gap-4 text-xs text-gray-500">
+                        <div className="flex items-center gap-4 text-xs text-gray-500 shrink-0">
                           <span>数量: <span className="font-mono">{catGroup.category_total_quantity.toLocaleString()}</span></span>
                           <span>金额: <span className="font-mono">¥{formatAmount(catGroup.category_total_amount)}</span></span>
                         </div>
