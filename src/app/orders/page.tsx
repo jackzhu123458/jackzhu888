@@ -948,7 +948,7 @@ export default function OrdersPage() {
 
       {/* 新增/编辑订单抽屉 */}
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="sm:max-w-[1400px] w-[95vw] max-h-[85vh] overflow-y-auto">
+        <DialogContent className="w-auto max-w-[98vw]" style={{ width: 'fit-content' }}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
               {editingOrder ? '编辑订单' : '新增订单'}
