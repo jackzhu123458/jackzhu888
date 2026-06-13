@@ -819,25 +819,7 @@ export default function OrdersPage() {
           />
           隐藏已送货
         </label>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            const orderNo = prompt('请输入要追溯的订单号：');
-            if (orderNo) {
-              const found = orders.find(o => o.order_no === orderNo.trim());
-              if (found) {
-                handleTrace(found.id);
-              } else {
-                alert('未找到该订单号');
-              }
-            }
-          }}
-          className="flex items-center gap-1"
-        >
-          <History className="w-3.5 h-3.5" />
-          追溯
-        </Button>
+
         <div className="flex items-center gap-2 ml-auto">
           <Button variant="outline" size="sm" onClick={expandAll}>全部展开</Button>
           <Button variant="outline" size="sm" onClick={collapseAll}>全部收缩</Button>
@@ -1032,10 +1014,11 @@ export default function OrdersPage() {
                                       </button>
                                       <button
                                         onClick={() => handleTrace(order.id)}
-                                        className="p-1 text-gray-400 hover:text-indigo-600"
-                                        title="追溯"
+                                        className="px-2 py-0.5 text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded flex items-center gap-1"
+                                        title="查看订单生产流程追溯"
                                       >
-                                        <History className="w-3.5 h-3.5" />
+                                        <History className="w-3 h-3" />
+                                        追溯
                                       </button>
                                     </div>
                                   )}
