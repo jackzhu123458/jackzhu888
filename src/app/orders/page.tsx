@@ -267,7 +267,7 @@ export default function OrdersPage() {
   };
 
   // 计算排程日期范围
-  const getScheduleDateRange = (): string[] => {
+  const getScheduleDateRange = (todayStrParam: string): string[] => {
     const allDates: string[] = [];
     orders.forEach((o) => {
       o.customer_order_items?.forEach((item) => {
@@ -277,8 +277,8 @@ export default function OrdersPage() {
       });
     });
     if (allDates.length === 0) {
-      // 默认显示当月
-      const now = new Date();
+      // 默认显示当月（使用缓存的today避免hydration不一致）
+      const now = new Date(todayStrParam);
       return getDateRange(new Date(now.getFullYear(), now.getMonth(), 1), new Date(now.getFullYear(), now.getMonth() + 1, 0));
     }
     allDates.sort();
@@ -290,7 +290,7 @@ export default function OrdersPage() {
     return getDateRange(minDate, maxDate);
   };
 
-  const dateRange = getScheduleDateRange();
+  const dateRange = getScheduleDateRange(today);
 
   // 获取某明细在某日期的排程数量
   const getScheduleQty = (item: OrderItem, date: string): number => {
