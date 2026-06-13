@@ -1249,13 +1249,13 @@ export default function DeliveryPage() {
 
       {/* ─── Delivery Print Preview Dialog ─── */}
       <Dialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen}>
-        <DialogContent className="max-w-[1020px] p-0" style={{ height: 'auto', maxHeight: 'none' }}>
+        <DialogContent className="max-w-[95vw] p-0 overflow-auto" style={{ height: 'auto', maxHeight: '92vh' }}>
           <DialogHeader className="px-6 pt-4 pb-2 no-print">
             <DialogTitle>打印预览 - 送货单（三联单 241mm×140mm）</DialogTitle>
           </DialogHeader>
-          <div className="px-6 pb-4" style={{ overflow: 'visible' }}>
-            {/* Print area — 三联单尺寸 241mm×140mm */}
-            <div id="delivery-print-area" className="bg-white" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '140mm', padding: '6mm 8mm', boxSizing: 'border-box', fontSize: '11px', lineHeight: '17px' }}>
+          <div className="px-6 pb-4 flex flex-col items-center" style={{ overflow: 'auto' }}>
+            {/* 打印区域 — 白纸效果，实际尺寸 241mm×140mm */}
+            <div id="delivery-print-area" className="bg-white" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '140mm', padding: '6mm 8mm', boxSizing: 'border-box', fontSize: '11px', lineHeight: '17px', boxShadow: '0 2px 12px rgba(0,0,0,0.12)', border: '1px solid #ddd' }}>
               {/* 抬头区域 — 从系统设置读取公司信息 */}
               <div style={{ textAlign: 'center', marginBottom: '2px' }}>
                 <div style={{ fontSize: '16px', fontWeight: 'bold', letterSpacing: '4px' }}>{companyInfo.name || '常州横林新顺电器配件厂'}</div>
@@ -1420,7 +1420,7 @@ export default function DeliveryPage() {
                 <Printer className="h-4 w-4" /> 打印
               </Button>
             </div>
-            </div>
+          </div>
           </DialogContent>
       </Dialog>
 
@@ -1663,6 +1663,7 @@ export default function DeliveryPage() {
             size: 241mm 140mm;
             margin: 0;
           }
+          html, body { margin: 0; padding: 0; }
           body * { visibility: hidden; }
           #delivery-print-area, #delivery-print-area * { visibility: visible; }
           #delivery-print-area {
@@ -1673,6 +1674,7 @@ export default function DeliveryPage() {
             min-height: 140mm;
             padding: 6mm 8mm;
             border: none;
+            box-shadow: none;
             box-sizing: border-box;
           }
           .label-card, .label-card * { visibility: visible; }
