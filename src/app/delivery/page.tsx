@@ -665,6 +665,17 @@ export default function DeliveryPage() {
     return result;
   };
 
+  const setBoxCount = (itemIdx: number, count: number) => {
+    setLabelBoxes((prev) => {
+      const newBoxes = prev.map((arr) => [...arr]);
+      if (newBoxes[itemIdx]) {
+        const totalQty = form.delivery_note_items[itemIdx]?.quantity || 0;
+        newBoxes[itemIdx] = autoDistribute(totalQty, count);
+      }
+      return newBoxes;
+    });
+  };
+
   const addBox = (itemIdx: number) => {
     setLabelBoxes((prev) => {
       const newBoxes = prev.map((arr) => [...arr]);
@@ -1546,7 +1557,19 @@ export default function DeliveryPage() {
                         </tbody>
                       </table>
                       <div className="flex items-center gap-2 mt-2">
-                        <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => addBox(itemIdx)}>
+                        <span className="text-xs text-gray-500">箱数</span>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={999}
+                          className="h-7 w-16 text-xs text-center"
+                          value={labelBoxes[itemIdx]?.length || 1}
+                          onChange={(e) => {
+                            const n = parseInt(e.target.value);
+                            if (!isNaN(n) && n >= 1) setBoxCount(itemIdx, n);
+                          }}
+                        />
+                        <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setBoxCount(itemIdx, (labelBoxes[itemIdx]?.length || 1) + 1)}>
                           <Plus className="h-3 w-3" /> 增加一箱
                         </Button>
                         <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => redistributeBoxes(itemIdx)}>
