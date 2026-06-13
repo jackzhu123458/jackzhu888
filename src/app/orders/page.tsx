@@ -232,7 +232,11 @@ export default function OrdersPage() {
 
   // 判断订单是否已完全送货（所有明细 delivered_qty >= quantity）
   const isItemFullyDelivered = (item: OrderItem): boolean => {
-    return Number(item.delivered_qty || 0) >= Number(item.quantity || 0);
+    // 已出库数量 >= 订单数量，或已开送货单数量 >= 订单数量
+    const delivered = Number(item.delivered_qty || 0);
+    const deliveryNoteQty = Number((item as unknown as Record<string, unknown>).delivery_note_qty || 0);
+    const qty = Number(item.quantity || 0);
+    return delivered >= qty || deliveryNoteQty >= qty;
   };
 
   const isOrderFullyDelivered = (order: Order): boolean => {
@@ -945,7 +949,12 @@ export default function OrdersPage() {
                                 <td className={`px-3 py-2 text-center font-mono text-xs font-medium sticky left-[356px] z-[5] ${
                                   (item.quantity - (item.delivered_qty || 0)) > 0 ? 'bg-yellow-50 text-yellow-700' : 'bg-green-50 text-green-700'
                                 }`}>
-                                  {item.quantity - (item.delivered_qty || 0)}
+                                  <div className="flex items-center justify-center gap-1">
+                                    {item.quantity - (item.delivered_qty || 0)}
+                                    {Number((item as unknown as Record<string, unknown>).delivery_note_qty || 0) > 0 && Number(item.delivered_qty || 0) === 0 && (
+                                      <span className="text-[10px] text-blue-500 font-sans">(已开单)</span>
+                                    )}
+                                  </div>
                                 </td>
                                 {dateRange.map((date) => {
                                   const qty = getScheduleQty(item, date);

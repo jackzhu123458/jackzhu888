@@ -39,6 +39,39 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // 为每个 customer_order_item 补充已开送货单数量
+    // 查询所有相关订单的 delivery_note_items
+    if (data && data.length > 0) {
+      const orderItemIds = data.flatMap((o: Record<string, unknown>) =>
+        ((o.customer_order_items as Array<Record<string, unknown>>) || []).map((i: Record<string, unknown>) => i.id as string)
+      ).filter(Boolean);
+
+      if (orderItemIds.length > 0) {
+        const { data: deliveryItems } = await supabase
+          .from('delivery_note_items')
+          .select('customer_order_item_id, quantity')
+          .in('customer_order_item_id', orderItemIds);
+
+        // 按 customer_order_item_id 汇总已开送货单数量
+        const deliveryQtyMap = new Map<string, number>();
+        if (deliveryItems && deliveryItems.length > 0) {
+          for (const di of deliveryItems) {
+            const itemId = di.customer_order_item_id as string;
+            const qty = Number(di.quantity || 0);
+            deliveryQtyMap.set(itemId, (deliveryQtyMap.get(itemId) || 0) + qty);
+          }
+        }
+
+        // 将 delivery_note_qty 附加到每个 item
+        for (const order of data) {
+          const items = (order as Record<string, unknown>).customer_order_items as Array<Record<string, unknown>> || [];
+          for (const item of items) {
+            (item as Record<string, unknown>).delivery_note_qty = deliveryQtyMap.get(item.id as string) || 0;
+          }
+        }
+      }
+    }
+
     return NextResponse.json(data);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
