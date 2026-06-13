@@ -39,6 +39,7 @@ export const warehouses = pgTable(
     id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
     name: varchar("name", { length: 100 }).notNull(),
     location: varchar("location", { length: 200 }),
+    type: varchar("type", { length: 30 }).notNull().default("product"), // raw_material=原材料仓库, product=产品仓库
     remark: text("remark"),
     is_active: boolean("is_active").default(true).notNull(),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

@@ -25,9 +25,10 @@ export async function POST(req: NextRequest) {
       await supabase.from('production_orders').update({ status: 'completed' }).eq('id', production_order_id);
     });
 
-    // 3. 创建入库单
-    const { data: warehouses } = await supabase.from('warehouses').select('id').limit(1);
-    const warehouseId = warehouses?.[0]?.id;
+    // 3. 创建入库单（成品入产品仓库）
+    const { data: productWarehouses } = await supabase.from('warehouses').select('id').eq('type', 'product').limit(1);
+    // 兼容：如果没有产品仓库，取第一个仓库
+    const warehouseId = productWarehouses?.[0]?.id || (await supabase.from('warehouses').select('id').limit(1)).data?.[0]?.id;
     if (!warehouseId) return NextResponse.json({ error: '请先创建仓库' }, { status: 400 });
 
     const noteNo = `IN-${Date.now().toString(36).toUpperCase()}`;
@@ -82,15 +83,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 6. 扣减原材料库存
+    // 6. 扣减原材料库存（从原材料仓库扣减）
+    const { data: rawWarehouses } = await supabase.from('warehouses').select('id').eq('type', 'raw_material').limit(1);
+    const rawWarehouseId = rawWarehouses?.[0]?.id || warehouseId; // 兼容：没有原材料仓库则用产品仓库
+
     const materials = prodOrder.production_order_materials || [];
     for (const mat of materials) {
       if (!mat.product_id) continue;
-      const { data: matInv } = await supabase.from('inventory').select('id, quantity').eq('product_id', mat.product_id).maybeSingle();
-      if (matInv) {
-        const newQty = Math.max(0, Number(matInv.quantity) - Number(mat.required_qty));
+      const { data: matInv } = await supabase.from('inventory').select('id, quantity').eq('product_id', mat.product_id).eq('warehouse_id', rawWarehouseId).maybeSingle();
+      // 如果在原材料仓库没找到，尝试任意仓库
+      const inventory = matInv || (await supabase.from('inventory').select('id, quantity').eq('product_id', mat.product_id).limit(1)).data?.[0];
+      if (inventory) {
+        const newQty = Math.max(0, Number(inventory.quantity) - Number(mat.required_qty));
         updateOps.push(async () => {
-          await supabase.from('inventory').update({ quantity: newQty }).eq('id', matInv.id);
+          await supabase.from('inventory').update({ quantity: newQty }).eq('id', inventory.id);
         });
       }
       // 更新备料状态

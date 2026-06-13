@@ -18,6 +18,7 @@ interface Warehouse {
   id: string;
   name: string;
   location: string | null;
+  type?: string;
 }
 
 interface InventoryItem {
@@ -46,6 +47,7 @@ export default function InventoryPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState('');
+  const [warehouseType, setWarehouseType] = useState<string>('all');
 
   // 进出记录弹窗状态
   const [txProductId, setTxProductId] = useState('');
@@ -112,14 +114,22 @@ export default function InventoryPage() {
     setEditingLocationValue(item.location_no || '');
   }, []);
 
-  const filteredInventory = keyword
-    ? inventory.filter(
+  const filteredInventory = (() => {
+    let result = inventory;
+    if (warehouseType !== 'all') {
+      result = result.filter(item => item.warehouses?.type === warehouseType);
+    }
+    if (keyword) {
+      const kw = keyword.toLowerCase();
+      result = result.filter(
         (item) =>
-          item.products?.code?.toLowerCase().includes(keyword.toLowerCase()) ||
-          item.products?.name?.toLowerCase().includes(keyword.toLowerCase()) ||
-          (item.location_no && item.location_no.toLowerCase().includes(keyword.toLowerCase()))
-      )
-    : inventory;
+          item.products?.code?.toLowerCase().includes(kw) ||
+          item.products?.name?.toLowerCase().includes(kw) ||
+          (item.location_no && item.location_no.toLowerCase().includes(kw))
+      );
+    }
+    return result;
+  })();
 
   // 按产品汇总库存，保留库位号信息
   const summaryMap = new Map<string, {
@@ -173,6 +183,26 @@ export default function InventoryPage() {
           onChange={(e) => setKeyword(e.target.value)}
           className="w-80"
         />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setWarehouseType('all')}
+            className={`px-3 py-1.5 text-sm rounded-md border ${warehouseType === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+          >
+            全部仓库
+          </button>
+          <button
+            onClick={() => setWarehouseType('raw_material')}
+            className={`px-3 py-1.5 text-sm rounded-md border ${warehouseType === 'raw_material' ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+          >
+            原材料仓库
+          </button>
+          <button
+            onClick={() => setWarehouseType('product')}
+            className={`px-3 py-1.5 text-sm rounded-md border ${warehouseType === 'product' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+          >
+            产品仓库
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200">
