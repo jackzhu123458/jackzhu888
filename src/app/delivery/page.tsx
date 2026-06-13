@@ -1317,17 +1317,27 @@ export default function DeliveryPage() {
                           </div>
                         </>
                       )}
-                      <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #000' }}>
+                      <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', border: '1px solid #000' }}>
+                        <colgroup>
+                          <col style={{ width: '6%' }} />
+                          <col style={{ width: '15%' }} />
+                          <col style={{ width: '14%' }} />
+                          <col style={{ width: '26%' }} />
+                          <col style={{ width: '7%' }} />
+                          <col style={{ width: '10%' }} />
+                          <col style={{ width: '15%' }} />
+                          <col style={{ width: '7%' }} />
+                        </colgroup>
                         <tbody>
                           <tr style={{ background: '#f0f0f0' }}>
-                            <th style={{ border: '1px solid #000', padding: '2px 4px', width: '32px', fontWeight: 'bold', fontSize: '10px' }}>项次</th>
-                            <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px' }}>订单编号</th>
-                            <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px' }}>物料编号</th>
-                            <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px' }}>物料名称</th>
-                            <th style={{ border: '1px solid #000', padding: '2px 4px', width: '32px', fontWeight: 'bold', fontSize: '10px' }}>单位</th>
-                            <th style={{ border: '1px solid #000', padding: '2px 4px', width: '56px', fontWeight: 'bold', fontSize: '10px' }}>数量</th>
-                            <th style={{ border: '1px solid #000', padding: '2px 4px', width: '60px', fontWeight: 'bold', fontSize: '10px' }}>备注</th>
-                            <th rowSpan={totalRows + 1} style={{ border: '1px solid #000', padding: '6px 2px', width: '20px', fontSize: '9px', writingMode: 'vertical-rl', letterSpacing: '1px', lineHeight: '1.6' }}>
+                            <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>项次</th>
+                            <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>订单编号</th>
+                            <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>物料编号</th>
+                            <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>物料名称</th>
+                            <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>单位</th>
+                            <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>数量</th>
+                            <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>备注</th>
+                            <th rowSpan={totalRows + 1} style={{ border: '1px solid #000', padding: '6px 2px', fontSize: '9px', writingMode: 'vertical-rl', letterSpacing: '1px', lineHeight: '1.6', textAlign: 'center' }}>
                               <span style={{ color: '#333' }}>(一)存根白</span>
                               <span style={{ color: '#cc0000' }}>(二)客户红</span>
                               <span style={{ color: '#cc8800' }}>(三)回单黄</span>
@@ -1338,13 +1348,13 @@ export default function DeliveryPage() {
                             return (
                               <tr key={`item-${pageIdx}-${idx}`}>
                                 <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'center', fontSize: '10px' }}>{pageIdx * MAX_ROWS + idx + 1}</td>
-                                <td style={{ border: '1px solid #000', padding: '1px 4px', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '10px' }}>
+                                <td style={{ border: '1px solid #000', padding: '1px 4px', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                   {orderNo}
                                 </td>
-                                <td style={{ border: '1px solid #000', padding: '1px 4px', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '10px' }}>
+                                <td style={{ border: '1px solid #000', padding: '1px 4px', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                   {prod.code || ''}
                                 </td>
-                                <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>
+                                <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                   {prod.name || ''}{prod.spec ? `/${prod.spec}` : ''}
                                 </td>
                                 <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'center', fontSize: '10px' }}>
@@ -1353,7 +1363,7 @@ export default function DeliveryPage() {
                                 <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'right', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '10px' }}>
                                   {item.quantity}
                                 </td>
-                                <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px' }}>
+                                <td style={{ border: '1px solid #000', padding: '1px 4px', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                   {item.remark || ''}
                                 </td>
                               </tr>
