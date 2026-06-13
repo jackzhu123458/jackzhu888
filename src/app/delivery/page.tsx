@@ -667,6 +667,20 @@ export default function DeliveryPage() {
     });
   };
 
+  const saveLabelSettings = () => {
+    const boxes = labelBoxes[0] || [];
+    const totalBoxQty = boxes.reduce((a, b) => a + b, 0);
+    if (totalBoxQty !== form.delivery_note_items[labelItemIdx]?.quantity) return;
+    // Save per_box_qty back to the form item
+    const items = [...form.delivery_note_items];
+    if (items[labelItemIdx]) {
+      // If single box, per_box_qty = total qty; otherwise use first box qty
+      items[labelItemIdx] = { ...items[labelItemIdx], per_box_qty: boxes.length === 1 ? totalBoxQty : boxes[0] };
+      setForm((prev) => ({ ...prev, delivery_note_items: items }));
+    }
+    setLabelOpen(false);
+  };
+
   const labelTotal = labelBoxes[0]?.reduce((a, b) => a + b, 0) || 0;
   const labelDiff = labelTotal - (form.delivery_note_items[labelItemIdx]?.quantity || 0);
 
@@ -762,6 +776,9 @@ export default function DeliveryPage() {
               <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={handlePrintDelivery}>
                 <Printer className="h-3.5 w-3.5" /> 打印送货单
               </Button>
+              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => { if (form.delivery_note_items.length > 0) openLabelDialog(0); }} disabled={form.delivery_note_items.length === 0}>
+                <Tag className="h-3.5 w-3.5" /> 打印标签
+              </Button>
             </>
           ) : (
             <>
@@ -772,6 +789,9 @@ export default function DeliveryPage() {
               )}
               <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={handlePrintDelivery}>
                 <Printer className="h-3.5 w-3.5" /> 打印送货单
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => { if (form.delivery_note_items.length > 0) openLabelDialog(0); }} disabled={form.delivery_note_items.length === 0}>
+                <Tag className="h-3.5 w-3.5" /> 打印标签
               </Button>
             </>
           )}
@@ -1425,11 +1445,26 @@ export default function DeliveryPage() {
       <Dialog open={labelOpen} onOpenChange={setLabelOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>标签打印 - {form.delivery_note_items[labelItemIdx]?.product?.name || ''}</DialogTitle>
+            <DialogTitle>{editMode ? '标签设置' : '标签打印'} - {form.delivery_note_items[labelItemIdx]?.product?.name || ''}</DialogTitle>
           </DialogHeader>
 
           {!labelPreview ? (
             <div className="space-y-4">
+              {/* Item selector */}
+              {form.delivery_note_items.length > 1 && (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-500 shrink-0">选择物料:</label>
+                  <select
+                    className="text-xs border rounded px-2 py-1 flex-1"
+                    value={labelItemIdx}
+                    onChange={(e) => openLabelDialog(Number(e.target.value))}
+                  >
+                    {form.delivery_note_items.map((it, i) => (
+                      <option key={i} value={i}>{it.product?.name || it.product?.code || `物料${i + 1}`}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="text-xs text-gray-500">
                 总数量: <span className="font-mono font-semibold text-[#111827]">{form.delivery_note_items[labelItemIdx]?.quantity || 0}</span>
                 {' '}{form.delivery_note_items[labelItemIdx]?.product?.unit || '个'}
@@ -1485,9 +1520,15 @@ export default function DeliveryPage() {
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => setLabelOpen(false)}>取消</Button>
-                <Button className="bg-[#1E40AF] hover:bg-[#1D4ED8]" onClick={generateLabels} disabled={labelDiff !== 0}>
-                  生成标签预览
-                </Button>
+                {editMode ? (
+                  <Button className="bg-[#1E40AF] hover:bg-[#1D4ED8]" onClick={saveLabelSettings} disabled={labelDiff !== 0}>
+                    保存设置
+                  </Button>
+                ) : (
+                  <Button className="bg-[#1E40AF] hover:bg-[#1D4ED8]" onClick={generateLabels} disabled={labelDiff !== 0}>
+                    生成标签预览
+                  </Button>
+                )}
               </DialogFooter>
             </div>
           ) : (
