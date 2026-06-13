@@ -301,7 +301,7 @@ export default function InventoryPage() {
 
       {/* 物料进出记录弹窗 */}
       <Dialog open={!!txProductId} onOpenChange={(open) => { if (!open) setTxProductId(''); }}>
-        <DialogContent className="max-w-[1200px] w-[95vw]">
+        <DialogContent className="max-w-[1400px] w-[97vw]">
           <DialogHeader>
             <DialogTitle className="text-lg">
               进出记录 - {txProductCode} / {txProductName}
@@ -333,17 +333,8 @@ export default function InventoryPage() {
               </div>
 
               {/* 进出记录表格 */}
-              <div className="border border-gray-200 rounded-lg overflow-x-auto">
-                <table className="w-full text-sm" style={{ tableLayout: 'fixed', minWidth: 900 }}>
-                  <colgroup>
-                    <col style={{ width: '14%' }} />
-                    <col style={{ width: '10%' }} />
-                    <col style={{ width: '18%' }} />
-                    <col style={{ width: '12%' }} />
-                    <col style={{ width: '12%' }} />
-                    <col style={{ width: '18%' }} />
-                    <col style={{ width: '16%' }} />
-                  </colgroup>
+              <div className="border border-gray-200 rounded-lg">
+                <table className="w-full text-sm" style={{ tableLayout: 'auto' }}>
                   <thead>
                     <tr className="border-b border-gray-200" style={{ backgroundColor: '#1E40AF' }}>
                       <th className="text-left px-4 py-3 font-medium text-white">日期</th>
