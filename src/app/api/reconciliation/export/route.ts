@@ -123,20 +123,20 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Sort by category → order_no → product_code
+  // Sort by category → product_code → order_no
   allRows.sort((a, b) => {
     if (a.category !== b.category) return a.category.localeCompare(b.category);
-    if (a.order_no !== b.order_no) return a.order_no.localeCompare(b.order_no);
-    return a.product_code.localeCompare(b.product_code);
+    if (a.product_code !== b.product_code) return a.product_code.localeCompare(b.product_code);
+    return a.order_no.localeCompare(b.order_no);
   });
 
   const wb = XLSX.utils.book_new();
 
   // ====== Sheet 1: 对账汇总（数据透视表 + Excel分组折叠）======
-  // Hierarchy: 类目 → 订单号码 → 商品明细
+  // Hierarchy: 类目 → 商品 → 订单号码
   // 行标签 | 求和项:数量 | 不含税单价 | 含税单价 | 求和项:金额
 
-  // Group by category → order_no
+  // Group by category → product_code
   const categoryGroups = new Map<string, Map<string, FlatRow[]>>();
   for (const row of allRows) {
     let catMap = categoryGroups.get(row.category);
@@ -144,18 +144,18 @@ export async function GET(request: NextRequest) {
       catMap = new Map();
       categoryGroups.set(row.category, catMap);
     }
-    let orderRows = catMap.get(row.order_no);
-    if (!orderRows) {
-      orderRows = [];
-      catMap.set(row.order_no, orderRows);
+    let productRows = catMap.get(row.product_code);
+    if (!productRows) {
+      productRows = [];
+      catMap.set(row.product_code, productRows);
     }
-    orderRows.push(row);
+    productRows.push(row);
   }
 
   // Build rows for pivot table
   const pivotData: (string | number)[][] = [];
-  const rowLevels: number[] = []; // outline level per row
-  const rowTypes: ('header' | 'category' | 'order' | 'detail' | 'total')[] = [];
+  const rowLevels: number[] = [];
+  const rowTypes: ('header' | 'category' | 'product' | 'detail' | 'total')[] = [];
 
   // Header row
   pivotData.push(['行标签', '求和项:数量', '不含税单价', '含税单价', '求和项:金额']);
@@ -166,14 +166,14 @@ export async function GET(request: NextRequest) {
   let grandTotalAmount = 0;
   let grandTotalAmountExTax = 0;
 
-  for (const [cat, orderMap] of categoryGroups) {
+  for (const [cat, productMap] of categoryGroups) {
     const catName = allRows.find(r => r.category === cat)?.category_name || cat;
     let catTotalQty = 0;
     let catTotalAmount = 0;
     let catTotalAmountExTax = 0;
 
-    for (const [, orderRows] of orderMap) {
-      for (const row of orderRows) {
+    for (const [, productRows] of productMap) {
+      for (const row of productRows) {
         catTotalQty += row.quantity;
         catTotalAmount += row.amount_inc_tax;
         catTotalAmountExTax += row.amount_ex_tax;
@@ -187,28 +187,29 @@ export async function GET(request: NextRequest) {
     rowLevels.push(0);
     rowTypes.push('category');
 
-    for (const [orderNo, orderRows] of orderMap) {
-      let orderTotalQty = 0;
-      let orderTotalAmount = 0;
-      let orderTotalAmountExTax = 0;
+    for (const [productCode, productRows] of productMap) {
+      let productTotalQty = 0;
+      let productTotalAmount = 0;
+      let productTotalAmountExTax = 0;
 
-      for (const row of orderRows) {
-        orderTotalQty += row.quantity;
-        orderTotalAmount += row.amount_inc_tax;
-        orderTotalAmountExTax += row.amount_ex_tax;
+      for (const row of productRows) {
+        productTotalQty += row.quantity;
+        productTotalAmount += row.amount_inc_tax;
+        productTotalAmountExTax += row.amount_ex_tax;
       }
-      const orderWeightedPriceExTax = orderTotalQty > 0 ? round4(orderTotalAmountExTax / orderTotalQty) : 0;
-      const orderWeightedPriceIncTax = orderTotalQty > 0 ? round4(orderTotalAmount / orderTotalQty) : 0;
+      // Product row uses its own unit price (same product same price)
+      const productPriceExTax = productRows[0]?.price_ex_tax || 0;
+      const productPriceIncTax = productRows[0]?.price_inc_tax || 0;
 
-      // Order summary row (level 1)
-      pivotData.push([`  ${orderNo}`, orderTotalQty, orderWeightedPriceExTax, orderWeightedPriceIncTax, orderTotalAmount]);
+      // Product summary row (level 1)
+      const productLabel = productRows[0]?.product_name || productCode;
+      pivotData.push([`  ${productLabel}`, productTotalQty, productPriceExTax, productPriceIncTax, productTotalAmount]);
       rowLevels.push(1);
-      rowTypes.push('order');
+      rowTypes.push('product');
 
-      for (const row of orderRows) {
-        // Product detail row (level 2)
-        const label = `${row.product_code} ${row.product_name}`;
-        pivotData.push([`    ${label}`, row.quantity, row.price_ex_tax, row.price_inc_tax, row.amount_inc_tax]);
+      for (const row of productRows) {
+        // Order detail row (level 2) - show order number
+        pivotData.push([`    ${row.order_no}`, row.quantity, row.price_ex_tax, row.price_inc_tax, row.amount_inc_tax]);
         rowLevels.push(2);
         rowTypes.push('detail');
       }
@@ -248,12 +249,6 @@ export async function GET(request: NextRequest) {
   pivotWs['!rows'] = rowConfigs;
 
   // Apply cell styles with colors
-  // Colors:
-  // Header: dark blue bg, white text
-  // Category: light blue bg (#DBEAFE), bold
-  // Order: light green bg (#DCFCE7), semibold
-  // Detail: white bg (default)
-  // Total: light yellow bg (#FEF9C3), bold
   for (let r = 0; r < pivotData.length; r++) {
     const type = rowTypes[r];
     for (let c = 0; c < 5; c++) {
@@ -274,7 +269,7 @@ export async function GET(request: NextRequest) {
             fill: { fgColor: { rgb: 'DBEAFE' } },
           };
           break;
-        case 'order':
+        case 'product':
           cell.s = {
             font: { bold: true, sz: 10 },
             fill: { fgColor: { rgb: 'DCFCE7' } },
