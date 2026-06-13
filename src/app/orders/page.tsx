@@ -230,6 +230,13 @@ export default function OrdersPage() {
     return acc;
   }, {});
 
+  // 判断订单是否已完全送货（所有明细 delivered_qty >= quantity）
+  const isOrderFullyDelivered = (order: Order): boolean => {
+    const items = order.customer_order_items;
+    if (!items || items.length === 0) return false;
+    return items.every((item) => Number(item.delivered_qty || 0) >= Number(item.quantity || 0));
+  };
+
   // 过滤
   const filteredGrouped = Object.entries(groupedOrders).reduce<Record<string, Order[]>>(
     (acc, [customerId, customerOrders]) => {
@@ -613,13 +620,6 @@ export default function OrdersPage() {
 
   // 获取BOM父产品ID集合（有BOM的成品）
   const bomParentIds = new Set(bomData.map((b) => b.parent_product_id));
-
-  // 判断订单是否已完全送货（所有明细 delivered_qty >= quantity）
-  const isOrderFullyDelivered = (order: Order): boolean => {
-    const items = order.customer_order_items;
-    if (!items || items.length === 0) return false;
-    return items.every((item) => Number(item.delivered_qty || 0) >= Number(item.quantity || 0));
-  };
 
   // 追溯处理
   const handleTrace = async (orderId: string) => {
