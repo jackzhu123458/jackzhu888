@@ -50,6 +50,45 @@ const defaultApi: ApiConfig = {
   sync_interval_minutes: 30, webhook_url: '', webhook_secret: '',
 };
 
+// 移到组件外部，避免每次渲染重建导致 input 失焦
+function CompanyField({ label, field, value, onChange, type = 'text', placeholder = '' }: {
+  label: string; field: keyof CompanyInfo; value: string;
+  onChange: (field: keyof CompanyInfo, value: string) => void;
+  type?: string; placeholder?: string;
+}) {
+  return (
+    <div className="grid grid-cols-[140px_1fr] items-center gap-3">
+      <Label className="text-sm text-gray-600 justify-end">{label}</Label>
+      <Input
+        type={type}
+        value={value}
+        onChange={e => onChange(field, e.target.value)}
+        placeholder={placeholder}
+        className="h-9"
+      />
+    </div>
+  );
+}
+
+function ApiField({ label, field, value, onChange, type = 'text', placeholder = '' }: {
+  label: string; field: keyof ApiConfig; value: string | number;
+  onChange: (field: keyof ApiConfig, value: string | number) => void;
+  type?: string; placeholder?: string;
+}) {
+  return (
+    <div className="grid grid-cols-[140px_1fr] items-center gap-3">
+      <Label className="text-sm text-gray-600 justify-end">{label}</Label>
+      <Input
+        type={type}
+        value={value}
+        onChange={e => onChange(field, type === 'number' ? Number(e.target.value) : e.target.value)}
+        placeholder={placeholder}
+        className="h-9"
+      />
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const [company, setCompany] = useState<CompanyInfo>(defaultCompany);
   const [apiConfig, setApiConfig] = useState<ApiConfig>(defaultApi);
@@ -94,38 +133,13 @@ export default function SettingsPage() {
     }
   };
 
-  const CompanyField = ({ label, field, type = 'text', placeholder = '' }: {
-    label: string; field: keyof CompanyInfo; type?: string; placeholder?: string;
-  }) => (
-    <div className="grid grid-cols-[140px_1fr] items-center gap-3">
-      <Label className="text-sm text-gray-600 justify-end">{label}</Label>
-      <Input
-        type={type}
-        value={company[field] as string}
-        onChange={e => setCompany(prev => ({ ...prev, [field]: e.target.value }))}
-        placeholder={placeholder}
-        className="h-9"
-      />
-    </div>
-  );
+  const handleCompanyChange = (field: keyof CompanyInfo, value: string) => {
+    setCompany(prev => ({ ...prev, [field]: value }));
+  };
 
-  const ApiField = ({ label, field, type = 'text', placeholder = '' }: {
-    label: string; field: keyof ApiConfig; type?: string; placeholder?: string;
-  }) => (
-    <div className="grid grid-cols-[140px_1fr] items-center gap-3">
-      <Label className="text-sm text-gray-600 justify-end">{label}</Label>
-      <Input
-        type={type}
-        value={apiConfig[field] as string | number}
-        onChange={e => setApiConfig(prev => ({
-          ...prev,
-          [field]: type === 'number' ? Number(e.target.value) : e.target.value,
-        }))}
-        placeholder={placeholder}
-        className="h-9"
-      />
-    </div>
-  );
+  const handleApiChange = (field: keyof ApiConfig, value: string | number) => {
+    setApiConfig(prev => ({ ...prev, [field]: value }));
+  };
 
   return (
     <div className="p-6 space-y-6 max-w-[960px]">
@@ -149,21 +163,21 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-            <CompanyField label="公司名称" field="name" placeholder="如：新顺电器有限公司" />
-            <CompanyField label="简称" field="short_name" placeholder="如：新顺" />
-            <CompanyField label="公司编码" field="code" placeholder="ERP系统编码" />
-            <CompanyField label="开票抬头" field="invoice_title" placeholder="发票抬头全称" />
-            <CompanyField label="纳税人识别号" field="tax_id" placeholder="统一社会信用代码" />
-            <CompanyField label="邮箱" field="email" type="email" placeholder="company@example.com" />
+            <CompanyField label="公司名称" field="name" value={company.name} onChange={handleCompanyChange} placeholder="如：新顺电器有限公司" />
+            <CompanyField label="简称" field="short_name" value={company.short_name} onChange={handleCompanyChange} placeholder="如：新顺" />
+            <CompanyField label="公司编码" field="code" value={company.code} onChange={handleCompanyChange} placeholder="ERP系统编码" />
+            <CompanyField label="开票抬头" field="invoice_title" value={company.invoice_title} onChange={handleCompanyChange} placeholder="发票抬头全称" />
+            <CompanyField label="纳税人识别号" field="tax_id" value={company.tax_id} onChange={handleCompanyChange} placeholder="统一社会信用代码" />
+            <CompanyField label="邮箱" field="email" value={company.email} onChange={handleCompanyChange} type="email" placeholder="company@example.com" />
           </div>
           <Separator className="my-2" />
           <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-            <CompanyField label="地址" field="address" placeholder="公司注册地址" />
-            <CompanyField label="联系人" field="contact" placeholder="对接联系人" />
-            <CompanyField label="电话" field="phone" placeholder="联系电话" />
-            <CompanyField label="传真" field="fax" placeholder="传真号码" />
-            <CompanyField label="开户银行" field="bank_name" placeholder="如：中国银行XX支行" />
-            <CompanyField label="银行账号" field="bank_account" placeholder="对公账户" />
+            <CompanyField label="地址" field="address" value={company.address} onChange={handleCompanyChange} placeholder="公司注册地址" />
+            <CompanyField label="联系人" field="contact" value={company.contact} onChange={handleCompanyChange} placeholder="对接联系人" />
+            <CompanyField label="电话" field="phone" value={company.phone} onChange={handleCompanyChange} placeholder="联系电话" />
+            <CompanyField label="传真" field="fax" value={company.fax} onChange={handleCompanyChange} placeholder="传真号码" />
+            <CompanyField label="开户银行" field="bank_name" value={company.bank_name} onChange={handleCompanyChange} placeholder="如：中国银行XX支行" />
+            <CompanyField label="银行账号" field="bank_account" value={company.bank_account} onChange={handleCompanyChange} placeholder="对公账户" />
           </div>
           <div className="flex justify-end pt-2">
             <Button
@@ -198,10 +212,10 @@ export default function SettingsPage() {
             />
           </div>
           <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-            <ApiField label="API 地址" field="erp_api_url" placeholder="https://erp.example.com/api" />
-            <ApiField label="API Key" field="erp_api_key" placeholder="接口密钥" />
-            <ApiField label="API Secret" field="erp_api_secret" placeholder="接口密钥" />
-            <ApiField label="同步间隔(分钟)" field="sync_interval_minutes" type="number" placeholder="30" />
+            <ApiField label="API 地址" field="erp_api_url" value={apiConfig.erp_api_url} onChange={handleApiChange} placeholder="https://erp.example.com/api" />
+            <ApiField label="API Key" field="erp_api_key" value={apiConfig.erp_api_key} onChange={handleApiChange} placeholder="接口密钥" />
+            <ApiField label="API Secret" field="erp_api_secret" value={apiConfig.erp_api_secret} onChange={handleApiChange} placeholder="接口密钥" />
+            <ApiField label="同步间隔(分钟)" field="sync_interval_minutes" value={apiConfig.sync_interval_minutes} onChange={handleApiChange} type="number" placeholder="30" />
           </div>
           <div className="flex justify-end pt-2">
             <Button
@@ -236,15 +250,15 @@ export default function SettingsPage() {
             />
           </div>
           <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-            <ApiField label="API 地址" field="warehouse_api_url" placeholder="https://wms.example.com/api" />
-            <ApiField label="API Key" field="warehouse_api_key" placeholder="接口密钥" />
+            <ApiField label="API 地址" field="warehouse_api_url" value={apiConfig.warehouse_api_url} onChange={handleApiChange} placeholder="https://wms.example.com/api" />
+            <ApiField label="API Key" field="warehouse_api_key" value={apiConfig.warehouse_api_key} onChange={handleApiChange} placeholder="接口密钥" />
           </div>
           <Separator className="my-2" />
           <p className="text-sm font-medium text-gray-700">Webhook 配置</p>
           <p className="text-xs text-gray-500">系统会在出库、入库等关键操作时推送通知到指定地址</p>
           <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-            <ApiField label="Webhook URL" field="webhook_url" placeholder="https://your-server.com/webhook" />
-            <ApiField label="Webhook 密钥" field="webhook_secret" placeholder="用于验证推送来源" />
+            <ApiField label="Webhook URL" field="webhook_url" value={apiConfig.webhook_url} onChange={handleApiChange} placeholder="https://your-server.com/webhook" />
+            <ApiField label="Webhook 密钥" field="webhook_secret" value={apiConfig.webhook_secret} onChange={handleApiChange} placeholder="用于验证推送来源" />
           </div>
           <div className="flex justify-end pt-2">
             <Button
