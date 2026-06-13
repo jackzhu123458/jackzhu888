@@ -30,6 +30,7 @@ const navItems: NavItem[] = [
   { href: '/reconciliation', label: '对账管理', icon: '⇌' },
   { href: '/inventory', label: '库存管理', icon: '▦' },
   { href: '/settings', label: '系统设置', icon: '⚙' },
+  { href: '/backup', label: '备份恢复', icon: '⬡' },
 ];
 
 export function Sidebar() {
