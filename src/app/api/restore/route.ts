@@ -16,7 +16,6 @@ const MODULES: Record<string, { label: string; tables: string[]; order: number }
 };
 
 // 表的依赖顺序（先清空子表，再清空主表；先插入主表，再插入子表）
-// 清空顺序（反向依赖）
 const DELETE_ORDER = [
   'delivery_note_items', 'delivery_notes',
   'inbound_note_items', 'inbound_notes',
@@ -30,7 +29,6 @@ const DELETE_ORDER = [
   'products',
 ];
 
-// 插入顺序（正向依赖）
 const INSERT_ORDER = [...DELETE_ORDER].reverse();
 
 // POST: 执行恢复
@@ -48,7 +46,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '请至少选择一个模块' }, { status: 400 });
     }
 
-    // 收集需要恢复的所有表
+    // 收集选中模块的表
     const tablesToRestore: string[] = [];
     for (const moduleKey of selectedModules) {
       const mod = MODULES[moduleKey];
@@ -57,53 +55,69 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const client = getSupabaseClient();
-    const results: Record<string, { deleted: number; inserted: number }> = {};
+    // 收集未选中模块的表（这些表需要清空）
+    const unselectedTables: string[] = [];
+    for (const [moduleKey, mod] of Object.entries(MODULES)) {
+      if (!selectedModules.includes(moduleKey)) {
+        unselectedTables.push(...mod.tables);
+      }
+    }
 
-    // 1. 按反向依赖顺序清空选中表
+    const client = getSupabaseClient();
+    const results: Record<string, { action: string; count: number }> = {};
+
+    // 1. 按反向依赖顺序清空未选中模块的表（恢复初始状态）
+    const tablesToClear = DELETE_ORDER.filter(t => unselectedTables.includes(t));
+    for (const table of tablesToClear) {
+      const { error } = await client
+        .from(table)
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+
+      if (error) {
+        console.error(`清空表 ${table} 失败:`, error.message);
+      }
+      results[table] = { action: '已清空', count: 0 };
+    }
+
+    // 2. 按反向依赖顺序清空选中模块的表（准备恢复数据）
     const tablesToDelete = DELETE_ORDER.filter(t => tablesToRestore.includes(t));
     for (const table of tablesToDelete) {
       const { error } = await client
         .from(table)
         .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // 删除所有行
+        .neq('id', '00000000-0000-0000-0000-000000000000');
 
       if (error) {
         console.error(`清空表 ${table} 失败:`, error.message);
       }
     }
 
-    // 2. 按正向依赖顺序插入数据
+    // 3. 按正向依赖顺序插入选中模块的数据
     const tablesToInsert = INSERT_ORDER.filter(t => tablesToRestore.includes(t));
     for (const table of tablesToInsert) {
       const rows = backupData.data[table];
       if (!rows || !Array.isArray(rows) || rows.length === 0) {
-        results[table] = { deleted: 0, inserted: 0 };
+        results[table] = { action: '已恢复', count: 0 };
         continue;
       }
 
-      // 记录删除数量（已在上面删除）
-      const { count: deletedCount } = await client
-        .from(table)
-        .select('*', { count: 'exact', head: true });
-
-      // 插入数据
       const { error: insertError } = await client
         .from(table)
         .insert(rows);
 
       if (insertError) {
         console.error(`插入表 ${table} 失败:`, insertError.message);
-        results[table] = { deleted: deletedCount || 0, inserted: 0 };
+        results[table] = { action: '恢复失败', count: 0 };
         continue;
       }
 
-      results[table] = { deleted: deletedCount || 0, inserted: rows.length };
+      results[table] = { action: '已恢复', count: rows.length };
     }
 
     return NextResponse.json({
       success: true,
-      message: `恢复完成，共处理 ${tablesToInsert.length} 个表`,
+      message: `恢复完成：选中模块已恢复数据，未选中模块已清空`,
       results,
     });
   } catch (error) {

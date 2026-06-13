@@ -129,7 +129,7 @@ export default function BackupPage() {
       return;
     }
 
-    if (!confirm(`确定要恢复选中的 ${selectedModules.size} 个模块吗？\n\n⚠️ 恢复操作将覆盖当前选中模块的所有数据，此操作不可撤销！`)) {
+    if (!confirm(`确定要恢复选中的 ${selectedModules.size} 个模块吗？\n\n✅ 选中模块：恢复备份数据\n🗑️ 未选中模块：清空所有数据（恢复初始状态）\n\n⚠️ 此操作不可撤销，建议先执行完整备份！`)) {
       return;
     }
 
@@ -267,7 +267,8 @@ export default function BackupPage() {
           <div className="bg-amber-50 border border-amber-200 rounded-md p-3 mb-4 flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
             <div className="text-sm text-amber-800">
-              <p className="font-medium">注意：恢复操作将覆盖选中模块的当前数据</p>
+              <p className="font-medium">注意：恢复操作会重置数据</p>
+              <p className="mt-1">✅ 勾选的模块：恢复备份数据 &nbsp; 🗑️ 未勾选的模块：清空数据（恢复初始状态）</p>
               <p className="mt-1">建议在恢复前先执行一次完整备份。恢复操作不可撤销。</p>
             </div>
           </div>
