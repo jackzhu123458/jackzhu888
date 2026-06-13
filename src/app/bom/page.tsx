@@ -815,14 +815,15 @@ export default function BomPage() {
           {/* 右侧数据表格 */}
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
             {/* 表头 */}
-            <div className="grid grid-cols-[50px_80px_120px_1fr_50px_90px_90px_1fr_60px_50px] bg-[#E8EBF0] border-b border-gray-300 shrink-0">
+            <div className="grid grid-cols-[50px_80px_120px_1fr_50px_90px_90px_90px_1fr_60px_50px] bg-[#E8EBF0] border-b border-gray-300 shrink-0">
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">序号</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品类别</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品编号</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品名称</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">单位</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-right border-r border-gray-300">成本单价</div>
-              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-right border-r border-gray-300">商品售价一</div>
+              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-right border-r border-gray-300">不含税单价</div>
+              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-right border-r border-gray-300">含税单价</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品描述</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">图纸</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center">操作</div>
@@ -843,7 +844,7 @@ export default function BomPage() {
                   return (
                     <div
                       key={product.id}
-                      className={`grid grid-cols-[50px_80px_120px_1fr_50px_90px_90px_1fr_60px_50px] items-center border-b border-gray-200 cursor-pointer transition-colors ${
+                      className={`grid grid-cols-[50px_80px_120px_1fr_50px_90px_90px_90px_1fr_60px_50px] items-center border-b border-gray-200 cursor-pointer transition-colors ${
                         isSelected
                           ? 'bg-[#1E40AF]/10 border-l-2 border-l-[#1E40AF]'
                           : idx % 2 === 0
@@ -875,6 +876,9 @@ export default function BomPage() {
                       </div>
                       <div className="px-2 py-2.5 text-xs text-gray-900 text-right font-mono border-r border-gray-100">
                         {Number(product.cost_price || 0).toFixed(2)}
+                      </div>
+                      <div className="px-2 py-2.5 text-xs text-gray-900 text-right font-mono border-r border-gray-100">
+                        {(Number(product.price || 0) / 1.13).toFixed(4)}
                       </div>
                       <div className="px-2 py-2.5 text-xs text-gray-900 text-right font-mono border-r border-gray-100">
                         {Number(product.price || 0).toFixed(2)}
@@ -1006,8 +1010,8 @@ export default function BomPage() {
               </div>
             </div>
 
-            {/* 成本单价 + 商品售价(含税) */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* 成本单价 + 不含税单价 + 含税单价 */}
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1.5 block">成本单价</label>
                 <Input
@@ -1019,7 +1023,15 @@ export default function BomPage() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700 mb-1.5 block">商品售价(含税)</label>
+                <label className="text-sm font-medium text-gray-700 mb-1.5 block">不含税单价</label>
+                <Input
+                  value={newSellPrice ? (parseFloat(newSellPrice) / 1.13).toFixed(4) : '0.0000'}
+                  readOnly
+                  className="bg-gray-50 text-gray-600"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1.5 block">含税单价</label>
                 <Input
                   value={newSellPrice}
                   onChange={(e) => setNewSellPrice(e.target.value)}
@@ -1148,8 +1160,8 @@ export default function BomPage() {
                     </div>
                   </div>
 
-                  {/* 成本单价 + 商品售价(含税) */}
-                  <div className="grid grid-cols-2 gap-3">
+                  {/* 成本单价 + 不含税单价 + 含税单价 */}
+                  <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1.5 block">成本单价</label>
                       <Input
@@ -1161,7 +1173,15 @@ export default function BomPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-gray-700 mb-1.5 block">商品售价(含税)</label>
+                      <label className="text-sm font-medium text-gray-700 mb-1.5 block">不含税单价</label>
+                      <Input
+                        value={newChildSellPrice ? (parseFloat(newChildSellPrice) / 1.13).toFixed(4) : '0.0000'}
+                        readOnly
+                        className="bg-gray-50 text-gray-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1.5 block">含税单价</label>
                       <Input
                         value={newChildSellPrice}
                         onChange={(e) => setNewChildSellPrice(e.target.value)}
@@ -1204,7 +1224,7 @@ export default function BomPage() {
           <DialogHeader>
             <DialogTitle>Excel 批量导入 BOM</DialogTitle>
             <DialogDescription>
-              上传 Excel 文件批量导入产品物料和 BOM 关系。表头需包含：商品类别、商品编号、商品名称、单位、成本单价、商品售价一、商品描述
+              上传 Excel 文件批量导入产品物料和 BOM 关系。表头需包含：商品类别、商品编号、商品名称、单位、成本单价、含税单价、商品描述
             </DialogDescription>
           </DialogHeader>
 
@@ -1296,7 +1316,7 @@ export default function BomPage() {
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                 <p className="text-xs font-medium text-amber-800 mb-1">Excel 表头格式要求</p>
                 <p className="text-xs text-amber-700">
-                  商品类别 | 商品编号 | 商品名称 | 单位 | 成本单价 | 商品售价一 | 商品描述
+                  商品类别 | 商品编号 | 商品名称 | 单位 | 成本单价 | 含税单价 | 商品描述
                 </p>
                 <p className="text-xs text-amber-600 mt-1">
                   {importMode === 'multi'
