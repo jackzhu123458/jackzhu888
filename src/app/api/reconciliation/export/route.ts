@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
   const wb = XLSX.utils.book_new();
 
   // ====== Sheet 1: 对账汇总（数据透视表 + Excel分组折叠）======
-  // Hierarchy: 类目(level 0, outlineLevel=1) → 商品(level 1, outlineLevel=2) → 订单号码(level 2, outlineLevel=3)
+  // Hierarchy: 类目(level 0) → 商品(level 1) → 订单号码(level 2)
   // 列: 行标签 | 求和项:数量 | 不含税单价 | 含税单价 | 求和项:金额
 
   // Group by category → product_code
@@ -154,11 +154,10 @@ export async function GET(request: NextRequest) {
 
   // Build rows for pivot table
   const pivotData: (string | number)[][] = [];
-  // For Excel outline: level 0 = no outline, 1 = outermost group, 2 = inner, 3 = innermost
   const outlineLevels: number[] = [];
   const rowTypes: ('header' | 'category' | 'product' | 'detail' | 'total')[] = [];
 
-  // Header row (no outline)
+  // Header row
   pivotData.push(['行标签', '求和项:数量', '不含税单价', '含税单价', '求和项:金额']);
   outlineLevels.push(0);
   rowTypes.push('header');
@@ -183,8 +182,8 @@ export async function GET(request: NextRequest) {
     const catWeightedPriceExTax = catTotalQty > 0 ? round4(catTotalAmountExTax / catTotalQty) : 0;
     const catWeightedPriceIncTax = catTotalQty > 0 ? round4(catTotalAmount / catTotalQty) : 0;
 
-    // Category summary row — outline level 1 (outermost, clickable to collapse sub-items)
-    pivotData.push([catName, catTotalQty, catWeightedPriceExTax, catWeightedPriceIncTax, catTotalAmount]);
+    // Category summary row — with ▶ prefix and bold
+    pivotData.push([`▶ ${catName}`, catTotalQty, catWeightedPriceExTax, catWeightedPriceIncTax, catTotalAmount]);
     outlineLevels.push(1);
     rowTypes.push('category');
 
@@ -201,15 +200,15 @@ export async function GET(request: NextRequest) {
       const productPriceExTax = productRows[0]?.price_ex_tax || 0;
       const productPriceIncTax = productRows[0]?.price_inc_tax || 0;
 
-      // Product summary row — outline level 2 (sub-group)
+      // Product summary row — with └─ prefix
       const productLabel = productRows[0]?.product_name || productCode;
-      pivotData.push([productLabel, productTotalQty, productPriceExTax, productPriceIncTax, productTotalAmount]);
+      pivotData.push([`  └─${productLabel}`, productTotalQty, productPriceExTax, productPriceIncTax, productTotalAmount]);
       outlineLevels.push(2);
       rowTypes.push('product');
 
       for (const row of productRows) {
-        // Order detail row — outline level 3 (innermost detail)
-        pivotData.push([row.order_no, row.quantity, row.price_ex_tax, row.price_inc_tax, row.amount_inc_tax]);
+        // Order detail row — with indent spaces
+        pivotData.push([`      ${row.order_no}`, row.quantity, row.price_ex_tax, row.price_inc_tax, row.amount_inc_tax]);
         outlineLevels.push(3);
         rowTypes.push('detail');
       }
@@ -230,7 +229,7 @@ export async function GET(request: NextRequest) {
   // Create worksheet
   const pivotWs = XLSX.utils.aoa_to_sheet(pivotData);
   pivotWs['!cols'] = [
-    { wch: 42 }, // 行标签
+    { wch: 42 }, // 行标签（加宽以容纳缩进和前缀）
     { wch: 14 }, // 求和项:数量
     { wch: 14 }, // 不含税单价
     { wch: 12 }, // 含税单价
@@ -238,8 +237,6 @@ export async function GET(request: NextRequest) {
   ];
 
   // Set row outline levels for Excel grouping (collapsible +/- buttons)
-  // outlineLevel: 0 = no outline, 1 = outermost, 2 = inner, 3 = innermost
-  // Rows with higher outlineLevel can be collapsed by clicking their parent
   const rowInfos: XLSX.RowInfo[] = [];
   for (let i = 0; i < pivotData.length; i++) {
     const ol = outlineLevels[i];
@@ -250,20 +247,19 @@ export async function GET(request: NextRequest) {
   }
   pivotWs['!rows'] = rowInfos;
 
-  // Set outline above (summary rows are ABOVE detail rows — this is key for proper grouping)
-  // In XLSX, this maps to <sheetPr outlinePr summaryBelow="0"/>
+  // Set outline above (summary rows are ABOVE detail rows)
   if (!pivotWs['!sheetPr']) pivotWs['!sheetPr'] = {};
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (pivotWs['!sheetPr'] as Record<string, any>).outlinePr = { summaryBelow: false };
 
-  // Apply cell styles with colors
+  // Apply cell styles with distinct colors per level
   for (let r = 0; r < pivotData.length; r++) {
     const type = rowTypes[r];
     for (let c = 0; c < 5; c++) {
       const cell = pivotWs[XLSX.utils.encode_cell({ r, c })];
       if (!cell) continue;
 
-      // Number format for amounts
+      // Number formats
       if ((c === 2 || c === 3) && r > 0 && type !== 'header') {
         cell.z = '0.0000';
       }
@@ -277,33 +273,54 @@ export async function GET(request: NextRequest) {
       switch (type) {
         case 'header':
           cell.s = {
-            font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
+            font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 12 },
             fill: { fgColor: { rgb: '1E40AF' } },
-            alignment: { horizontal: 'center' },
+            alignment: { horizontal: 'center', vertical: 'center' },
+            border: {
+              bottom: { style: 'medium', color: { rgb: '1E3A8A' } },
+            },
           };
           break;
         case 'category':
           cell.s = {
-            font: { bold: true, sz: 11, color: { rgb: '1E40AF' } },
+            font: { bold: true, sz: 12, color: { rgb: '1E3A8A' } },
             fill: { fgColor: { rgb: 'DBEAFE' } },
+            alignment: { vertical: 'center' },
+            border: {
+              bottom: { style: 'thin', color: { rgb: '93C5FD' } },
+              top: { style: 'medium', color: { rgb: '93C5FD' } },
+            },
           };
           break;
         case 'product':
           cell.s = {
-            font: { bold: true, sz: 10 },
+            font: { bold: true, sz: 11, color: { rgb: '166534' } },
             fill: { fgColor: { rgb: 'DCFCE7' } },
+            alignment: { vertical: 'center', indent: 1 },
+            border: {
+              bottom: { style: 'thin', color: { rgb: '86EFAC' } },
+            },
           };
           break;
         case 'detail':
           cell.s = {
-            font: { sz: 10 },
-            fill: { fgColor: { rgb: 'FFFFFF' } },
+            font: { sz: 10, color: { rgb: '374151' } },
+            fill: { fgColor: { rgb: 'F9FAFB' } },
+            alignment: { vertical: 'center', indent: 2 },
+            border: {
+              bottom: { style: 'hair', color: { rgb: 'D1D5DB' } },
+            },
           };
           break;
         case 'total':
           cell.s = {
-            font: { bold: true, sz: 12 },
-            fill: { fgColor: { rgb: 'FEF9C3' } },
+            font: { bold: true, sz: 13, color: { rgb: '92400E' } },
+            fill: { fgColor: { rgb: 'FEF3C7' } },
+            alignment: { vertical: 'center' },
+            border: {
+              top: { style: 'double', color: { rgb: 'D97706' } },
+              bottom: { style: 'double', color: { rgb: 'D97706' } },
+            },
           };
           break;
       }
