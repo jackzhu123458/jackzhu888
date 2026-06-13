@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -50,13 +50,20 @@ interface Customer { id: string; name: string; code?: string }
 interface Warehouse { id: string; name: string }
 
 /* ---------- 状态配色 ---------- */
-const statusMap: Record<string, { label: string; color: string; bg: string; barColor: string }> = {
-  pending:     { label: '待生产', color: 'text-amber-700', bg: 'bg-amber-50',  barColor: 'bg-amber-400' },
-  confirmed:   { label: '已确认', color: 'text-indigo-700', bg: 'bg-indigo-50', barColor: 'bg-indigo-400' },
-  in_progress: { label: '生产中', color: 'text-blue-700',   bg: 'bg-blue-50',   barColor: 'bg-blue-500' },
-  completed:   { label: '已完成', color: 'text-green-700',  bg: 'bg-green-50',  barColor: 'bg-green-500' },
-  cancelled:   { label: '已取消', color: 'text-red-600',    bg: 'bg-red-50',    barColor: 'bg-red-300' },
+const statusMap: Record<string, { label: string; color: string; bg: string }> = {
+  pending:     { label: '待生产', color: 'text-amber-700 border-amber-300', bg: 'bg-amber-50' },
+  in_progress: { label: '生产中', color: 'text-blue-700 border-blue-300',   bg: 'bg-blue-50' },
+  completed:   { label: '已完成', color: 'text-green-700 border-green-300', bg: 'bg-green-50' },
+  confirmed:   { label: '已确认', color: 'text-indigo-700 border-indigo-300', bg: 'bg-indigo-50' },
+  cancelled:   { label: '已取消', color: 'text-red-600 border-red-300',     bg: 'bg-red-50' },
 };
+
+/* ---------- 看板列定义 ---------- */
+const columns = [
+  { key: 'pending',     label: '待生产', headerBg: 'bg-amber-500',  headerText: 'text-white' },
+  { key: 'in_progress', label: '生产中', headerBg: 'bg-blue-500',   headerText: 'text-white' },
+  { key: 'completed',   label: '已完成', headerBg: 'bg-green-600',  headerText: 'text-white' },
+] as const;
 
 export default function ProductionPage() {
   /* ---------- state ---------- */
@@ -66,7 +73,6 @@ export default function ProductionPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterProductId, setFilterProductId] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
 
   // 新增/编辑
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -91,9 +97,8 @@ export default function ProductionPage() {
   // 详情
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
 
-  // 今天的时间戳，避免渲染中调用 Date.now()
+  // 今天的时间戳，用于计算紧急度（避免渲染中调用 Date.now()）
   const [todayMs] = useState(() => Date.now());
-  const todayStr = useMemo(() => new Date(todayMs).toISOString().slice(0, 10), [todayMs]);
 
   /* ---------- fetch ---------- */
   const fetchOrders = useCallback(async () => {
@@ -113,9 +118,10 @@ export default function ProductionPage() {
   /* ---------- helpers ---------- */
   const filteredOrders = orders.filter((o) => {
     if (filterProductId !== 'all' && o.product_id !== filterProductId) return false;
-    if (filterStatus !== 'all' && o.status !== filterStatus) return false;
     return true;
   });
+
+  const ordersByStatus = (status: string) => filteredOrders.filter((o) => o.status === status);
 
   // 物料下拉列表
   const productMap = new Map<string, { id: string; code: string; name: string }>();
@@ -128,37 +134,6 @@ export default function ProductionPage() {
   const productList = Array.from(productMap.values());
   const finishedProducts = products.filter((p) => p.type === 'finished_product' || p.type === 'semi_finished');
 
-  /* ---------- 日期范围 ---------- */
-  // 计算甘特图日期范围
-  const dateRange = useMemo(() => {
-    const dates: string[] = [];
-    const today = new Date(todayMs);
-    // 从7天前到30天后
-    for (let i = -7; i <= 30; i++) {
-      const d = new Date(today);
-      d.setDate(d.getDate() + i);
-      dates.push(d.toISOString().slice(0, 10));
-    }
-    return dates;
-  }, [todayMs]);
-
-  // 按物料分组
-  const groupedByProduct = useMemo(() => {
-    const map = new Map<string, { product: { id: string; code: string; name: string }; orders: Order[] }>();
-    filteredOrders.forEach((o) => {
-      const prod = o.products;
-      if (!prod) return;
-      if (!map.has(o.product_id)) {
-        map.set(o.product_id, {
-          product: { id: prod.id, code: prod.code, name: prod.name },
-          orders: [],
-        });
-      }
-      map.get(o.product_id)!.orders.push(o);
-    });
-    return Array.from(map.values()).sort((a, b) => a.product.code.localeCompare(b.product.code));
-  }, [filteredOrders]);
-
   /* ---------- handlers ---------- */
   const handleAdd = () => {
     setEditOrder(null);
@@ -170,15 +145,19 @@ export default function ProductionPage() {
 
   const handleSelectProduct = (pid: string) => {
     setFormProductId(pid);
-    fetch(`/api/bom?parent_id=${pid}`).then(r => r.json()).then(data => {
-      const bomList = Array.isArray(data) ? data : data.bom || [];
-      if (bomList.length > 0) {
-        setFormMaterials(bomList.map((b: { child_product_id: string; quantity: number }) => ({
-          product_id: b.child_product_id,
-          required_qty: String(b.quantity),
-        })));
-      }
-    }).catch(() => {});
+    // 自动从 BOM 加载子料
+    const prod = products.find((p) => p.id === pid);
+    if (prod) {
+      fetch(`/api/bom?parent_id=${pid}`).then(r => r.json()).then(data => {
+        const bomList = Array.isArray(data) ? data : data.bom || [];
+        if (bomList.length > 0) {
+          setFormMaterials(bomList.map((b: { child_product_id: string; quantity: number }) => ({
+            product_id: b.child_product_id,
+            required_qty: String(b.quantity),
+          })));
+        }
+      }).catch(() => {});
+    }
   };
 
   const addMaterialRow = () => setFormMaterials([...formMaterials, { product_id: '', required_qty: '' }]);
@@ -246,40 +225,105 @@ export default function ProductionPage() {
 
   /* ---------- 日期格式化 ---------- */
   const fmtDate = (d: string | null | undefined) => d ? d.slice(0, 10) : '-';
-  const fmtShortDate = (d: string) => { const dt = new Date(d); return `${dt.getMonth() + 1}/${dt.getDate()}`; };
+  const isOverdue = (d: string | null | undefined) => d && new Date(d).getTime() < todayMs;
   const getUrgency = (dueDate: string | null | undefined, status: string) => {
     if (!dueDate || status === 'completed' || status === 'cancelled') return 'normal';
     const now = new Date(todayMs); now.setHours(0,0,0,0);
     const due = new Date(dueDate); due.setHours(0,0,0,0);
     const diff = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-    if (diff < 0) return 'overdue';
-    if (diff <= 3) return 'urgent';
+    if (diff < 0) return 'overdue';      // 已逾期
+    if (diff <= 3) return 'urgent';      // 3天内紧急
     return 'normal';
   };
-  const getDaysDiff = (dueDate: string | null) => {
-    if (!dueDate) return 0;
-    return Math.ceil((new Date(dueDate).getTime() - todayMs) / 86400000);
+  const urgencyConfig: Record<string, { label: string; color: string; bg: string; border: string; pulse: string }> = {
+    overdue: { label: '已逾期', color: 'text-red-700', bg: 'bg-red-100', border: 'border-red-400', pulse: '' },
+    urgent:  { label: '紧急', color: 'text-orange-700', bg: 'bg-orange-100', border: 'border-orange-400', pulse: 'animate-pulse' },
+    normal:  { label: '', color: '', bg: '', border: '', pulse: '' },
   };
-  const getRequiredDate = (dueDate: string | null) => {
+  const getRequiredCompleteDate = (dueDate: string | null | undefined) => {
     if (!dueDate) return null;
-    const d = new Date(dueDate);
-    d.setDate(d.getDate() - 3);
-    return d.toISOString().slice(0, 10);
+    const due = new Date(dueDate);
+    due.setDate(due.getDate() - 3);
+    return due.toISOString().slice(0, 10);
   };
 
-  // 甘特图条形位置计算
-  const getBarStyle = (startDate: string | null, dueDate: string | null) => {
-    const firstDate = dateRange[0];
-    const lastDate = dateRange[dateRange.length - 1];
-    const start = startDate || dueDate || firstDate;
-    const end = dueDate || startDate || lastDate;
-    if (!start || !end) return { left: '0%', width: '0%' };
-    const totalMs = new Date(lastDate).getTime() - new Date(firstDate).getTime();
-    const startMs = Math.max(new Date(start).getTime() - new Date(firstDate).getTime(), 0);
-    const endMs = Math.min(new Date(end).getTime() - new Date(firstDate).getTime(), totalMs);
-    const left = totalMs > 0 ? (startMs / totalMs) * 100 : 0;
-    const width = totalMs > 0 ? ((endMs - startMs) / totalMs) * 100 : 0;
-    return { left: `${left}%`, width: `${Math.max(width, 1.5)}%` };
+  /* ---------- 渲染卡片 ---------- */
+  const renderCard = (order: Order) => {
+    const prod = order.products;
+    const cust = order.customers;
+    const st = statusMap[order.status] || { label: order.status, color: '', bg: '' };
+    const urgency = getUrgency(order.due_date, order.status);
+    const uc = urgencyConfig[urgency];
+    const reqDate = getRequiredCompleteDate(order.due_date);
+    const isReqOverdue = reqDate && new Date(reqDate).getTime() < todayMs;
+    const daysDiff = order.due_date
+      ? Math.ceil((new Date(order.due_date).getTime() - todayMs) / 86400000)
+      : 0;
+
+    return (
+      <div key={order.id} className={`bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow ${urgency === 'overdue' ? 'border-red-400' : urgency === 'urgent' ? 'border-orange-300' : 'border-gray-200'}`}>
+        {/* 紧急提示条 */}
+        {urgency !== 'normal' && (
+          <div className={`px-4 py-1.5 text-xs font-medium ${uc.color} ${uc.bg} rounded-t-lg flex items-center gap-1.5 ${uc.pulse}`}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
+            {urgency === 'overdue' ? `已逾期 ${Math.abs(daysDiff)} 天` : `距交期仅 ${daysDiff} 天`}
+          </div>
+        )}
+        {/* 卡片头部 */}
+        <div className={`px-4 py-3 ${urgency !== 'normal' ? 'pt-2' : ''}`}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-mono text-xs text-gray-500">{order.order_no}</span>
+            <div className="flex items-center gap-1.5">
+              {urgency !== 'normal' && (
+                <Badge className={`text-[10px] px-1.5 py-0 ${uc.bg} ${uc.color} border ${uc.border}`}>{uc.label}</Badge>
+              )}
+              <Badge variant="outline" className={`text-[11px] px-1.5 py-0 ${st.color}`}>{st.label}</Badge>
+            </div>
+          </div>
+          <div className="text-sm font-medium text-gray-900 mb-1 truncate" title={prod?.name}>
+            {prod?.code && <span className="font-mono text-gray-500 mr-1">{prod.code}</span>}
+            {prod?.name || '未知物料'}
+          </div>
+          <div className="flex items-center justify-between text-xs text-gray-500">
+            <span>数量: <span className="font-mono font-medium text-gray-800">{order.quantity}</span> {translateUnit(prod?.unit || '')}</span>
+            {cust && <span>{cust.name}</span>}
+          </div>
+          <div className="flex items-center justify-between mt-1.5 text-xs text-gray-400">
+            <span>交期: <span className={urgency !== 'normal' ? 'text-red-600 font-medium' : ''}>{fmtDate(order.due_date)}</span></span>
+            {reqDate && (
+              <span>要求完成: <span className={`font-medium ${isReqOverdue && order.status !== 'completed' && order.status !== 'cancelled' ? 'text-red-600' : 'text-orange-600'}`}>{reqDate}</span></span>
+            )}
+          </div>
+          {order.customer_order && (
+            <div className="mt-1 text-xs text-gray-400">
+              <span className="font-mono">客户单号: {order.customer_order.order_no}</span>
+            </div>
+          )}
+        </div>
+
+        {/* 操作按钮 */}
+        <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50/50 flex items-center gap-2 flex-wrap">
+          {order.status === 'pending' && (
+            <button onClick={() => handleStatusChange(order.id, 'in_progress')} className="text-xs px-2.5 py-1 rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors">
+              开始生产
+            </button>
+          )}
+          {order.status === 'in_progress' && (
+            <button onClick={() => { setCompleteOrderId(order.id); setCompleteWarehouseId(warehouses.length > 0 ? warehouses[0].id : ''); }} className="text-xs px-2.5 py-1 rounded bg-green-600 text-white hover:bg-green-700 transition-colors">
+              完成入库
+            </button>
+          )}
+          {(order.status === 'pending' || order.status === 'in_progress') && (
+            <button onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-xs px-2.5 py-1 rounded border border-red-300 text-red-500 hover:bg-red-50 transition-colors">
+              取消
+            </button>
+          )}
+          <button onClick={() => setDetailOrder(order)} className="text-xs px-2.5 py-1 rounded border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors ml-auto">
+            详情
+          </button>
+        </div>
+      </div>
+    );
   };
 
   /* ---------- 渲染 ---------- */
@@ -305,110 +349,60 @@ export default function ProductionPage() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-32">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部状态</SelectItem>
-            {Object.entries(statusMap).map(([k, v]) => (
-              <SelectItem key={k} value={k}>{v.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
         <div className="text-xs text-gray-400 ml-auto">
           共 {filteredOrders.length} 条生产订单
         </div>
       </div>
 
-      {/* 甘特图 */}
+      {/* 看板矩阵 */}
       {loading ? (
         <div className="py-12 text-center text-gray-400">加载中...</div>
       ) : filteredOrders.length === 0 ? (
         <div className="py-12 text-center text-gray-400">暂无数据</div>
       ) : (
-        <div className="flex-1 min-h-0 border border-gray-200 rounded-lg overflow-hidden">
-          <div className="overflow-auto h-full">
-            <table className="w-full text-sm" style={{ minWidth: dateRange.length * 28 + 420 }}>
-              <thead>
-                {/* 月份行 */}
-                <tr className="bg-gray-100">
-                  <th colSpan={4} className="text-left px-3 py-2 text-xs font-medium text-gray-500 border-b border-r border-gray-200 sticky left-0 bg-gray-100 z-20" style={{ minWidth: 420 }}>
-                    物料信息
-                  </th>
-                  {dateRange.map((d) => {
-                    const dt = new Date(d);
-                    const isMonthStart = dt.getDate() <= 3 || d === dateRange[0];
-                    return (
-                      <th key={d} className={`px-0.5 py-1 text-center text-[10px] font-normal border-b border-gray-200 ${isMonthStart ? 'font-medium text-gray-600' : 'text-gray-400'}`}>
-                        {isMonthStart ? `${dt.getMonth() + 1}月` : ''}
-                      </th>
-                    );
-                  })}
-                </tr>
-                {/* 日期行 */}
-                <tr className="bg-gray-50">
-                  <th className="text-left px-3 py-1.5 text-xs font-medium text-gray-500 border-b border-r border-gray-200 sticky left-0 bg-gray-50 z-20" style={{ minWidth: 100 }}>编码</th>
-                  <th className="text-left px-2 py-1.5 text-xs font-medium text-gray-500 border-b border-r border-gray-200 sticky left-[100px] bg-gray-50 z-20" style={{ minWidth: 120 }}>名称</th>
-                  <th className="text-left px-2 py-1.5 text-xs font-medium text-gray-500 border-b border-r border-gray-200 sticky left-[220px] bg-gray-50 z-20" style={{ minWidth: 80 }}>客户/单号</th>
-                  <th className="text-left px-2 py-1.5 text-xs font-medium text-gray-500 border-b border-r border-gray-200 sticky left-[300px] bg-gray-50 z-20" style={{ minWidth: 120 }}>操作</th>
-                  {dateRange.map((d) => {
-                    const dt = new Date(d);
-                    const isToday = d === todayStr;
-                    const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
-                    return (
-                      <th key={d} className={`px-0.5 py-1 text-center text-[10px] border-b border-gray-200 ${isToday ? 'bg-blue-100 text-blue-700 font-bold' : isWeekend ? 'bg-gray-100 text-gray-400' : 'text-gray-500'}`} style={{ minWidth: 28 }}>
-                        {dt.getDate()}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {groupedByProduct.map((group) => {
-                  const totalQty = group.orders.reduce((s, o) => s + o.quantity, 0);
-                  const completedQty = group.orders.filter(o => o.status === 'completed').reduce((s, o) => s + o.quantity, 0);
-                  return (
-                    <ProductGroupRow
-                      key={group.product.id}
-                      group={group}
-                      totalQty={totalQty}
-                      completedQty={completedQty}
-                      dateRange={dateRange}
-                      todayStr={todayStr}
-                      statusMap={statusMap}
-                      onStatusChange={handleStatusChange}
-                      onCompleteInbound={(orderId) => { setCompleteOrderId(orderId); setCompleteWarehouseId(warehouses.length > 0 ? warehouses[0].id : ''); }}
-                      onDelete={(orderId) => setDeleteId(orderId)}
-                      onDetail={(order) => setDetailOrder(order)}
-                      getUrgency={getUrgency}
-                      getDaysDiff={getDaysDiff}
-                      getRequiredDate={getRequiredDate}
-                      getBarStyle={getBarStyle}
-                      fmtDate={fmtDate}
-                      fmtShortDate={fmtShortDate}
-                    />
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        <div className="grid grid-cols-3 gap-5 flex-1 min-h-0">
+          {columns.map((col) => {
+            const colOrders = ordersByStatus(col.key).sort((a, b) => {
+              // 紧急/逾期排前面
+              const ua = getUrgency(a.due_date, a.status);
+              const ub = getUrgency(b.due_date, b.status);
+              const priority: Record<string, number> = { overdue: 0, urgent: 1, normal: 2 };
+              const pa = priority[ua] ?? 2, pb = priority[ub] ?? 2;
+              if (pa !== pb) return pa - pb;
+              // 同紧急度按交期排序
+              return (a.due_date || '').localeCompare(b.due_date || '');
+            });
+            return (
+              <div key={col.key} className="flex flex-col min-h-0">
+                {/* 列标题 */}
+                <div className={`${col.headerBg} ${col.headerText} px-4 py-2.5 rounded-t-lg flex items-center justify-between`}>
+                  <span className="font-medium text-sm">{col.label}</span>
+                  <span className="text-xs opacity-80 bg-white/20 px-2 py-0.5 rounded-full">{colOrders.length}</span>
+                </div>
+                {/* 卡片列表 */}
+                <div className="flex-1 overflow-y-auto bg-gray-50/50 rounded-b-lg border border-t-0 border-gray-200 p-3 space-y-3">
+                  {colOrders.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-gray-300">暂无订单</div>
+                  ) : (
+                    colOrders.map(renderCard)
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* 底部统计 */}
-      {!loading && filteredOrders.length > 0 && (
-        <div className="mt-3 flex items-center gap-6 text-xs text-gray-500 shrink-0">
-          <span>待生产: <span className="font-mono font-medium text-amber-600">{filteredOrders.filter(o => o.status === 'pending').length}</span></span>
-          <span>生产中: <span className="font-mono font-medium text-blue-600">{filteredOrders.filter(o => o.status === 'in_progress').length}</span></span>
-          <span>已完成: <span className="font-mono font-medium text-green-600">{filteredOrders.filter(o => o.status === 'completed').length}</span></span>
-          {filteredOrders.filter(o => getUrgency(o.due_date, o.status) === 'overdue').length > 0 && (
-            <span>逾期: <span className="font-mono font-medium text-red-600">{filteredOrders.filter(o => getUrgency(o.due_date, o.status) === 'overdue').length}</span></span>
-          )}
-          {filteredOrders.filter(o => getUrgency(o.due_date, o.status) === 'urgent').length > 0 && (
-            <span>紧急: <span className="font-mono font-medium text-orange-600">{filteredOrders.filter(o => getUrgency(o.due_date, o.status) === 'urgent').length}</span></span>
-          )}
-        </div>
+      {/* 已取消订单折叠 */}
+      {ordersByStatus('cancelled').length > 0 && (
+        <details className="mt-4">
+          <summary className="text-sm text-gray-400 cursor-pointer hover:text-gray-600">
+            已取消订单 ({ordersByStatus('cancelled').length})
+          </summary>
+          <div className="mt-2 grid grid-cols-3 gap-3">
+            {ordersByStatus('cancelled').map(renderCard)}
+          </div>
+        </details>
       )}
     </div>
 
@@ -612,177 +606,6 @@ export default function ProductionPage() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-    </>
-  );
-}
-
-/* ========== 物料分组行组件 ========== */
-interface ProductGroupRowProps {
-  group: { product: { id: string; code: string; name: string }; orders: Order[] };
-  totalQty: number;
-  completedQty: number;
-  dateRange: string[];
-  todayStr: string;
-  statusMap: Record<string, { label: string; color: string; bg: string; barColor: string }>;
-  onStatusChange: (id: string, status: string) => void;
-  onCompleteInbound: (orderId: string) => void;
-  onDelete: (orderId: string) => void;
-  onDetail: (order: Order) => void;
-  getUrgency: (dueDate: string | null | undefined, status: string) => string;
-  getDaysDiff: (dueDate: string | null) => number;
-  getRequiredDate: (dueDate: string | null) => string | null;
-  getBarStyle: (startDate: string | null, dueDate: string | null) => { left: string; width: string };
-  fmtDate: (d: string | null | undefined) => string;
-  fmtShortDate: (d: string) => string;
-}
-
-function ProductGroupRow({
-  group, totalQty, completedQty, dateRange, todayStr, statusMap,
-  onStatusChange, onCompleteInbound, onDelete, onDetail,
-  getUrgency, getDaysDiff, getRequiredDate, getBarStyle, fmtDate, fmtShortDate,
-}: ProductGroupRowProps) {
-  const [expanded, setExpanded] = useState(true);
-  const progressPct = totalQty > 0 ? Math.round((completedQty / totalQty) * 100) : 0;
-
-  return (
-    <>
-      {/* 物料组标题行 */}
-      <tr className="bg-gray-50 hover:bg-gray-100 cursor-pointer" onClick={() => setExpanded(!expanded)}>
-        <td colSpan={4} className="px-3 py-2.5 border-b border-r border-gray-200 sticky left-0 bg-gray-50 z-10" style={{ minWidth: 420 }}>
-          <div className="flex items-center gap-3">
-            <span className={`text-xs transition-transform ${expanded ? 'rotate-90' : ''}`}>▶</span>
-            <span className="font-mono text-xs text-gray-500">{group.product.code}</span>
-            <span className="text-sm font-medium text-gray-900 truncate">{group.product.name}</span>
-            <span className="text-xs text-gray-400">
-              {group.orders.length} 单 / <span className="font-mono">{totalQty}</span> 总量
-            </span>
-            {completedQty > 0 && (
-              <div className="flex items-center gap-2">
-                <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-green-500 rounded-full" style={{ width: `${progressPct}%` }} />
-                </div>
-                <span className="text-[10px] text-green-600 font-mono">{progressPct}%</span>
-              </div>
-            )}
-          </div>
-        </td>
-        {/* 甘特条 - 合并所有订单的时间范围 */}
-        <td colSpan={dateRange.length} className="px-0 py-2.5 border-b border-gray-200 relative">
-          {group.orders.filter(o => o.status !== 'cancelled').map((o) => {
-            const barStyle = getBarStyle(o.start_date, o.due_date);
-            const st = statusMap[o.status] || statusMap.pending;
-            const urgency = getUrgency(o.due_date, o.status);
-            return (
-              <div
-                key={o.id}
-                className={`absolute top-1 h-3 rounded-sm ${st.barColor} ${urgency === 'overdue' ? 'ring-1 ring-red-400' : urgency === 'urgent' ? 'ring-1 ring-orange-400' : ''}`}
-                style={{ left: barStyle.left, width: barStyle.width, opacity: 0.7 }}
-                title={`${o.order_no} ${fmtDate(o.start_date)}~${fmtDate(o.due_date)}`}
-              />
-            );
-          })}
-        </td>
-      </tr>
-
-      {/* 展开的订单行 */}
-      {expanded && group.orders.map((order) => {
-        const st = statusMap[order.status] || { label: order.status, color: '', bg: '', barColor: 'bg-gray-300' };
-        const urgency = getUrgency(order.due_date, order.status);
-        const days = getDaysDiff(order.due_date);
-        const reqDate = getRequiredDate(order.due_date);
-        const barStyle = getBarStyle(order.start_date, order.due_date);
-
-        return (
-          <tr key={order.id} className={`hover:bg-white/80 ${urgency === 'overdue' ? 'bg-red-50/50' : urgency === 'urgent' ? 'bg-orange-50/50' : ''}`}>
-            {/* 订单号 */}
-            <td className="px-3 py-2 border-b border-r border-gray-200 sticky left-0 z-10 bg-inherit" style={{ minWidth: 100 }}>
-              <div className="flex items-center gap-1.5">
-                {urgency !== 'normal' && (
-                  <span className={`inline-block w-2 h-2 rounded-full ${urgency === 'overdue' ? 'bg-red-500 animate-pulse' : 'bg-orange-400'}`} />
-                )}
-                <span className="font-mono text-xs text-gray-600">{order.order_no}</span>
-              </div>
-            </td>
-            {/* 数量+状态 */}
-            <td className="px-2 py-2 border-b border-r border-gray-200 sticky left-[100px] z-10 bg-inherit" style={{ minWidth: 120 }}>
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-sm">{order.quantity}</span>
-                <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${st.color}`}>{st.label}</Badge>
-              </div>
-            </td>
-            {/* 客户/交期 */}
-            <td className="px-2 py-2 border-b border-r border-gray-200 sticky left-[220px] z-10 bg-inherit" style={{ minWidth: 80 }}>
-              <div className="text-xs text-gray-500">
-                <div>{order.customers?.name || '-'}</div>
-                <div className="font-mono text-[10px] text-gray-400">{order.customer_order?.order_no || ''}</div>
-                {order.due_date && (
-                  <div className={`text-[10px] ${urgency === 'overdue' ? 'text-red-600 font-medium' : urgency === 'urgent' ? 'text-orange-600' : 'text-gray-400'}`}>
-                    交期:{fmtShortDate(order.due_date)}
-                    {urgency === 'overdue' && <span> 逾期{Math.abs(days)}天</span>}
-                    {urgency === 'urgent' && <span> 仅{days}天</span>}
-                  </div>
-                )}
-                {reqDate && order.status !== 'completed' && order.status !== 'cancelled' && (
-                  <div className="text-[10px] text-orange-500">要求:{fmtShortDate(reqDate)}</div>
-                )}
-              </div>
-            </td>
-            {/* 操作按钮 */}
-            <td className="px-2 py-2 border-b border-r border-gray-200 sticky left-[300px] z-10 bg-inherit" style={{ minWidth: 120 }}>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {order.status === 'pending' && (
-                  <button onClick={() => onStatusChange(order.id, 'in_progress')} className="text-[11px] px-2 py-1 rounded bg-blue-500 text-white hover:bg-blue-600 whitespace-nowrap">
-                    开始生产
-                  </button>
-                )}
-                {order.status === 'in_progress' && (
-                  <button onClick={() => onCompleteInbound(order.id)} className="text-[11px] px-2 py-1 rounded bg-green-600 text-white hover:bg-green-700 whitespace-nowrap">
-                    完成入库
-                  </button>
-                )}
-                {(order.status === 'pending' || order.status === 'in_progress') && (
-                  <button onClick={() => onStatusChange(order.id, 'cancelled')} className="text-[11px] px-1.5 py-1 rounded border border-red-300 text-red-500 hover:bg-red-50 whitespace-nowrap">
-                    取消
-                  </button>
-                )}
-                <button onClick={() => onDetail(order)} className="text-[11px] px-1.5 py-1 rounded border border-gray-300 text-gray-500 hover:bg-gray-100 whitespace-nowrap">
-                  详情
-                </button>
-              </div>
-            </td>
-            {/* 甘特条 */}
-            <td colSpan={dateRange.length} className="px-0 py-2 border-b border-gray-200 relative">
-              <div className="relative h-6">
-                {/* 今日线 */}
-                {dateRange.includes(todayStr) && (() => {
-                  const idx = dateRange.indexOf(todayStr);
-                  return <div className="absolute top-0 bottom-0 w-px bg-blue-500 z-10" style={{ left: `${(idx / dateRange.length) * 100}%` }} />;
-                })()}
-                {/* 甘特条 */}
-                <div
-                  className={`absolute top-1 h-4 rounded ${st.barColor} ${urgency === 'overdue' ? 'ring-2 ring-red-400' : urgency === 'urgent' ? 'ring-1 ring-orange-300' : ''} flex items-center justify-center`}
-                  style={{ left: barStyle.left, width: barStyle.width, minWidth: 4 }}
-                >
-                  {parseFloat(barStyle.width) > 5 && (
-                    <span className="text-[9px] text-white font-medium truncate px-1">{order.quantity}</span>
-                  )}
-                </div>
-                {/* 要求完成日期标记 */}
-                {reqDate && order.status !== 'completed' && order.status !== 'cancelled' && dateRange.includes(reqDate) && (() => {
-                  const idx = dateRange.indexOf(reqDate);
-                  return (
-                    <div
-                      className="absolute top-0 w-0.5 h-6 bg-orange-400 z-10"
-                      style={{ left: `${(idx / dateRange.length) * 100}%` }}
-                      title={`要求完成: ${reqDate}`}
-                    />
-                  );
-                })()}
-              </div>
-            </td>
-          </tr>
-        );
-      })}
     </>
   );
 }
