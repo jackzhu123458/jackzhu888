@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { translateUnit } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ArrowDownCircle, ArrowUpCircle, MapPin } from 'lucide-react';
@@ -220,7 +221,7 @@ export default function InventoryPage() {
                     <td className="px-5 py-3 text-right font-mono font-medium text-gray-900">{summary.totalQty.toFixed(2)}</td>
                     <td className="px-5 py-3 text-right font-mono text-amber-600">{summary.totalReserved.toFixed(2)}</td>
                     <td className="px-5 py-3 text-right font-mono font-medium text-green-700">{(summary.totalQty - summary.totalReserved).toFixed(2)}</td>
-                    <td className="px-5 py-3 text-gray-600">{summary.product.unit}</td>
+                    <td className="px-5 py-3 text-gray-600">{translateUnit(summary.product.unit)}</td>
                     <td className="px-5 py-3">
                       {summary.warehouses.length === 1 ? (
                         // 单仓库：直接编辑

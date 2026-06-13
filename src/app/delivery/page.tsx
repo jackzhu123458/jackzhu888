@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { translateUnit } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -121,8 +122,9 @@ const formatDate = (d: string) => {
 const statusLabel = (s: string) => {
   const m: Record<string, { label: string; cls: string }> = {
     draft: { label: '草稿', cls: 'bg-yellow-100 text-yellow-800' },
+    confirmed: { label: '已确认', cls: 'bg-blue-100 text-blue-800' },
     shipped: { label: '已出货', cls: 'bg-blue-100 text-blue-800' },
-    printed: { label: '已列印', cls: 'bg-green-100 text-green-800' },
+    printed: { label: '已打印', cls: 'bg-green-100 text-green-800' },
   };
   return m[s] || { label: s, cls: 'bg-gray-100 text-gray-800' };
 };
@@ -756,7 +758,7 @@ export default function DeliveryPage() {
             </div>
             <div class="label-row">
               <span>第 ${i + 1}/${validBoxes.length} 箱</span>
-              <span>${boxQty} ${item.product?.unit || '个'}</span>
+              <span>${boxQty} ${translateUnit(item.product?.unit || '个')}</span>
             </div>
             <svg class="label-barcode" id="barcode-${globalBoxIdx}"></svg>
             <div class="label-note">${form.note_no || ''}</div>
@@ -1130,7 +1132,7 @@ export default function DeliveryPage() {
                       )}
                     </td>
                     <td className="py-2 px-2 text-[#111827]">{item.product?.name || '-'}</td>
-                    <td className="py-2 px-2 text-gray-500">{item.product?.unit || '-'}</td>
+                    <td className="py-2 px-2 text-gray-500">{translateUnit(item.product?.unit || '-')}</td>
                     <td className="py-2 px-2 text-right font-mono">
                       {editMode ? (
                         <Input type="number" className="h-6 text-xs text-right w-20 ml-auto" value={item.quantity} onChange={(e) => updateItem(idx, 'quantity', Number(e.target.value))} />
@@ -1302,7 +1304,7 @@ export default function DeliveryPage() {
                     <td className="py-1 px-2 font-mono">{p.code}</td>
                     <td className="py-1 px-2">{p.name}</td>
                     <td className="py-1 px-2">{p.spec || '-'}</td>
-                    <td className="py-1 px-2">{p.unit}</td>
+                    <td className="py-1 px-2">{translateUnit(p.unit)}</td>
                     <td className="py-1 px-2 text-center">
                       <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => addItem(p)}>
                         <Plus className="h-3 w-3" />
@@ -1433,7 +1435,7 @@ export default function DeliveryPage() {
                                     {prod.name || ''}{prod.spec ? `/${prod.spec}` : ''}
                                   </td>
                                   <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'center', fontSize: '10px' }}>
-                                    {prod.unit || ''}
+                                    {translateUnit(prod.unit || '')}
                                   </td>
                                   <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'right', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '10px' }}>
                                     {item.quantity}
@@ -1514,7 +1516,7 @@ export default function DeliveryPage() {
                       <div className="flex items-center gap-2 text-xs">
                         <span className="text-gray-500">总数量:</span>
                         <span className="font-mono font-semibold text-[#111827]">{item.quantity}</span>
-                        <span className="text-gray-400">{item.product?.unit || '个'}</span>
+                        <span className="text-gray-400">{translateUnit(item.product?.unit || '个')}</span>
                         {diff === 0 ? (
                           <span className="text-green-600 ml-2">✓ 匹配</span>
                         ) : diff > 0 ? (

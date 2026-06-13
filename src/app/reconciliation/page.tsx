@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { translateUnit } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -371,7 +372,7 @@ export default function ReconciliationPage() {
                           <td className="py-2 px-3 font-mono text-xs text-gray-700">{row.order_no || '-'}</td>
                           <td className="py-2 px-3 font-mono text-xs">{row.product_code}</td>
                           <td className="py-2 px-3">{row.product_name}{row.spec ? <span className="text-gray-400 ml-1">/{row.spec}</span> : ''}</td>
-                          <td className="py-2 px-3 text-gray-500 text-center">{row.unit}</td>
+                          <td className="py-2 px-3 text-gray-500 text-center">{translateUnit(row.unit)}</td>
                           <td className="py-2 px-3 text-right font-mono">{row.quantity.toLocaleString()}</td>
                           <td className="py-2 px-3 text-right font-mono text-gray-600">{noTaxPrice.toFixed(4)}</td>
                           <td className="py-2 px-3 text-right font-mono">{formatAmount(row.unit_price)}</td>
@@ -563,7 +564,7 @@ export default function ReconciliationPage() {
                                       <td className="py-2 font-mono text-xs">{item.product_code}</td>
                                       <td className="py-2">{item.product_name}</td>
                                       <td className="py-2 text-gray-500">{item.spec || '-'}</td>
-                                      <td className="py-2 text-gray-500">{item.unit}</td>
+                                      <td className="py-2 text-gray-500">{translateUnit(item.unit)}</td>
                                       <td className="py-2 text-right font-mono">{item.delivery_count}</td>
                                       <td className="py-2 text-right font-mono font-semibold">{item.total_quantity.toLocaleString()}</td>
                                       <td className="py-2 text-right font-mono text-gray-600">{noTaxPrice.toFixed(4)}</td>
@@ -615,7 +616,7 @@ export default function ReconciliationPage() {
                                         <td className="py-1 px-2 font-mono text-gray-500">-</td>
                                         <td className="py-1 px-2 font-mono">{item.product_code}</td>
                                         <td className="py-1 px-2">{item.product_name}</td>
-                                        <td className="py-1 px-2 text-center text-gray-500">{item.unit}</td>
+                                        <td className="py-1 px-2 text-center text-gray-500">{translateUnit(item.unit)}</td>
                                         <td className="py-1 px-2 text-right font-mono">{d.quantity.toLocaleString()}</td>
                                         <td className="py-1 px-2 text-right font-mono text-gray-600">{noTaxPrice.toFixed(4)}</td>
                                         <td className="py-1 px-2 text-right font-mono">{formatAmount(d.unit_price)}</td>

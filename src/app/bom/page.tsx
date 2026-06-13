@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { translateUnit } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -872,7 +873,7 @@ export default function BomPage() {
                         )}
                       </div>
                       <div className="px-2 py-2.5 text-xs text-gray-600 text-center border-r border-gray-100">
-                        {product.unit}
+                        {translateUnit(product.unit)}
                       </div>
                       <div className="px-2 py-2.5 text-xs text-gray-900 text-right font-mono border-r border-gray-100">
                         {Number(product.cost_price || 0).toFixed(2)}
@@ -1002,7 +1003,7 @@ export default function BomPage() {
                 <Select value={newUnit} onValueChange={setNewUnit}>
                   <SelectTrigger><SelectValue placeholder="选择单位" /></SelectTrigger>
                   <SelectContent>
-                    {['个', '件', '套', '千克', '公斤', '米', '张', '片', 'PCS', '箱', '包', '根', '条', '只', '副', '台', '批'].map(u => (
+                    {['个', '件', '套', '千克', '公斤', '米', '张', '片', '箱', '包', '根', '条', '只', '副', '台', '批'].map(u => (
                       <SelectItem key={u} value={u}>{u}</SelectItem>
                     ))}
                   </SelectContent>
@@ -1132,7 +1133,7 @@ export default function BomPage() {
                       <Select value={newChildUnit} onValueChange={setNewChildUnit}>
                         <SelectTrigger><SelectValue placeholder="选择单位" /></SelectTrigger>
                         <SelectContent>
-                          {['个', '件', '套', '千克', '公斤', '米', '张', '片', 'PCS', '箱', '包', '根', '条', '只', '副', '台', '批'].map(u => (
+                          {['个', '件', '套', '千克', '公斤', '米', '张', '片', '箱', '包', '根', '条', '只', '副', '台', '批'].map(u => (
                             <SelectItem key={u} value={u}>{u}</SelectItem>
                           ))}
                         </SelectContent>

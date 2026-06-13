@@ -212,9 +212,9 @@ export default function SettingsPage() {
             />
           </div>
           <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-            <ApiField label="API 地址" field="erp_api_url" value={apiConfig.erp_api_url} onChange={handleApiChange} placeholder="https://erp.example.com/api" />
-            <ApiField label="API Key" field="erp_api_key" value={apiConfig.erp_api_key} onChange={handleApiChange} placeholder="接口密钥" />
-            <ApiField label="API Secret" field="erp_api_secret" value={apiConfig.erp_api_secret} onChange={handleApiChange} placeholder="接口密钥" />
+            <ApiField label="接口地址" field="erp_api_url" value={apiConfig.erp_api_url} onChange={handleApiChange} placeholder="ERP系统接口地址" />
+            <ApiField label="接口密钥" field="erp_api_key" value={apiConfig.erp_api_key} onChange={handleApiChange} placeholder="接口访问密钥" />
+            <ApiField label="接口密文" field="erp_api_secret" value={apiConfig.erp_api_secret} onChange={handleApiChange} placeholder="接口加密密文" />
             <ApiField label="同步间隔(分钟)" field="sync_interval_minutes" value={apiConfig.sync_interval_minutes} onChange={handleApiChange} type="number" placeholder="30" />
           </div>
           <div className="flex justify-end pt-2">
@@ -250,15 +250,15 @@ export default function SettingsPage() {
             />
           </div>
           <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-            <ApiField label="API 地址" field="warehouse_api_url" value={apiConfig.warehouse_api_url} onChange={handleApiChange} placeholder="https://wms.example.com/api" />
-            <ApiField label="API Key" field="warehouse_api_key" value={apiConfig.warehouse_api_key} onChange={handleApiChange} placeholder="接口密钥" />
+            <ApiField label="接口地址" field="warehouse_api_url" value={apiConfig.warehouse_api_url} onChange={handleApiChange} placeholder="仓库系统接口地址" />
+            <ApiField label="接口密钥" field="warehouse_api_key" value={apiConfig.warehouse_api_key} onChange={handleApiChange} placeholder="仓库系统接口密钥" />
           </div>
           <Separator className="my-2" />
-          <p className="text-sm font-medium text-gray-700">Webhook 配置</p>
+          <p className="text-sm font-medium text-gray-700">推送通知配置</p>
           <p className="text-xs text-gray-500">系统会在出库、入库等关键操作时推送通知到指定地址</p>
           <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-            <ApiField label="Webhook URL" field="webhook_url" value={apiConfig.webhook_url} onChange={handleApiChange} placeholder="https://your-server.com/webhook" />
-            <ApiField label="Webhook 密钥" field="webhook_secret" value={apiConfig.webhook_secret} onChange={handleApiChange} placeholder="用于验证推送来源" />
+            <ApiField label="推送地址" field="webhook_url" value={apiConfig.webhook_url} onChange={handleApiChange} placeholder="事件推送地址" />
+            <ApiField label="推送密钥" field="webhook_secret" value={apiConfig.webhook_secret} onChange={handleApiChange} placeholder="用于验证推送来源" />
           </div>
           <div className="flex justify-end pt-2">
             <Button
