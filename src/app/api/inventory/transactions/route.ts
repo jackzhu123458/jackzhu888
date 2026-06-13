@@ -48,11 +48,12 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // 查询出库记录（送货单明细）
+  // 查询出库记录（只统计已出库 shipped 状态的送货单明细）
   const { data: deliveryItems, error: delErr } = await supabase
     .from('delivery_note_items')
-    .select('id, quantity, remark, delivery_notes(id, note_no, status, delivery_date, customer_name, warehouses(name), customer_orders(order_no))')
+    .select('id, quantity, remark, delivery_notes!inner(id, note_no, status, delivery_date, customer_name, warehouses(name), customer_orders(order_no))')
     .eq('product_id', productId)
+    .eq('delivery_notes.status', 'shipped')
     .order('created_at', { ascending: false });
 
   if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });

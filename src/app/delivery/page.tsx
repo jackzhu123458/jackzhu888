@@ -102,6 +102,7 @@ interface DeliveryNote {
   customer_phone?: string | null;
   customer_order?: string | null;
   customer_order_id?: string | null;
+  warehouse_id?: string | null;
   delivery_date: string;
   status: string;
   remark: string | null;
@@ -135,6 +136,7 @@ const emptyNote = (): Omit<DeliveryNote, 'id' | 'created_at'> => ({
   customer_phone: '',
   customer_order: '',
   customer_order_id: null,
+  warehouse_id: null,
   delivery_date: new Date().toISOString().split('T')[0],
   status: 'draft',
   remark: '',
