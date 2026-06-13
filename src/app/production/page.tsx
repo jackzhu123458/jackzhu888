@@ -107,7 +107,7 @@ export default function ProductionPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterCustomerId, setFilterCustomerId] = useState<string>('all');
+  const [filterProductId, setFilterProductId] = useState<string>('all');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editOrder, setEditOrder] = useState<ProductionOrder | null>(null);
@@ -335,19 +335,27 @@ export default function ProductionPage() {
   // 过滤
   let filteredOrders = orders;
   if (filterStatus !== 'all') filteredOrders = filteredOrders.filter((o) => o.status === filterStatus);
-  if (filterCustomerId !== 'all') filteredOrders = filteredOrders.filter((o) => o.customer_id === filterCustomerId);
+  if (filterProductId !== 'all') filteredOrders = filteredOrders.filter((o) => o.product_id === filterProductId);
 
-  // 按客户分组
-  const grouped = new Map<string, { customer: Customer | null; orders: ProductionOrder[] }>();
+  // 按物料分组
+  const grouped = new Map<string, { product: ProductionOrder['products']; orders: ProductionOrder[] }>();
   filteredOrders.forEach((o) => {
-    const key = o.customer_id || '__no_customer__';
+    const key = o.product_id || '__no_product__';
     if (!grouped.has(key)) {
-      grouped.set(key, { customer: o.customers, orders: [] });
+      grouped.set(key, { product: o.products, orders: [] });
     }
     grouped.get(key)!.orders.push(o);
   });
 
   const finishedProducts = products.filter((p) => p.type === 'finished_product' || p.type === 'semi_finished');
+  // 用于筛选下拉的物料列表（从全部订单中提取去重产品）
+  const productMap = new Map<string, Record<string, unknown>>();
+  orders.forEach((o) => {
+    if (o.product_id && o.products && !productMap.has(o.product_id)) {
+      productMap.set(o.product_id, o.products as unknown as Record<string, unknown>);
+    }
+  });
+  const productList = Array.from(productMap.values()) as Array<{ id: string; code: string; name: string; unit?: string }>;
 
   return (
     <>
@@ -370,14 +378,14 @@ export default function ProductionPage() {
               <SelectItem value="cancelled">已取消</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={filterCustomerId} onValueChange={setFilterCustomerId}>
+          <Select value={filterProductId} onValueChange={setFilterProductId}>
             <SelectTrigger className="w-44">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部客户</SelectItem>
-              {customers.map((c) => (
-                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              <SelectItem value="all">全部物料</SelectItem>
+              {productList.map((p) => (
+                <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -387,7 +395,7 @@ export default function ProductionPage() {
           </div>
         </div>
 
-        {/* 按客户分组展示 */}
+        {/* 按物料分组展示 */}
         {loading ? (
           <div className="py-12 text-center text-gray-400">加载中...</div>
         ) : grouped.size === 0 ? (
@@ -396,15 +404,18 @@ export default function ProductionPage() {
           <div className="space-y-4">
             {Array.from(grouped.entries()).map(([key, group]) => {
               const isExpanded = expandedGroups.has(key);
-              const customerName = group.customer?.name || '未分配客户';
-              const customerCode = group.customer?.code || '';
+              const product = group.product;
+              const productCode = product?.code || '未知编码';
+              const productName = product?.name || '未知物料';
+              const productUnit = product?.unit || '';
+              const totalQty = group.orders.reduce((sum, o) => sum + (Number(o.quantity) || 0), 0);
               const orderCount = group.orders.length;
               const statusCounts: Record<string, number> = {};
               group.orders.forEach((o) => { statusCounts[o.status] = (statusCounts[o.status] || 0) + 1; });
 
               return (
                 <div key={key} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                  {/* 客户组标题 */}
+                  {/* 物料组标题 */}
                   <button
                     onClick={() => toggleGroup(key)}
                     className="w-full flex items-center justify-between px-5 py-3.5 bg-gray-50/80 hover:bg-gray-100/80 transition-colors text-left"
@@ -416,10 +427,11 @@ export default function ProductionPage() {
                       >
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                       </svg>
-                      <span className="font-medium text-gray-900">{customerName}</span>
-                      {customerCode && <span className="text-xs text-gray-400 font-mono">{customerCode}</span>}
+                      <span className="font-mono text-sm text-gray-500">{productCode}</span>
+                      <span className="font-medium text-gray-900">{productName}</span>
                     </div>
                     <div className="flex items-center gap-3">
+                      <span className="text-sm font-mono text-gray-700">合计: {totalQty} {translateUnit(productUnit)}</span>
                       {Object.entries(statusCounts).map(([s, c]) => (
                         <Badge key={s} variant="outline" className={statusMap[s]?.color || ''}>
                           {statusMap[s]?.label || s} {c}
@@ -435,9 +447,8 @@ export default function ProductionPage() {
                       <thead>
                         <tr className="border-t border-b border-gray-200 bg-gray-50/30">
                           <th className="text-left px-5 py-2.5 font-medium text-gray-500">订单号</th>
+                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">客户</th>
                           <th className="text-left px-5 py-2.5 font-medium text-gray-500">客户订单号</th>
-                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">物料编码</th>
-                          <th className="text-left px-5 py-2.5 font-medium text-gray-500">物料描述</th>
                           <th className="text-right px-5 py-2.5 font-medium text-gray-500">数量</th>
                           <th className="text-left px-5 py-2.5 font-medium text-gray-500">状态</th>
                           <th className="text-left px-5 py-2.5 font-medium text-gray-500">计划开始</th>
@@ -449,14 +460,9 @@ export default function ProductionPage() {
                         {group.orders.map((order) => (
                           <tr key={order.id} className="border-b border-gray-50 hover:bg-gray-50/50">
                             <td className="px-5 py-3 font-mono text-gray-900">{order.order_no}</td>
+                            <td className="px-5 py-3 text-gray-900">{order.customers?.name || '未分配'}</td>
                             <td className="px-5 py-3 font-mono text-gray-600">{order.customer_order?.order_no || '-'}</td>
-                            <td className="px-5 py-3 font-mono text-gray-900">{order.order_item?.code || order.products?.code || '-'}</td>
-                            <td className="px-5 py-3 text-gray-900">
-                              {order.order_item?.name || order.products?.name || '-'}
-                              {order.order_item?.spec && <span className="text-xs text-gray-400 ml-1">{order.order_item.spec}</span>}
-                              {!order.order_item?.spec && order.products?.spec && <span className="text-xs text-gray-400 ml-1">{order.products.spec}</span>}
-                            </td>
-                            <td className="px-5 py-3 text-right font-mono text-gray-900">{order.quantity} {translateUnit(order.order_item?.unit || order.products?.unit || '')}</td>
+                            <td className="px-5 py-3 text-right font-mono text-gray-900">{order.quantity} {translateUnit(order.products?.unit || '')}</td>
                             <td className="px-5 py-3">
                               <Badge variant="outline" className={statusMap[order.status]?.color || ''}>
                                 {statusMap[order.status]?.label || order.status}
