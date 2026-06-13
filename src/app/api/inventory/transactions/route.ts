@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
   // 查询出库记录（只统计已出库 shipped 状态的送货单明细）
   const { data: deliveryItems, error: delErr } = await supabase
     .from('delivery_note_items')
-    .select('id, quantity, remark, delivery_notes!inner(id, note_no, status, delivery_date, customer_name, warehouses(name), customer_orders(order_no))')
+    .select('id, quantity, remark, delivery_notes!inner(id, note_no, status, delivery_date, warehouses(name))')
     .eq('product_id', productId)
     .eq('delivery_notes.status', 'shipped')
     .order('created_at', { ascending: false });
@@ -61,7 +61,6 @@ export async function GET(request: NextRequest) {
   for (const item of (deliveryItems || [])) {
     const note = item.delivery_notes as unknown as Record<string, unknown>;
     const warehouse = note?.warehouses as unknown as Record<string, string>;
-    const custOrder = note?.customer_orders as unknown as Record<string, string> | null;
     transactions.push({
       id: item.id,
       date: (note?.delivery_date as string) || (note?.created_at as string) || '',
@@ -70,7 +69,7 @@ export async function GET(request: NextRequest) {
       quantity: Number(item.quantity),
       warehouse: warehouse?.name || '-',
       remark: item.remark || null,
-      related_order: custOrder?.order_no || (note?.customer_name as string) || null,
+      related_order: (note?.note_no as string) || null,
     });
   }
 

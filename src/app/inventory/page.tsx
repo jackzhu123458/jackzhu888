@@ -301,7 +301,7 @@ export default function InventoryPage() {
 
       {/* 物料进出记录弹窗 */}
       <Dialog open={!!txProductId} onOpenChange={(open) => { if (!open) setTxProductId(''); }}>
-        <DialogContent className="max-w-[1800px] w-[99vw]" style={{ maxHeight: '92vh' }}>
+        <DialogContent className="max-w-[1800px] w-[99vw]">
           <DialogHeader>
             <DialogTitle className="text-lg">
               进出记录 - {txProductCode} / {txProductName}
@@ -333,19 +333,10 @@ export default function InventoryPage() {
               </div>
 
               {/* 进出记录表格 */}
-              <div className="border border-gray-200 rounded-lg overflow-auto" style={{ maxHeight: 'calc(92vh - 220px)' }}>
-                <table className="w-full text-sm" style={{ tableLayout: 'auto', minWidth: '900px' }}>
-                  <colgroup>
-                    <col style={{ minWidth: '110px' }} />
-                    <col style={{ minWidth: '90px' }} />
-                    <col style={{ minWidth: '180px' }} />
-                    <col style={{ minWidth: '100px' }} />
-                    <col style={{ minWidth: '120px' }} />
-                    <col style={{ minWidth: '180px' }} />
-                    <col style={{ minWidth: '120px' }} />
-                  </colgroup>
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <table className="w-full text-sm" style={{ tableLayout: 'auto' }}>
                   <thead>
-                    <tr className="border-b border-gray-200" style={{ backgroundColor: '#1E40AF', position: 'sticky', top: 0, zIndex: 1 }}>
+                    <tr className="border-b border-gray-200" style={{ backgroundColor: '#1E40AF' }}>
                       <th className="text-left px-4 py-3 font-medium text-white whitespace-nowrap">日期</th>
                       <th className="text-center px-4 py-3 font-medium text-white whitespace-nowrap">类型</th>
                       <th className="text-left px-4 py-3 font-medium text-white whitespace-nowrap">单号</th>
