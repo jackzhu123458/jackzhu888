@@ -20,6 +20,8 @@ export async function GET() {
     recentOutbound,
     recentProduction,
     recentCustomerOrders,
+    inProgressProduction,
+    pendingProduction,
   ] = await Promise.all([
     // total inventory (sum quantity + reserved_qty)
     client.from('inventory').select('quantity, reserved_qty'),
@@ -56,6 +58,12 @@ export async function GET() {
 
     // recent customer orders
     client.from('customer_orders').select('id, order_no, status, created_at, customers(id, name)').order('created_at', { ascending: false }).limit(5),
+
+    // in-progress production orders (for dashboard focus)
+    client.from('production_orders').select('id, order_no, status, quantity, due_date, created_at, products(id, code, name), customers(id, name)').eq('status', 'in_progress').order('due_date', { ascending: true }),
+
+    // pending production orders
+    client.from('production_orders').select('id, order_no, status, quantity, due_date, created_at, products(id, code, name), customers(id, name)').eq('status', 'pending').order('due_date', { ascending: true }),
   ]);
 
   // ── Compute aggregate values ──
@@ -162,6 +170,30 @@ export async function GET() {
     customers: co.customers,
   }));
 
+  // in-progress production orders
+  const inProgressArr = (inProgressProduction.data ?? []).map((po: Record<string, unknown>) => ({
+    id: po.id as string,
+    order_no: po.order_no as string,
+    status: po.status as string,
+    quantity: Number(po.quantity) || 0,
+    due_date: po.due_date as string | null,
+    created_at: po.created_at as string,
+    products: po.products,
+    customers: po.customers,
+  }));
+
+  // pending production orders
+  const pendingArr = (pendingProduction.data ?? []).map((po: Record<string, unknown>) => ({
+    id: po.id as string,
+    order_no: po.order_no as string,
+    status: po.status as string,
+    quantity: Number(po.quantity) || 0,
+    due_date: po.due_date as string | null,
+    created_at: po.created_at as string,
+    products: po.products,
+    customers: po.customers,
+  }));
+
   return NextResponse.json({
     totalInventory,
     totalReserved,
@@ -176,5 +208,7 @@ export async function GET() {
     recentActivities: activities,
     recentProduction: recentProdArr,
     recentCustomerOrders: recentCOArr,
+    inProgressProduction: inProgressArr,
+    pendingProduction: pendingArr,
   });
 }

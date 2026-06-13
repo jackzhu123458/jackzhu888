@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import {
-  Package, Users, ClipboardList, Truck, ArrowDownRight, ArrowUpRight,
+  Package, Users, Truck, ArrowDownRight, ArrowUpRight,
   Factory, FileText, TrendingUp, AlertTriangle, Clock
 } from 'lucide-react';
 
@@ -43,6 +43,25 @@ interface DashboardData {
     status: string;
     quantity: number;
     created_at: string;
+    due_date: string | null;
+    products: { name: string; code: string } | { name: string; code: string }[];
+    customers: { name: string } | { name: string }[];
+  }>;
+  inProgressProduction: Array<{
+    id: string;
+    order_no: string;
+    status: string;
+    quantity: number;
+    due_date: string | null;
+    products: { name: string; code: string } | { name: string; code: string }[];
+    customers: { name: string } | { name: string }[];
+  }>;
+  pendingProduction: Array<{
+    id: string;
+    order_no: string;
+    status: string;
+    quantity: number;
+    due_date: string | null;
     products: { name: string; code: string } | { name: string; code: string }[];
     customers: { name: string } | { name: string }[];
   }>;
@@ -54,13 +73,6 @@ interface DashboardData {
     customers: { name: string } | { name: string }[];
   }>;
 }
-
-const prodStatusMap: Record<string, { label: string; color: string }> = {
-  pending: { label: '待生产', color: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
-  in_progress: { label: '生产中', color: 'bg-blue-50 text-blue-700 border-blue-200' },
-  completed: { label: '已完成', color: 'bg-green-50 text-green-700 border-green-200' },
-  cancelled: { label: '已取消', color: 'bg-red-50 text-red-700 border-red-200' },
-};
 
 const orderStatusMap: Record<string, { label: string; color: string }> = {
   pending: { label: '待处理', color: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
@@ -326,31 +338,60 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* 最近订单 */}
+        {/* 生产中订单 */}
         <div className="bg-white border border-gray-200 rounded-lg">
           <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-            <h2 className="font-medium text-gray-900">最近订单</h2>
-            <ClipboardList className="h-4 w-4 text-gray-400" />
+            <h2 className="font-medium text-gray-900">生产中订单</h2>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+              {(data.inProgressProduction?.length || 0)} 笔
+            </span>
           </div>
-          {(data.recentCustomerOrders.length === 0 && data.recentProduction.length === 0) ? (
-            <div className="p-8 text-center text-sm text-gray-400">暂无订单</div>
+          {(data.inProgressProduction?.length || 0) === 0 ? (
+            <div className="p-8 text-center text-sm text-gray-400">暂无生产中订单</div>
           ) : (
             <div className="divide-y divide-gray-50">
-              {data.recentProduction.slice(0, 5).map(po => {
+              {data.inProgressProduction.map(po => {
                 const prod = getRelName(po.products);
                 const cust = getRelName(po.customers);
+                const isUrgent = now > 0 && po.due_date && new Date(po.due_date).getTime() - now < 3 * 86400000;
+                const isOverdue = now > 0 && po.due_date && new Date(po.due_date).getTime() < now;
                 return (
                   <div key={po.id} className="px-4 py-2.5 flex items-center justify-between">
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-mono text-gray-900">{po.order_no}</div>
-                      <div className="text-xs text-gray-500 truncate">{prod?.name || '-'} · {cust?.name || '-'}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-mono text-gray-900">{po.order_no}</span>
+                        {isOverdue ? (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 animate-pulse">已逾期</span>
+                        ) : isUrgent ? (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">紧急</span>
+                        ) : null}
+                      </div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {String(prod?.name || '-')} · {String(cust?.name || '-')} · <span className="font-mono">{po.quantity}</span>
+                      </div>
+                      {po.due_date && (
+                        <div className={`text-xs mt-0.5 ${isOverdue ? 'text-red-600' : isUrgent ? 'text-orange-600' : 'text-gray-400'}`}>
+                          交期: {po.due_date.substring(0, 10)}
+                        </div>
+                      )}
                     </div>
-                    <span className={`text-xs px-2 py-0.5 rounded border ${prodStatusMap[po.status]?.color || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
-                      {prodStatusMap[po.status]?.label || po.status}
+                    <span className="text-xs px-2 py-0.5 rounded border bg-blue-50 text-blue-700 border-blue-200">
+                      生产中
                     </span>
                   </div>
                 );
               })}
+            </div>
+          )}
+          {/* 待生产订单折叠 */}
+          {(data.pendingProduction?.length || 0) > 0 && (
+            <div className="px-4 py-2 border-t border-gray-100 bg-gray-50">
+              <div className="text-xs text-gray-500">
+                待生产: <span className="font-mono">{data.pendingProduction.length}</span> 笔
+                {now > 0 && data.pendingProduction.some(po => po.due_date && new Date(po.due_date).getTime() - now < 3 * 86400000) && (
+                  <span className="ml-2 text-orange-600">含紧急订单</span>
+                )}
+              </div>
             </div>
           )}
         </div>
