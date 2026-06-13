@@ -948,7 +948,7 @@ export default function OrdersPage() {
 
       {/* 新增/编辑订单抽屉 */}
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="w-auto max-w-[98vw]" style={{ width: 'fit-content' }}>
+        <DialogContent className="max-w-none" style={{ width: 'auto', minWidth: '900px', maxWidth: '98vw' }}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
               {editingOrder ? '编辑订单' : '新增订单'}
@@ -1072,17 +1072,18 @@ export default function OrdersPage() {
               </div>
 
               {/* 表头 */}
-              <div className="grid grid-cols-[2fr_2.5fr_100px_120px_160px_40px] gap-3 mb-2 px-1">
+              <div className="grid grid-cols-[2fr_2.5fr_100px_120px_160px_40px_40px] gap-3 mb-2 px-1">
                 <span className="text-xs text-gray-500 font-medium">物料编码</span>
                 <span className="text-xs text-gray-500 font-medium">物料名称</span>
                 <span className="text-xs text-gray-500 font-medium">数量</span>
                 <span className="text-xs text-gray-500 font-medium">单价</span>
                 <span className="text-xs text-gray-500 font-medium">交货日期</span>
                 <span></span>
+                <span></span>
               </div>
 
               {formItems.map((item, itemIdx) => (
-                <div key={itemIdx} className="grid grid-cols-[2fr_2.5fr_100px_120px_160px_40px] gap-3 items-center mb-3">
+                <div key={itemIdx} className="grid grid-cols-[2fr_2.5fr_100px_120px_160px_40px_40px] gap-3 items-center mb-3">
                   {/* 物料编码搜索 */}
                   <div className="relative">
                     <Input
