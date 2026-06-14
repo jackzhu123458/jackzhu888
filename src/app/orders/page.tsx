@@ -396,6 +396,37 @@ export default function OrdersPage() {
 
       // 将识别到的物料匹配系统产品并填充明细（过滤掉LLM可能返回的空行）
       if (data.items && data.items.length > 0) {
+        // 匹配函数：支持从描述中提取编码模糊匹配
+        const matchProduct = (code: string, name: string) => {
+          // 1. 精确匹配编码
+          let match = products.find(
+            (p) => p.code === code || p.code === code.replace(/\./g, '')
+          );
+          if (match) return match;
+          // 2. 从物料名称/描述中提取编码格式（如 "外协-20.022.20.0047风轮组件/D260" → "20.022.20.0047"）
+          const codePatterns = [
+            ...(name.match(/\d{2}\.\d{2,3}\.\d{2}\.\d{4}/g) || []),
+            ...(name.match(/\d{2}\.\d{2,3}\.\d{2}\.\d{2,3}/g) || []),
+          ];
+          for (const pattern of codePatterns) {
+            match = products.find((p) => p.code === pattern);
+            if (match) return match;
+          }
+          // 3. 从material_code本身提取编码格式
+          const selfPatterns = [
+            ...(code.match(/\d{2}\.\d{2,3}\.\d{2}\.\d{4}/g) || []),
+            ...(code.match(/\d{2}\.\d{2,3}\.\d{2}\.\d{2,3}/g) || []),
+          ];
+          for (const pattern of selfPatterns) {
+            match = products.find((p) => p.code === pattern);
+            if (match) return match;
+          }
+          // 4. 模糊匹配：产品编码包含在物料名称中
+          match = products.find((p) => p.code && name.includes(p.code));
+          if (match) return match;
+          return null;
+        };
+
         const newItems = data.items
           .filter((item: { material_code: string; quantity: number }) => item.material_code || item.quantity > 0)
           .map((item: {
@@ -405,10 +436,7 @@ export default function OrdersPage() {
           unit: string;
           delivery_date: string;
         }) => {
-          // 尝试按物料编号匹配系统产品
-          const matchedProduct = products.find(
-            (p) => p.code === item.material_code || p.code === item.material_code.replace(/\./g, '')
-          );
+          const matchedProduct = matchProduct(item.material_code, item.material_name || '');
 
           // 交货日期生成排程
           const deliveryDate = item.delivery_date || data.delivery_deadline || '';
@@ -445,9 +473,7 @@ export default function OrdersPage() {
         const newNameSearches: Record<number, string> = {};
         const startIndex = formItems.length;
         data.items.forEach((item: { material_code: string; material_name: string }, idx: number) => {
-          const matchedProduct = products.find(
-            (p) => p.code === item.material_code || p.code === item.material_code.replace(/\./g, '')
-          );
+          const matchedProduct = matchProduct(item.material_code, item.material_name || '');
           if (!matchedProduct) {
             newSearches[startIndex + idx] = item.material_code;
             newNameSearches[startIndex + idx] = item.material_name;

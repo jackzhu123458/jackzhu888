@@ -45,6 +45,8 @@ export async function POST(request: NextRequest) {
 - 日期统一转为 YYYY-MM-DD 格式（如 2026.6.19 → 2026-06-19）
 - 如果图片中有多行物料，全部提取
 - 客户编号和名称如果图片上没有，填空字符串 ""
+- **material_code 提取规则**：客户订单中的物料编号可能不是系统编码（如显示"COST"等），此时需要从物料描述中提取实际编码。例如"外协-20.022.20.0047风轮组件/D260"，应提取"20.022.20.0047"作为material_code，"风轮组件/D260"作为material_name。编码格式通常是数字+点号组合（如 XX.XXX.XX.XXXX）
+- 如果描述中无法提取编码，则将完整描述作为material_name，material_code填空字符串
 - 只输出 JSON，不要输出解释文字`;
 
     const messages = [
