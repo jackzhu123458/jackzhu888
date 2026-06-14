@@ -986,9 +986,17 @@ export default function OrdersPage() {
                                 key={`${order.id}-${item.id || itemIdx}`}
                                 className="border-b border-gray-100 hover:bg-gray-50"
                               >
-                                {/* 单据编号 - 同一订单只显示一次 */}
+                                {/* 单据编号 + 总金额 - 同一订单只显示一次 */}
                                 <td className="px-3 py-2 font-mono text-xs sticky left-0 bg-white z-[5]">
-                                  {itemIdx === 0 ? order.order_no : ''}
+                                  {itemIdx === 0 ? (
+                                    <div>
+                                      <div>{order.order_no}</div>
+                                      {(() => {
+                                        const total = order.customer_order_items?.reduce((sum: number, i: OrderItem) => sum + (i.quantity || 0) * (i.unit_price || 0), 0) || 0;
+                                        return total > 0 ? <div className="text-orange-600 font-sans font-medium text-xs mt-0.5">¥{total.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div> : null;
+                                      })()}
+                                    </div>
+                                  ) : null}
                                 </td>
                                 <td className="px-3 py-2 font-mono text-xs sticky left-24 bg-white z-[5]">
                                   {item.products?.code || '-'}
