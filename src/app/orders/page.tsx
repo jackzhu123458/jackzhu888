@@ -551,10 +551,17 @@ export default function OrdersPage() {
 
   // 删除订单
   const handleDelete = async (id: string) => {
-    const res = await fetch(`/api/orders?id=${id}`, { method: 'DELETE' });
-    if (res.ok) {
-      setDeleteConfirm(null);
-      loadData();
+    try {
+      const res = await fetch(`/api/orders?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setDeleteConfirm(null);
+        loadData();
+      } else {
+        const data = await res.json();
+        alert(data.error || '删除失败');
+      }
+    } catch {
+      alert('删除失败，请重试');
     }
   };
 

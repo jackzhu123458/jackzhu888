@@ -326,6 +326,45 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: '订单ID必填' }, { status: 400 });
     }
 
+    // 获取关联的生产订单
+    const { data: productionOrders } = await supabase
+      .from('production_orders')
+      .select('id')
+      .eq('customer_order_id', id);
+
+    // 如果有关联的生产订单，先删除其用料明细和入库单
+    if (productionOrders && productionOrders.length > 0) {
+      const poIds = productionOrders.map((po: { id: string }) => po.id);
+
+      // 删除生产订单用料明细
+      await supabase.from('production_order_materials').delete().in('order_id', poIds);
+
+      // 删除关联的入库单明细和入库单
+      const { data: inboundNotes } = await supabase
+        .from('inbound_notes')
+        .select('id')
+        .in('production_order_id', poIds);
+      if (inboundNotes && inboundNotes.length > 0) {
+        const inIds = inboundNotes.map((inb: { id: string }) => inb.id);
+        await supabase.from('inbound_note_items').delete().in('note_id', inIds);
+        await supabase.from('inbound_notes').delete().in('id', inIds);
+      }
+
+      // 删除生产订单
+      await supabase.from('production_orders').delete().in('id', poIds);
+    }
+
+    // 获取关联的送货单，先删除其明细
+    const { data: deliveryNotes } = await supabase
+      .from('delivery_notes')
+      .select('id')
+      .eq('customer_order_id', id);
+    if (deliveryNotes && deliveryNotes.length > 0) {
+      const dnIds = deliveryNotes.map((dn: { id: string }) => dn.id);
+      await supabase.from('delivery_note_items').delete().in('note_id', dnIds);
+      await supabase.from('delivery_notes').delete().in('id', dnIds);
+    }
+
     // 先删除排程
     const { data: items } = await supabase
       .from('customer_order_items')
