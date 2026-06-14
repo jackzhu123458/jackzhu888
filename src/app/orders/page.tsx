@@ -393,6 +393,22 @@ export default function OrdersPage() {
         setFormDeliveryDeadline(data.delivery_deadline);
       }
 
+      // 自动匹配并填充客户
+      if (!formCustomerId && (data.customer_code || data.customer_name)) {
+        const matched = customers.find((c) => {
+          if (data.customer_code && c.code === data.customer_code) return true;
+          if (data.customer_name && c.name === data.customer_name) return true;
+          // 模糊匹配：客户编号或名称包含识别结果
+          if (data.customer_code && c.code.toLowerCase().includes(data.customer_code.toLowerCase())) return true;
+          if (data.customer_name && c.name.toLowerCase().includes(data.customer_name.toLowerCase())) return true;
+          return false;
+        });
+        if (matched) {
+          setFormCustomerId(matched.id);
+          setFormCustomerSearch(matched.code);
+        }
+      }
+
       // 将识别到的物料匹配系统产品并填充明细（过滤掉LLM可能返回的空行）
       if (data.items && data.items.length > 0) {
         const newItems = data.items

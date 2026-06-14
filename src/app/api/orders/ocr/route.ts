@@ -27,6 +27,8 @@ export async function POST(request: NextRequest) {
   "order_no": "订单编号",
   "order_date": "订单日期(YYYY-MM-DD格式)",
   "delivery_deadline": "交货日期(YYYY-MM-DD格式，取最近的交货日期)",
+  "customer_code": "客户编号(如果图片上有)",
+  "customer_name": "客户名称(如果图片上有)",
   "items": [
     {
       "material_code": "物料编号",
@@ -42,6 +44,7 @@ export async function POST(request: NextRequest) {
 - quantity 必须是纯数字，去掉千分位逗号（如 1,000 → 1000）
 - 日期统一转为 YYYY-MM-DD 格式（如 2026.6.19 → 2026-06-19）
 - 如果图片中有多行物料，全部提取
+- 客户编号和名称如果图片上没有，填空字符串 ""
 - 只输出 JSON，不要输出解释文字`;
 
     const messages = [
