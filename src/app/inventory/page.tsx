@@ -434,7 +434,6 @@ export default function InventoryPage() {
                 <tr className="border-b border-gray-200 bg-gray-50/50">
                   <th className="text-left px-5 py-3 font-medium text-gray-500">物料编码</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">物料名称</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">规格</th>
                   <th className="text-right px-5 py-3 font-medium text-gray-500">总库存</th>
                   <th className="text-right px-5 py-3 font-medium text-gray-500">预留量</th>
                   <th className="text-right px-5 py-3 font-medium text-gray-500">可用量</th>
@@ -445,9 +444,9 @@ export default function InventoryPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={9} className="px-5 py-12 text-center text-gray-400">加载中...</td></tr>
+                  <tr><td colSpan={8} className="px-5 py-12 text-center text-gray-400">加载中...</td></tr>
                 ) : filteredInventory.length === 0 ? (
-                  <tr><td colSpan={9} className="px-5 py-12 text-center text-gray-400">暂无库存数据</td></tr>
+                  <tr><td colSpan={8} className="px-5 py-12 text-center text-gray-400">暂无库存数据</td></tr>
                 ) : (
                   Array.from(summaryMap.entries()).map(([productId, summary]) => {
                     const locationNos = summary.warehouses.map(w => w.locationNo).filter(Boolean);
@@ -465,7 +464,6 @@ export default function InventoryPage() {
                           </button>
                         </td>
                         <td className="px-5 py-3 text-gray-900">{summary.product.name}</td>
-                        <td className="px-5 py-3 text-gray-600">{summary.product.spec || '-'}</td>
                         <td className="px-5 py-3 text-right font-mono font-medium text-gray-900">{summary.totalQty.toFixed(2)}</td>
                         <td className="px-5 py-3 text-right font-mono text-amber-600">{summary.totalReserved.toFixed(2)}</td>
                         <td className="px-5 py-3 text-right font-mono font-medium text-green-700">{(summary.totalQty - summary.totalReserved).toFixed(2)}</td>
@@ -473,18 +471,29 @@ export default function InventoryPage() {
                         <td className="px-5 py-3">
                           {summary.warehouses.length === 1 ? (
                             editingLocationId === summary.warehouses[0].inventoryId ? (
-                              <Input
-                                autoFocus
-                                value={editingLocationValue}
-                                onChange={(e) => setEditingLocationValue(e.target.value)}
-                                onBlur={() => saveLocationNo(summary.warehouses[0].inventoryId, editingLocationValue)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') saveLocationNo(summary.warehouses[0].inventoryId, editingLocationValue);
-                                  if (e.key === 'Escape') setEditingLocationId(null);
-                                }}
-                                className="h-7 w-28 text-xs font-mono"
-                                placeholder="输入库位号"
-                              />
+                              <div className="flex flex-col gap-1">
+                                <Input
+                                  autoFocus
+                                  value={editingLocationValue}
+                                  onChange={(e) => setEditingLocationValue(e.target.value)}
+                                  onBlur={() => setTimeout(() => saveLocationNo(summary.warehouses[0].inventoryId, editingLocationValue), 150)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') saveLocationNo(summary.warehouses[0].inventoryId, editingLocationValue);
+                                    if (e.key === 'Escape') setEditingLocationId(null);
+                                  }}
+                                  className="h-7 w-28 text-xs font-mono"
+                                  placeholder="输入库位号"
+                                />
+                                <div className="flex gap-0.5 flex-wrap">
+                                  {['A','B','C','D','E','F'].map(loc => (
+                                    <button
+                                      key={loc}
+                                      className={`px-1.5 py-0.5 text-[10px] font-mono rounded border cursor-pointer ${editingLocationValue === loc ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-blue-50 hover:border-blue-300'}`}
+                                      onMouseDown={(e) => { e.preventDefault(); setEditingLocationValue(loc); }}
+                                    >{loc}</button>
+                                  ))}
+                                </div>
+                              </div>
                             ) : (
                               <button
                                 className="flex items-center gap-1 text-xs font-mono text-gray-600 hover:text-blue-600 cursor-pointer group"
@@ -499,19 +508,29 @@ export default function InventoryPage() {
                             <div className="space-y-0.5">
                               {summary.warehouses.map((w) => (
                                 editingLocationId === w.inventoryId ? (
-                                  <Input
-                                    key={w.inventoryId}
-                                    autoFocus
-                                    value={editingLocationValue}
-                                    onChange={(e) => setEditingLocationValue(e.target.value)}
-                                    onBlur={() => saveLocationNo(w.inventoryId, editingLocationValue)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') saveLocationNo(w.inventoryId, editingLocationValue);
-                                      if (e.key === 'Escape') setEditingLocationId(null);
-                                    }}
-                                    className="h-7 w-28 text-xs font-mono"
-                                    placeholder="输入库位号"
-                                  />
+                                  <div key={w.inventoryId} className="flex flex-col gap-1">
+                                    <Input
+                                      autoFocus
+                                      value={editingLocationValue}
+                                      onChange={(e) => setEditingLocationValue(e.target.value)}
+                                      onBlur={() => setTimeout(() => saveLocationNo(w.inventoryId, editingLocationValue), 150)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') saveLocationNo(w.inventoryId, editingLocationValue);
+                                        if (e.key === 'Escape') setEditingLocationId(null);
+                                      }}
+                                      className="h-7 w-28 text-xs font-mono"
+                                      placeholder="输入库位号"
+                                    />
+                                    <div className="flex gap-0.5 flex-wrap">
+                                      {['A','B','C','D','E','F'].map(loc => (
+                                        <button
+                                          key={loc}
+                                          className={`px-1.5 py-0.5 text-[10px] font-mono rounded border cursor-pointer ${editingLocationValue === loc ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-blue-50 hover:border-blue-300'}`}
+                                          onMouseDown={(e) => { e.preventDefault(); setEditingLocationValue(loc); }}
+                                        >{loc}</button>
+                                      ))}
+                                    </div>
+                                  </div>
                                 ) : (
                                   <button
                                     key={w.inventoryId}
