@@ -146,6 +146,7 @@ export default function OrdersPage() {
   const [formCustomerDropdownOpen, setFormCustomerDropdownOpen] = useState(false);
   const [formOrderNo, setFormOrderNo] = useState('');
   const [formOrderDate, setFormOrderDate] = useState('');
+  const [formDeliveryDeadline, setFormDeliveryDeadline] = useState('');
   const [formRemark, setFormRemark] = useState('');
   const [formItems, setFormItems] = useState<{
     product_id: string;
@@ -340,6 +341,7 @@ export default function OrdersPage() {
     setFormCustomerSearch('');
     setFormOrderNo('');
     setFormOrderDate(new Date().toISOString().split('T')[0]);
+    setFormDeliveryDeadline('');
     setFormRemark('');
     setFormItems([{ product_id: '', quantity: 0, unit_price: null, delivery_date: '', remark: '', schedules: [] }]);
     setItemSearches({});
@@ -384,6 +386,11 @@ export default function OrdersPage() {
       // 自动填充订单基本信息
       if (data.order_date && !formOrderDate) {
         setFormOrderDate(data.order_date);
+      }
+
+      // 自动填充交货期限
+      if (data.delivery_deadline && !formDeliveryDeadline) {
+        setFormDeliveryDeadline(data.delivery_deadline);
       }
 
       // 将识别到的物料匹配系统产品并填充明细
@@ -460,6 +467,7 @@ export default function OrdersPage() {
     setFormCustomerSearch(cust ? cust.code : '');
     setFormOrderNo(order.order_no);
     setFormOrderDate(order.order_date);
+    setFormDeliveryDeadline(order.delivery_deadline || '');
     setFormRemark(order.remark || '');
     setFormItems(
       order.customer_order_items?.map((item) => ({
@@ -489,8 +497,8 @@ export default function OrdersPage() {
       customer_id: formCustomerId,
       order_no: formOrderNo,
       order_date: formOrderDate,
-      // 从所有明细中取最早的交货日期作为订单交货期限
-      delivery_deadline: formItems.reduce((earliest: string | null, item) => {
+      // 交货期限：优先使用手动填写的，否则从明细中取最早的交货日期
+      delivery_deadline: formDeliveryDeadline || formItems.reduce((earliest: string | null, item) => {
         if (item.delivery_date && (!earliest || item.delivery_date < earliest)) return item.delivery_date;
         return earliest;
       }, null as string | null),
@@ -694,7 +702,7 @@ export default function OrdersPage() {
         product_id: bomItem.child_product_id,
         quantity: bomItem.quantity,
         unit_price: bomItem.child_product.price ?? null,
-        delivery_date: '',
+        delivery_date: formDeliveryDeadline || '',
         remark: '',
         schedules: [] as { schedule_date: string; quantity: number }[],
       }));
@@ -742,6 +750,18 @@ export default function OrdersPage() {
   const closeAllSearches = () => {
     setItemSearches({});
     setItemNameSearches({});
+  };
+
+  // 当交货期限改变时，自动填充到所有未填写交货日期的物料行
+  const handleDeliveryDeadlineChange = (deadline: string) => {
+    setFormDeliveryDeadline(deadline);
+    if (deadline) {
+      const updated = formItems.map((item) => ({
+        ...item,
+        delivery_date: item.delivery_date || deadline,
+      }));
+      setFormItems(updated);
+    }
   };
 
   return (
@@ -1149,6 +1169,15 @@ export default function OrdersPage() {
                   type="date"
                   value={formOrderDate}
                   onChange={(e) => setFormOrderDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">交货期限</label>
+                <Input
+                  type="date"
+                  value={formDeliveryDeadline}
+                  onChange={(e) => handleDeliveryDeadlineChange(e.target.value)}
+                  placeholder="填写后自动填充到物料行"
                 />
               </div>
 
