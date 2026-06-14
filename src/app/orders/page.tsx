@@ -393,9 +393,11 @@ export default function OrdersPage() {
         setFormDeliveryDeadline(data.delivery_deadline);
       }
 
-      // 将识别到的物料匹配系统产品并填充明细
+      // 将识别到的物料匹配系统产品并填充明细（过滤掉LLM可能返回的空行）
       if (data.items && data.items.length > 0) {
-        const newItems = data.items.map((item: {
+        const newItems = data.items
+          .filter((item: { material_code: string; quantity: number }) => item.material_code || item.quantity > 0)
+          .map((item: {
           material_code: string;
           material_name: string;
           quantity: number;
@@ -424,7 +426,18 @@ export default function OrdersPage() {
           };
         });
 
-        setFormItems((prev) => [...prev, ...newItems]);
+        // 过滤掉 quantity 为 0 且无 product_id 的空行（新增订单时的默认空行）
+        const filteredNewItems = newItems.filter((item: { product_id: string; quantity: number }) => item.product_id || item.quantity > 0);
+
+        setFormItems((prev) => {
+          // 如果之前只有空行（新增订单的默认状态），替换掉空行
+          const hasExistingData = prev.some(item => item.product_id || item.quantity > 0);
+          if (!hasExistingData) {
+            return filteredNewItems;
+          }
+          // 否则追加到已有明细后面
+          return [...prev, ...filteredNewItems];
+        });
 
         // 设置产品搜索关键字（用于显示未匹配的产品编号）
         const newSearches: Record<number, string> = {};
