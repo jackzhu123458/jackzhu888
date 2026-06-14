@@ -207,14 +207,14 @@ export default function OrdersPage() {
     const productsData = await productsRes.json();
     const warehousesData = await warehousesRes.json();
     const bomDataResult = await bomRes.json();
-    setOrders(ordersData);
-    setCustomers(customersData);
-    setProducts(productsData);
+    setOrders(Array.isArray(ordersData) ? ordersData : []);
+    setCustomers(Array.isArray(customersData) ? customersData : []);
+    setProducts(Array.isArray(productsData) ? productsData : []);
     if (Array.isArray(warehousesData)) setWarehouses(warehousesData);
     if (Array.isArray(bomDataResult)) setBomData(bomDataResult);
 
     // 默认展开所有客户
-    const customerIds = [...new Set(ordersData.map((o: Order) => o.customer_id))] as string[];
+    const customerIds = [...new Set((Array.isArray(ordersData) ? ordersData : []).map((o: Order) => o.customer_id))] as string[];
     setExpandedCustomers(new Set<string>(customerIds));
   }, []);
 
@@ -261,9 +261,10 @@ export default function OrdersPage() {
         if (searchKeyword) {
           const kw = searchKeyword.toLowerCase();
           const matchOrder = o.order_no.toLowerCase().includes(kw) || (o.remark || '').toLowerCase().includes(kw);
-          const matchItem = o.customer_order_items?.some((item) =>
-            item.products?.code.toLowerCase().includes(kw) || item.products?.name.toLowerCase().includes(kw)
-          );
+          const matchItem = o.customer_order_items?.some((item) => {
+            const prod = item.products as Record<string, unknown> | undefined;
+            return (prod?.code as string || '').toLowerCase().includes(kw) || (prod?.name as string || '').toLowerCase().includes(kw);
+          });
           if (!matchOrder && !matchItem) return false;
         }
         return true;
@@ -646,7 +647,11 @@ export default function OrdersPage() {
         alert(data.error);
         setTraceOrderId(null);
       } else {
-        setTraceData(data);
+        setTraceData({
+          order: data.order || {},
+          production_orders: data.production_orders || [],
+          delivery_notes: data.delivery_notes || [],
+        });
       }
     } catch {
       alert('追溯查询失败');
@@ -833,7 +838,7 @@ export default function OrdersPage() {
         <span>物料条目：{Object.values(filteredGrouped).reduce((s, arr) => s + arr.reduce((s2, o) => s2 + (o.customer_order_items?.length || 0), 0), 0)}</span>
         {hideDelivered && (() => {
           const hiddenItems = orders.reduce((count, o) => 
-            count + (o.customer_order_items?.filter(i => isItemFullyDelivered(i)).length || 0), 0);
+            count + (o.customer_order_items?.filter(i => isItemFullyDelivered(i))?.length || 0), 0);
           return hiddenItems > 0 ? (
             <span className="text-gray-400">（已隐藏 {hiddenItems} 条已送货物料）</span>
           ) : null;
@@ -1573,9 +1578,9 @@ export default function OrdersPage() {
                 <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-blue-500" />
                   生产订单
-                  <span className="text-xs text-gray-400 ml-1">({traceData.production_orders.length})</span>
+                  <span className="text-xs text-gray-400 ml-1">({traceData.production_orders?.length || 0})</span>
                 </h4>
-                {traceData.production_orders.length === 0 ? (
+                {(traceData.production_orders?.length || 0) === 0 ? (
                   <p className="text-xs text-gray-400 py-2 pl-4">无关联生产订单</p>
                 ) : (
                   <table className="w-full text-xs border border-gray-200 rounded">
@@ -1589,7 +1594,7 @@ export default function OrdersPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {traceData.production_orders.map((po, i) => {
+                      {traceData.production_orders?.map((po, i) => {
                         const prod = po.products as Record<string, unknown> | null;
                         const poStatusMap: Record<string, { label: string; color: string }> = {
                           pending: { label: '待生产', color: 'text-amber-700 border-amber-300' },
@@ -1620,13 +1625,13 @@ export default function OrdersPage() {
                 <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-green-500" />
                   送货单
-                  <span className="text-xs text-gray-400 ml-1">({traceData.delivery_notes.length})</span>
+                  <span className="text-xs text-gray-400 ml-1">({traceData.delivery_notes?.length || 0})</span>
                 </h4>
-                {traceData.delivery_notes.length === 0 ? (
+                {(traceData.delivery_notes?.length || 0) === 0 ? (
                   <p className="text-xs text-gray-400 py-2 pl-4">无关联送货单</p>
                 ) : (
                   <div className="space-y-2">
-                    {traceData.delivery_notes.map((dn, i) => {
+                    {traceData.delivery_notes?.map((dn, i) => {
                       const dnStatus = dn.status as string;
                       const statusLabel = dnStatus === 'shipped' ? '已发货' : dnStatus === 'draft' ? '草稿' : dnStatus;
                       const statusColor = dnStatus === 'shipped' ? 'text-green-700 border-green-300 bg-green-50' : 'text-gray-600 border-gray-300 bg-gray-50';
@@ -1683,19 +1688,19 @@ export default function OrdersPage() {
                     </div>
                   </div>
                   {/* 下推 */}
-                  {traceData.production_orders.length > 0 && (
+                  {traceData.production_orders?.length > 0 && (
                     <div className="flex items-start gap-3">
                       <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center shrink-0 mt-0.5">
                         <span className="w-2 h-2 rounded-full bg-blue-500" />
                       </div>
                       <div>
                         <div className="text-sm font-medium text-gray-800">下推生成生产订单</div>
-                        <div className="text-xs text-gray-400">{traceData.production_orders.map(po => po.order_no as string).join('、')}</div>
+                        <div className="text-xs text-gray-400">{traceData.production_orders?.map(po => po.order_no as string).join('、')}</div>
                       </div>
                     </div>
                   )}
                   {/* 生产完成 */}
-                  {traceData.production_orders.some(po => po.status === 'completed') && (
+                  {traceData.production_orders?.some(po => po.status === 'completed') && (
                     <div className="flex items-start gap-3">
                       <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center shrink-0 mt-0.5">
                         <span className="w-2 h-2 rounded-full bg-green-500" />
@@ -1703,13 +1708,13 @@ export default function OrdersPage() {
                       <div>
                         <div className="text-sm font-medium text-gray-800">生产完成入库</div>
                         <div className="text-xs text-gray-400">
-                          {traceData.production_orders.filter(po => po.status === 'completed').map(po => `${po.order_no as string}${po.completed_at ? ' · ' + String(po.completed_at).slice(0, 10) : ''}`).join('、')}
+                          {traceData.production_orders?.filter(po => po.status === 'completed').map(po => `${po.order_no as string}${po.completed_at ? ' · ' + String(po.completed_at).slice(0, 10) : ''}`).join('、')}
                         </div>
                       </div>
                     </div>
                   )}
                   {/* 送货 */}
-                  {traceData.delivery_notes.length > 0 && (
+                  {traceData.delivery_notes?.length > 0 && (
                     <div className="flex items-start gap-3">
                       <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 mt-0.5">
                         <span className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -1717,7 +1722,7 @@ export default function OrdersPage() {
                       <div>
                         <div className="text-sm font-medium text-gray-800">创建送货单出库</div>
                         <div className="text-xs text-gray-400">
-                          {traceData.delivery_notes.map(dn => `${dn.note_no as string}${dn.delivery_date ? ' · ' + String(dn.delivery_date).slice(0, 10) : ''}`).join('、')}
+                          {traceData.delivery_notes?.map(dn => `${dn.note_no as string}${dn.delivery_date ? ' · ' + String(dn.delivery_date).slice(0, 10) : ''}`).join('、')}
                         </div>
                       </div>
                     </div>
