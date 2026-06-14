@@ -1262,11 +1262,12 @@ export default function OrdersPage() {
                         }
                       }}
                       onFocus={() => {
+                        // 聚焦时将当前产品编码填入搜索框，同时显示下拉列表方便重新选择
                         if (item.product_id) {
-                          const updated = [...formItems];
-                          updated[itemIdx] = { ...updated[itemIdx], product_id: '', unit_price: null };
-                          setFormItems(updated);
-                          setItemSearches((prev) => ({ ...prev, [itemIdx]: '' }));
+                          const p = products.find((p) => p.id === item.product_id);
+                          if (p) {
+                            setItemSearches((prev) => ({ ...prev, [itemIdx]: p.code }));
+                          }
                         }
                       }}
                       onBlur={() => {
@@ -1280,7 +1281,7 @@ export default function OrdersPage() {
                       }}
                       className="text-sm font-mono h-10"
                     />
-                    {itemSearches[itemIdx] && !item.product_id && (
+                    {itemSearches[itemIdx] && (
                       <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto mt-0.5">
                         {searchProducts(itemSearches[itemIdx]).length === 0 ? (
                           <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
@@ -1324,11 +1325,12 @@ export default function OrdersPage() {
                         }
                       }}
                       onFocus={() => {
+                        // 聚焦时将当前产品名称填入搜索框，方便重新搜索
                         if (item.product_id) {
-                          const updated = [...formItems];
-                          updated[itemIdx] = { ...updated[itemIdx], product_id: '', unit_price: null };
-                          setFormItems(updated);
-                          setItemNameSearches((prev) => ({ ...prev, [itemIdx]: '' }));
+                          const p = products.find((p) => p.id === item.product_id);
+                          if (p) {
+                            setItemNameSearches((prev) => ({ ...prev, [itemIdx]: p.name }));
+                          }
                         }
                       }}
                       onBlur={() => {
@@ -1342,7 +1344,7 @@ export default function OrdersPage() {
                       }}
                       className="text-sm h-10"
                     />
-                    {itemNameSearches[itemIdx] && !item.product_id && (
+                    {itemNameSearches[itemIdx] && (
                       <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto mt-0.5">
                         {searchProducts(itemNameSearches[itemIdx]).length === 0 ? (
                           <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
