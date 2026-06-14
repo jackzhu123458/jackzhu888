@@ -133,6 +133,10 @@ export default function InventoryPage() {
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [editingLocationValue, setEditingLocationValue] = useState('');
 
+  // 库位号导入状态
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null);
+
   // 热力图数据
   const [heatmapData, setHeatmapData] = useState<HeatmapWarehouse[]>([]);
   const [heatmapLoading, setHeatmapLoading] = useState(false);
@@ -199,6 +203,27 @@ export default function InventoryPage() {
     setEditingLocationId(item.id);
     setEditingLocationValue(item.location_no || '');
   }, []);
+
+  // 导入库位号Excel
+  const handleImportLocations = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportLoading(true);
+    setImportResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/inventory/import-locations', { method: 'POST', body: formData });
+      const data = await res.json();
+      setImportResult({ success: !!data.success, message: data.message || data.error || '导入失败' });
+      if (data.success) loadInventory();
+    } catch {
+      setImportResult({ success: false, message: '导入失败，请检查文件格式' });
+    }
+    setImportLoading(false);
+    // 清空input值，允许重复选择同一文件
+    e.target.value = '';
+  }, [loadInventory]);
 
   // 加载热力图数据
   const loadHeatmap = useCallback(async () => {
@@ -426,7 +451,31 @@ export default function InventoryPage() {
                 </button>
               ))}
             </div>
+            <div className="flex-1" />
+            <label className={`inline-flex items-center gap-2 px-4 py-2 text-sm rounded-md border cursor-pointer ${
+              importLoading ? 'bg-gray-100 text-gray-400 border-gray-200' : 'bg-white text-blue-600 border-blue-300 hover:bg-blue-50'
+            }`}>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              {importLoading ? '导入中...' : '导入库位号'}
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleImportLocations}
+                disabled={importLoading}
+              />
+            </label>
           </div>
+          {importResult && (
+            <div className={`mb-4 px-4 py-2.5 rounded-md text-sm flex items-center justify-between ${
+              importResult.success ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+            }`}>
+              <span>{importResult.message}</span>
+              <button onClick={() => setImportResult(null)} className="text-gray-400 hover:text-gray-600 ml-4">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          )}
 
           <div className="bg-white rounded-lg border border-gray-200">
             <table className="w-full text-sm">
