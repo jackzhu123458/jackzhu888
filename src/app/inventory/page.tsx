@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { translateUnit } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -43,7 +43,80 @@ interface Transaction {
   related_order: string | null;
 }
 
+// 热力图数据类型
+interface HeatmapLocation {
+  inventory_id: string;
+  product_id: string;
+  product_code: string;
+  product_name: string;
+  location_no: string;
+  quantity: number;
+  reserved_qty: number;
+  turnover: number;
+  turnover_in: number;
+  turnover_out: number;
+}
+
+interface HeatmapWarehouse {
+  warehouse_id: string;
+  warehouse_name: string;
+  warehouse_type: string;
+  warehouse_location: string | null;
+  total_items: number;
+  total_quantity: number;
+  max_turnover: number;
+  locations: HeatmapLocation[];
+}
+
+// FIFO数据类型
+interface FifoLayer {
+  date: string;
+  note_no: string;
+  batch_qty: number;
+  consumed: number;
+  remaining: number;
+  age_days: number;
+  type: string;
+}
+
+interface FifoItem {
+  inventory_id: string;
+  product_id: string;
+  product_code: string;
+  product_name: string;
+  product_unit: string;
+  warehouse_id: string;
+  warehouse_name: string;
+  location_no: string;
+  quantity: number;
+  reserved_qty: number;
+  avg_age_days: number;
+  max_age_days: number;
+  layers: FifoLayer[];
+  last_in_date: string | null;
+  last_out_date: string | null;
+}
+
+// 趋势数据类型
+interface TrendPoint {
+  date: string;
+  inbound: number;
+  outbound: number;
+  stock: number;
+}
+
+interface TrendData {
+  days: number;
+  current_total: number;
+  total_inbound: number;
+  total_outbound: number;
+  trend: TrendPoint[];
+}
+
+type TabKey = 'inventory' | 'heatmap' | 'fifo' | 'trend';
+
 export default function InventoryPage() {
+  const [activeTab, setActiveTab] = useState<TabKey>('inventory');
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState('');
@@ -59,6 +132,20 @@ export default function InventoryPage() {
   // 库位号编辑状态
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [editingLocationValue, setEditingLocationValue] = useState('');
+
+  // 热力图数据
+  const [heatmapData, setHeatmapData] = useState<HeatmapWarehouse[]>([]);
+  const [heatmapLoading, setHeatmapLoading] = useState(false);
+
+  // FIFO数据
+  const [fifoData, setFifoData] = useState<FifoItem[]>([]);
+  const [fifoLoading, setFifoLoading] = useState(false);
+  const [fifoExpandId, setFifoExpandId] = useState<string | null>(null);
+
+  // 趋势数据
+  const [trendData, setTrendData] = useState<TrendData | null>(null);
+  const [trendLoading, setTrendLoading] = useState(false);
+  const [trendDays, setTrendDays] = useState(30);
 
   const loadInventory = useCallback(async () => {
     setLoading(true);
@@ -98,7 +185,6 @@ export default function InventoryPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: inventoryId, location_no: locationNo }),
       });
-      // 更新本地状态
       setInventory(prev => prev.map(item =>
         item.id === inventoryId ? { ...item, location_no: locationNo } : item
       ));
@@ -113,6 +199,46 @@ export default function InventoryPage() {
     setEditingLocationId(item.id);
     setEditingLocationValue(item.location_no || '');
   }, []);
+
+  // 加载热力图数据
+  const loadHeatmap = useCallback(async () => {
+    setHeatmapLoading(true);
+    try {
+      const res = await fetch('/api/inventory/stats?type=heatmap');
+      const data = await res.json();
+      if (Array.isArray(data)) setHeatmapData(data);
+    } catch { /* ignore */ }
+    setHeatmapLoading(false);
+  }, []);
+
+  // 加载FIFO数据
+  const loadFifo = useCallback(async () => {
+    setFifoLoading(true);
+    try {
+      const res = await fetch('/api/inventory/stats?type=fifo');
+      const data = await res.json();
+      if (Array.isArray(data)) setFifoData(data);
+    } catch { /* ignore */ }
+    setFifoLoading(false);
+  }, []);
+
+  // 加载趋势数据
+  const loadTrend = useCallback(async (days: number) => {
+    setTrendLoading(true);
+    try {
+      const res = await fetch(`/api/inventory/stats?type=trend&days=${days}`);
+      const data = await res.json();
+      if (data.trend) setTrendData(data);
+    } catch { /* ignore */ }
+    setTrendLoading(false);
+  }, []);
+
+  // 切换Tab时自动加载数据
+  useEffect(() => {
+    if (activeTab === 'heatmap' && heatmapData.length === 0) loadHeatmap();
+    if (activeTab === 'fifo' && fifoData.length === 0) loadFifo();
+    if (activeTab === 'trend' && !trendData) loadTrend(trendDays);
+  }, [activeTab, heatmapData.length, fifoData.length, trendData, loadHeatmap, loadFifo, loadTrend, trendDays]);
 
   const filteredInventory = (() => {
     let result = inventory;
@@ -131,7 +257,7 @@ export default function InventoryPage() {
     return result;
   })();
 
-  // 按产品汇总库存，保留库位号信息
+  // 按产品汇总库存
   const summaryMap = new Map<string, {
     product: Product;
     totalQty: number;
@@ -166,9 +292,91 @@ export default function InventoryPage() {
     });
   });
 
-  // 计算进出汇总
   const totalIn = transactions.filter(t => t.type === 'inbound').reduce((s, t) => s + t.quantity, 0);
   const totalOut = transactions.filter(t => t.type === 'outbound').reduce((s, t) => s + t.quantity, 0);
+
+  // 热力图颜色计算
+  const getHeatColor = (turnover: number, maxTurnover: number) => {
+    if (maxTurnover === 0) return 'bg-gray-100';
+    const ratio = turnover / maxTurnover;
+    if (ratio === 0) return 'bg-gray-100';
+    if (ratio < 0.2) return 'bg-blue-100';
+    if (ratio < 0.4) return 'bg-blue-200';
+    if (ratio < 0.6) return 'bg-blue-300';
+    if (ratio < 0.8) return 'bg-orange-300';
+    return 'bg-red-400';
+  };
+
+  const getHeatTextColor = (turnover: number, maxTurnover: number) => {
+    if (maxTurnover === 0) return 'text-gray-400';
+    const ratio = turnover / maxTurnover;
+    if (ratio >= 0.8) return 'text-white';
+    return 'text-gray-800';
+  };
+
+  // FIFO库龄颜色
+  const getAgeColor = (days: number) => {
+    if (days <= 7) return 'text-green-600';
+    if (days <= 14) return 'text-yellow-600';
+    if (days <= 30) return 'text-orange-600';
+    return 'text-red-600';
+  };
+
+  const getAgeBg = (days: number) => {
+    if (days <= 7) return 'bg-green-50';
+    if (days <= 14) return 'bg-yellow-50';
+    if (days <= 30) return 'bg-orange-50';
+    return 'bg-red-50';
+  };
+
+  // 趋势图参数
+  const trendChartWidth = 900;
+  const trendChartHeight = 300;
+  const trendPadding = { top: 20, right: 20, bottom: 40, left: 60 };
+
+  const trendChartParams = useMemo(() => {
+    if (!trendData || trendData.trend.length === 0) return null;
+    const data = trendData.trend;
+    const maxVal = Math.max(
+      ...data.map(d => Math.max(d.inbound, d.outbound, d.stock)),
+      1
+    );
+    const chartW = trendChartWidth - trendPadding.left - trendPadding.right;
+    const chartH = trendChartHeight - trendPadding.top - trendPadding.bottom;
+    const xStep = data.length > 1 ? chartW / (data.length - 1) : chartW;
+
+    const toX = (i: number) => trendPadding.left + i * xStep;
+    const toY = (v: number) => trendPadding.top + chartH - (v / maxVal) * chartH;
+
+    // 计算折线路径
+    const makePath = (field: 'inbound' | 'outbound' | 'stock') => {
+      return data.map((d, i) => `${i === 0 ? 'M' : 'L'}${toX(i).toFixed(1)},${toY(d[field]).toFixed(1)}`).join(' ');
+    };
+
+    // 填充区域路径
+    const makeArea = (field: 'inbound' | 'outbound' | 'stock') => {
+      const baseline = toY(0);
+      const line = data.map((d, i) => `${i === 0 ? 'M' : 'L'}${toX(i).toFixed(1)},${toY(d[field]).toFixed(1)}`).join(' ');
+      return `${line} L${toX(data.length - 1).toFixed(1)},${baseline} L${toX(0).toFixed(1)},${baseline} Z`;
+    };
+
+    // Y轴刻度
+    const yTicks = 5;
+    const yTickValues = Array.from({ length: yTicks + 1 }, (_, i) => Math.round(maxVal * i / yTicks));
+
+    // X轴标签（每隔若干个显示）
+    const xLabelInterval = Math.max(1, Math.floor(data.length / 10));
+
+    return { toX, toY, maxVal, chartW, chartH, makePath, makeArea, yTickValues, xLabelInterval, data };
+  }, [trendData]);
+
+  // Tab配置
+  const tabs: { key: TabKey; label: string }[] = [
+    { key: 'inventory', label: '库存列表' },
+    { key: 'heatmap', label: '库位热力图' },
+    { key: 'fifo', label: 'FIFO先进先出' },
+    { key: 'trend', label: '收发存趋势' },
+  ];
 
   return (
     <div className="p-8">
@@ -176,125 +384,102 @@ export default function InventoryPage() {
         <h1 className="text-xl font-semibold text-gray-900">库存管理</h1>
       </div>
 
-      <div className="flex items-center gap-4 mb-4">
-        <Input
-          placeholder="搜索物料编码、名称或库位号..."
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
-          className="w-80"
-        />
-        <div className="flex items-center gap-2">
+      {/* Tab切换 */}
+      <div className="flex border-b border-gray-200 mb-4">
+        {tabs.map((tab) => (
           <button
-            onClick={() => setWarehouseType('all')}
-            className={`px-3 py-1.5 text-sm rounded-md border ${warehouseType === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === tab.key
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
           >
-            全部仓库
+            {tab.label}
           </button>
-          <button
-            onClick={() => setWarehouseType('raw_material')}
-            className={`px-3 py-1.5 text-sm rounded-md border ${warehouseType === 'raw_material' ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-          >
-            原材料仓库
-          </button>
-          <button
-            onClick={() => setWarehouseType('product')}
-            className={`px-3 py-1.5 text-sm rounded-md border ${warehouseType === 'product' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-          >
-            产品仓库
-          </button>
-        </div>
+        ))}
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-200 bg-gray-50/50">
-              <th className="text-left px-5 py-3 font-medium text-gray-500">物料编码</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-500">物料名称</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-500">规格</th>
-              <th className="text-right px-5 py-3 font-medium text-gray-500">总库存</th>
-              <th className="text-right px-5 py-3 font-medium text-gray-500">预留量</th>
-              <th className="text-right px-5 py-3 font-medium text-gray-500">可用量</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-500">单位</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-500">库位号</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-500">仓库明细</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={9} className="px-5 py-12 text-center text-gray-400">加载中...</td></tr>
-            ) : filteredInventory.length === 0 ? (
-              <tr><td colSpan={9} className="px-5 py-12 text-center text-gray-400">暂无库存数据</td></tr>
-            ) : (
-              Array.from(summaryMap.entries()).map(([productId, summary]) => {
-                // 汇总所有仓库的库位号
-                const locationNos = summary.warehouses
-                  .map(w => w.locationNo)
-                  .filter(Boolean);
-                const locationDisplay = locationNos.length > 0
-                  ? locationNos.join(', ')
-                  : '';
+      {/* 库存列表Tab */}
+      {activeTab === 'inventory' && (
+        <>
+          <div className="flex items-center gap-4 mb-4">
+            <Input
+              placeholder="搜索物料编码、名称或库位号..."
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              className="w-80"
+            />
+            <div className="flex items-center gap-2">
+              {(['all', 'raw_material', 'product'] as const).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setWarehouseType(type)}
+                  className={`px-3 py-1.5 text-sm rounded-md border ${
+                    warehouseType === type
+                      ? type === 'raw_material' ? 'bg-orange-600 text-white border-orange-600' : type === 'product' ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {type === 'all' ? '全部仓库' : type === 'raw_material' ? '原材料仓库' : '产品仓库'}
+                </button>
+              ))}
+            </div>
+          </div>
 
-                return (
-                  <tr key={productId} className="border-b border-gray-50 hover:bg-gray-50/50">
-                    <td className="px-5 py-3">
-                      <button
-                        className="font-mono text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                        onClick={() => loadTransactions(productId, summary.product.code, summary.product.name)}
-                        title="点击查看进出记录"
-                      >
-                        {summary.product.code}
-                      </button>
-                    </td>
-                    <td className="px-5 py-3 text-gray-900">{summary.product.name}</td>
-                    <td className="px-5 py-3 text-gray-600">{summary.product.spec || '-'}</td>
-                    <td className="px-5 py-3 text-right font-mono font-medium text-gray-900">{summary.totalQty.toFixed(2)}</td>
-                    <td className="px-5 py-3 text-right font-mono text-amber-600">{summary.totalReserved.toFixed(2)}</td>
-                    <td className="px-5 py-3 text-right font-mono font-medium text-green-700">{(summary.totalQty - summary.totalReserved).toFixed(2)}</td>
-                    <td className="px-5 py-3 text-gray-600">{translateUnit(summary.product.unit)}</td>
-                    <td className="px-5 py-3">
-                      {summary.warehouses.length === 1 ? (
-                        // 单仓库：直接编辑
-                        editingLocationId === summary.warehouses[0].inventoryId ? (
-                          <Input
-                            autoFocus
-                            value={editingLocationValue}
-                            onChange={(e) => setEditingLocationValue(e.target.value)}
-                            onBlur={() => saveLocationNo(summary.warehouses[0].inventoryId, editingLocationValue)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') saveLocationNo(summary.warehouses[0].inventoryId, editingLocationValue);
-                              if (e.key === 'Escape') setEditingLocationId(null);
-                            }}
-                            className="h-7 w-28 text-xs font-mono"
-                            placeholder="输入库位号"
-                          />
-                        ) : (
+          <div className="bg-white rounded-lg border border-gray-200">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50/50">
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">物料编码</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">物料名称</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">规格</th>
+                  <th className="text-right px-5 py-3 font-medium text-gray-500">总库存</th>
+                  <th className="text-right px-5 py-3 font-medium text-gray-500">预留量</th>
+                  <th className="text-right px-5 py-3 font-medium text-gray-500">可用量</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">单位</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">库位号</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">仓库明细</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={9} className="px-5 py-12 text-center text-gray-400">加载中...</td></tr>
+                ) : filteredInventory.length === 0 ? (
+                  <tr><td colSpan={9} className="px-5 py-12 text-center text-gray-400">暂无库存数据</td></tr>
+                ) : (
+                  Array.from(summaryMap.entries()).map(([productId, summary]) => {
+                    const locationNos = summary.warehouses.map(w => w.locationNo).filter(Boolean);
+                    const locationDisplay = locationNos.length > 0 ? locationNos.join(', ') : '';
+
+                    return (
+                      <tr key={productId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                        <td className="px-5 py-3">
                           <button
-                            className="flex items-center gap-1 text-xs font-mono text-gray-600 hover:text-blue-600 cursor-pointer group"
-                            onClick={() => {
-                              const w = summary.warehouses[0];
-                              setEditingLocationId(w.inventoryId);
-                              setEditingLocationValue(w.locationNo || '');
-                            }}
-                            title="点击编辑库位号"
+                            className="font-mono text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                            onClick={() => loadTransactions(productId, summary.product.code, summary.product.name)}
+                            title="点击查看进出记录"
                           >
-                            <MapPin className="w-3 h-3 text-gray-400 group-hover:text-blue-500" />
-                            {locationDisplay || <span className="text-gray-300">未设置</span>}
+                            {summary.product.code}
                           </button>
-                        )
-                      ) : (
-                        // 多仓库：显示每个仓库的库位号
-                        <div className="space-y-0.5">
-                          {summary.warehouses.map((w) => (
-                            editingLocationId === w.inventoryId ? (
+                        </td>
+                        <td className="px-5 py-3 text-gray-900">{summary.product.name}</td>
+                        <td className="px-5 py-3 text-gray-600">{summary.product.spec || '-'}</td>
+                        <td className="px-5 py-3 text-right font-mono font-medium text-gray-900">{summary.totalQty.toFixed(2)}</td>
+                        <td className="px-5 py-3 text-right font-mono text-amber-600">{summary.totalReserved.toFixed(2)}</td>
+                        <td className="px-5 py-3 text-right font-mono font-medium text-green-700">{(summary.totalQty - summary.totalReserved).toFixed(2)}</td>
+                        <td className="px-5 py-3 text-gray-600">{translateUnit(summary.product.unit)}</td>
+                        <td className="px-5 py-3">
+                          {summary.warehouses.length === 1 ? (
+                            editingLocationId === summary.warehouses[0].inventoryId ? (
                               <Input
-                                key={w.inventoryId}
                                 autoFocus
                                 value={editingLocationValue}
                                 onChange={(e) => setEditingLocationValue(e.target.value)}
-                                onBlur={() => saveLocationNo(w.inventoryId, editingLocationValue)}
+                                onBlur={() => saveLocationNo(summary.warehouses[0].inventoryId, editingLocationValue)}
                                 onKeyDown={(e) => {
-                                  if (e.key === 'Enter') saveLocationNo(w.inventoryId, editingLocationValue);
+                                  if (e.key === 'Enter') saveLocationNo(summary.warehouses[0].inventoryId, editingLocationValue);
                                   if (e.key === 'Escape') setEditingLocationId(null);
                                 }}
                                 className="h-7 w-28 text-xs font-mono"
@@ -302,33 +487,440 @@ export default function InventoryPage() {
                               />
                             ) : (
                               <button
-                                key={w.inventoryId}
                                 className="flex items-center gap-1 text-xs font-mono text-gray-600 hover:text-blue-600 cursor-pointer group"
-                                onClick={() => {
-                                  setEditingLocationId(w.inventoryId);
-                                  setEditingLocationValue(w.locationNo || '');
-                                }}
-                                title={`${w.name} - 点击编辑库位号`}
+                                onClick={() => startEditLocation({ id: summary.warehouses[0].inventoryId, location_no: summary.warehouses[0].locationNo } as InventoryItem)}
+                                title="点击编辑库位号"
                               >
                                 <MapPin className="w-3 h-3 text-gray-400 group-hover:text-blue-500" />
-                                <span className="text-gray-400">{w.name}:</span>
-                                {w.locationNo || <span className="text-gray-300">未设置</span>}
+                                {locationDisplay || <span className="text-gray-300">未设置</span>}
                               </button>
                             )
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-gray-600 text-xs">
-                      {summary.warehouses.map((w) => `${w.name}: ${w.qty}(预留${w.reserved})`).join(' | ')}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+                          ) : (
+                            <div className="space-y-0.5">
+                              {summary.warehouses.map((w) => (
+                                editingLocationId === w.inventoryId ? (
+                                  <Input
+                                    key={w.inventoryId}
+                                    autoFocus
+                                    value={editingLocationValue}
+                                    onChange={(e) => setEditingLocationValue(e.target.value)}
+                                    onBlur={() => saveLocationNo(w.inventoryId, editingLocationValue)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') saveLocationNo(w.inventoryId, editingLocationValue);
+                                      if (e.key === 'Escape') setEditingLocationId(null);
+                                    }}
+                                    className="h-7 w-28 text-xs font-mono"
+                                    placeholder="输入库位号"
+                                  />
+                                ) : (
+                                  <button
+                                    key={w.inventoryId}
+                                    className="flex items-center gap-1 text-xs font-mono text-gray-600 hover:text-blue-600 cursor-pointer group"
+                                    onClick={() => {
+                                      setEditingLocationId(w.inventoryId);
+                                      setEditingLocationValue(w.locationNo || '');
+                                    }}
+                                    title={`${w.name} - 点击编辑库位号`}
+                                  >
+                                    <MapPin className="w-3 h-3 text-gray-400 group-hover:text-blue-500" />
+                                    <span className="text-gray-400">{w.name}:</span>
+                                    {w.locationNo || <span className="text-gray-300">未设置</span>}
+                                  </button>
+                                )
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-5 py-3 text-gray-600 text-xs">
+                          {summary.warehouses.map((w) => `${w.name}: ${w.qty}(预留${w.reserved})`).join(' | ')}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* 库位热力图Tab */}
+      {activeTab === 'heatmap' && (
+        <div>
+          {heatmapLoading ? (
+            <div className="py-20 text-center text-gray-400">加载热力图数据...</div>
+          ) : heatmapData.length === 0 ? (
+            <div className="py-20 text-center text-gray-400">暂无热力图数据</div>
+          ) : (
+            <div className="space-y-6">
+              {/* 图例 */}
+              <div className="flex items-center gap-4 text-xs text-gray-500 bg-white rounded-lg border border-gray-200 px-4 py-3">
+                <span className="font-medium text-gray-700">周转频次(近30天):</span>
+                <div className="flex items-center gap-1">
+                  <span className="w-4 h-4 rounded bg-gray-100 inline-block" /> 无周转
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-4 h-4 rounded bg-blue-100 inline-block" /> 低
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-4 h-4 rounded bg-blue-200 inline-block" /> 中低
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-4 h-4 rounded bg-blue-300 inline-block" /> 中
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-4 h-4 rounded bg-orange-300 inline-block" /> 中高
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-4 h-4 rounded bg-red-400 inline-block" /> <span className="text-red-600 font-medium">热区</span>
+                </div>
+                <span className="ml-4 text-gray-400">| 热区物料建议靠近出货口摆放</span>
+              </div>
+
+              {heatmapData.map((wh) => (
+                <div key={wh.warehouse_id} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                  {/* 仓库标题 */}
+                  <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                    <div className="flex items-center gap-3">
+                      <span className="font-medium text-gray-900">{wh.warehouse_name}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded ${wh.warehouse_type === 'raw_material' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                        {wh.warehouse_type === 'raw_material' ? '原材料仓' : '产品仓'}
+                      </span>
+                      <span className="text-xs text-gray-400">{wh.warehouse_location || ''}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-gray-500">
+                      <span>物料数: <span className="font-mono font-medium text-gray-700">{wh.total_items}</span></span>
+                      <span>总库存: <span className="font-mono font-medium text-gray-700">{wh.total_quantity.toFixed(0)}</span></span>
+                      <span>最高周转: <span className="font-mono font-medium text-red-600">{wh.max_turnover.toFixed(0)}</span></span>
+                    </div>
+                  </div>
+
+                  {/* 热力格子 */}
+                  <div className="p-4">
+                    {wh.locations.length === 0 ? (
+                      <div className="py-6 text-center text-gray-400 text-sm">该仓库暂无库存</div>
+                    ) : (
+                      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(120px, 1fr))` }}>
+                        {wh.locations.map((loc) => (
+                          <div
+                            key={loc.inventory_id}
+                            className={`rounded-md p-2 ${getHeatColor(loc.turnover, wh.max_turnover)} ${getHeatTextColor(loc.turnover, wh.max_turnover)} border border-gray-200/50 transition-all hover:shadow-md cursor-default`}
+                            title={`${loc.product_code} ${loc.product_name}\n库存: ${loc.quantity} | 预留: ${loc.reserved_qty}\n入库: ${loc.turnover_in} | 出库: ${loc.turnover_out}\n库位: ${loc.location_no || '未设置'}`}
+                          >
+                            <div className="text-xs font-mono font-medium truncate">{loc.product_code}</div>
+                            <div className="text-xs truncate opacity-80">{loc.product_name}</div>
+                            <div className="flex items-center justify-between mt-1">
+                              <span className="text-xs font-mono font-medium">{loc.quantity.toFixed(0)}</span>
+                              <span className="text-[10px] opacity-70">周转{loc.turnover.toFixed(0)}</span>
+                            </div>
+                            {loc.location_no && (
+                              <div className="text-[10px] opacity-60 mt-0.5">库位: {loc.location_no}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* FIFO先进先出看板Tab */}
+      {activeTab === 'fifo' && (
+        <div>
+          {fifoLoading ? (
+            <div className="py-20 text-center text-gray-400">加载FIFO数据...</div>
+          ) : fifoData.length === 0 ? (
+            <div className="py-20 text-center text-gray-400">暂无FIFO数据</div>
+          ) : (
+            <>
+              {/* 统计概览 */}
+              <div className="grid grid-cols-4 gap-4 mb-4">
+                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                  <div className="text-xs text-gray-500 mb-1">有库存物料</div>
+                  <div className="text-2xl font-mono font-semibold text-gray-900">{fifoData.length}</div>
+                </div>
+                <div className="bg-red-50 rounded-lg border border-red-100 p-4">
+                  <div className="text-xs text-red-500 mb-1">超30天未动</div>
+                  <div className="text-2xl font-mono font-semibold text-red-600">
+                    {fifoData.filter(f => f.max_age_days > 30).length}
+                  </div>
+                </div>
+                <div className="bg-orange-50 rounded-lg border border-orange-100 p-4">
+                  <div className="text-xs text-orange-500 mb-1">15-30天未动</div>
+                  <div className="text-2xl font-mono font-semibold text-orange-600">
+                    {fifoData.filter(f => f.max_age_days > 14 && f.max_age_days <= 30).length}
+                  </div>
+                </div>
+                <div className="bg-green-50 rounded-lg border border-green-100 p-4">
+                  <div className="text-xs text-green-500 mb-1">7天内活跃</div>
+                  <div className="text-2xl font-mono font-semibold text-green-600">
+                    {fifoData.filter(f => f.max_age_days <= 7).length}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg border border-gray-200">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50/50">
+                      <th className="text-left px-4 py-3 font-medium text-gray-500">状态</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-500">物料编码</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-500">物料名称</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-500">仓库</th>
+                      <th className="text-right px-4 py-3 font-medium text-gray-500">库存量</th>
+                      <th className="text-right px-4 py-3 font-medium text-gray-500">平均库龄</th>
+                      <th className="text-right px-4 py-3 font-medium text-gray-500">最长库龄</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-500">最后入库</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-500">最后出库</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fifoData.map((item) => (
+                      <>
+                        <tr
+                          key={item.inventory_id}
+                          className={`border-b border-gray-100 cursor-pointer hover:bg-gray-50/50 ${fifoExpandId === item.inventory_id ? 'bg-blue-50/30' : ''}`}
+                          onClick={() => setFifoExpandId(fifoExpandId === item.inventory_id ? null : item.inventory_id)}
+                        >
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center justify-center w-3 h-3 rounded-full ${
+                              item.max_age_days > 30 ? 'bg-red-500' :
+                              item.max_age_days > 14 ? 'bg-orange-400' :
+                              item.max_age_days > 7 ? 'bg-yellow-400' : 'bg-green-400'
+                            }`} />
+                          </td>
+                          <td className="px-4 py-3 font-mono text-blue-600">{item.product_code}</td>
+                          <td className="px-4 py-3 text-gray-900">{item.product_name}</td>
+                          <td className="px-4 py-3 text-gray-600 text-xs">{item.warehouse_name}</td>
+                          <td className="px-4 py-3 text-right font-mono">{item.quantity.toFixed(0)} {translateUnit(item.product_unit)}</td>
+                          <td className={`px-4 py-3 text-right font-mono font-medium ${getAgeColor(item.avg_age_days)}`}>
+                            {item.avg_age_days}天
+                          </td>
+                          <td className={`px-4 py-3 text-right font-mono font-medium ${getAgeColor(item.max_age_days)}`}>
+                            {item.max_age_days}天
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-500">
+                            {item.last_in_date ? new Date(item.last_in_date).toLocaleDateString('zh-CN') : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-500">
+                            {item.last_out_date ? new Date(item.last_out_date).toLocaleDateString('zh-CN') : '-'}
+                          </td>
+                        </tr>
+                        {/* 展开的FIFO层详情 */}
+                        {fifoExpandId === item.inventory_id && (
+                          <tr key={`${item.inventory_id}-detail`}>
+                            <td colSpan={9} className="px-4 py-3 bg-gray-50/80">
+                              <div className="text-xs font-medium text-gray-500 mb-2">入库批次（先进先出排列）:</div>
+                              <div className="space-y-1">
+                                {item.layers.map((layer, idx) => (
+                                  <div
+                                    key={idx}
+                                    className={`flex items-center gap-4 px-3 py-2 rounded ${getAgeBg(layer.age_days)}`}
+                                  >
+                                    <span className="text-xs font-mono text-gray-400 w-6">#{idx + 1}</span>
+                                    <span className="text-xs font-mono text-gray-600 w-24">
+                                      {layer.date ? new Date(layer.date).toLocaleDateString('zh-CN') : '-'}
+                                    </span>
+                                    <span className="text-xs text-gray-500 w-20">{layer.note_no}</span>
+                                    <span className="text-xs text-gray-600">
+                                      批量 <span className="font-mono">{layer.batch_qty.toFixed(0)}</span>
+                                    </span>
+                                    <span className="text-xs text-gray-400">
+                                      已消耗 <span className="font-mono">{layer.consumed.toFixed(0)}</span>
+                                    </span>
+                                    <span className="text-xs font-medium text-gray-900">
+                                      剩余 <span className="font-mono">{layer.remaining.toFixed(0)}</span>
+                                    </span>
+                                    <span className={`text-xs font-mono font-medium ${getAgeColor(layer.age_days)}`}>
+                                      库龄{layer.age_days}天
+                                    </span>
+                                    {/* 库龄进度条 */}
+                                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                      <div
+                                        className={`h-full rounded-full ${
+                                          layer.age_days <= 7 ? 'bg-green-400' :
+                                          layer.age_days <= 14 ? 'bg-yellow-400' :
+                                          layer.age_days <= 30 ? 'bg-orange-400' : 'bg-red-500'
+                                        }`}
+                                        style={{ width: `${Math.min(100, (layer.age_days / 60) * 100)}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+                                {item.layers.length === 0 && (
+                                  <div className="text-xs text-gray-400 px-3 py-2">无入库批次数据</div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* 收发存趋势Tab */}
+      {activeTab === 'trend' && (
+        <div>
+          {/* 时间范围选择 */}
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-sm text-gray-500">时间范围:</span>
+            {([7, 15, 30, 60, 90] as const).map((d) => (
+              <button
+                key={d}
+                onClick={() => { setTrendDays(d); setTrendData(null); }}
+                className={`px-3 py-1.5 text-sm rounded-md border ${
+                  trendDays === d ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                近{d}天
+              </button>
+            ))}
+          </div>
+
+          {trendLoading ? (
+            <div className="py-20 text-center text-gray-400">加载趋势数据...</div>
+          ) : !trendData || !trendChartParams ? (
+            <div className="py-20 text-center text-gray-400">暂无趋势数据</div>
+          ) : (
+            <>
+              {/* 统计概览 */}
+              <div className="grid grid-cols-4 gap-4 mb-4">
+                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                  <div className="text-xs text-gray-500 mb-1">当前库存总量</div>
+                  <div className="text-2xl font-mono font-semibold text-gray-900">{trendData.current_total.toFixed(0)}</div>
+                </div>
+                <div className="bg-green-50 rounded-lg border border-green-100 p-4">
+                  <div className="text-xs text-green-500 mb-1">累计入库</div>
+                  <div className="text-2xl font-mono font-semibold text-green-600">{trendData.total_inbound.toFixed(0)}</div>
+                </div>
+                <div className="bg-red-50 rounded-lg border border-red-100 p-4">
+                  <div className="text-xs text-red-500 mb-1">累计出库</div>
+                  <div className="text-2xl font-mono font-semibold text-red-600">{trendData.total_outbound.toFixed(0)}</div>
+                </div>
+                <div className="bg-blue-50 rounded-lg border border-blue-100 p-4">
+                  <div className="text-xs text-blue-500 mb-1">净变化</div>
+                  <div className={`text-2xl font-mono font-semibold ${trendData.total_inbound - trendData.total_outbound >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {(trendData.total_inbound - trendData.total_outbound >= 0 ? '+' : '')}{(trendData.total_inbound - trendData.total_outbound).toFixed(0)}
+                  </div>
+                </div>
+              </div>
+
+              {/* SVG折线图 */}
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="flex items-center gap-6 mb-3 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-4 h-0.5 bg-blue-600 inline-block" /> <span className="text-gray-600">库存结存</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-4 h-0.5 bg-green-500 inline-block" /> <span className="text-gray-600">入库</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-4 h-0.5 bg-red-500 inline-block" /> <span className="text-gray-600">出库</span>
+                  </div>
+                </div>
+
+                <svg width="100%" viewBox={`0 0 ${trendChartWidth} ${trendChartHeight}`} className="overflow-visible">
+                  {/* Y轴网格线 */}
+                  {trendChartParams.yTickValues.map((val) => {
+                    const y = trendChartParams.toY(val);
+                    return (
+                      <g key={val}>
+                        <line x1={trendPadding.left} y1={y} x2={trendChartWidth - trendPadding.right} y2={y} stroke="#E5E7EB" strokeDasharray="4,4" />
+                        <text x={trendPadding.left - 8} y={y + 4} textAnchor="end" className="text-[10px] fill-gray-400">{val}</text>
+                      </g>
+                    );
+                  })}
+
+                  {/* X轴标签 */}
+                  {trendChartParams.data.map((d, i) => {
+                    if (i % trendChartParams.xLabelInterval !== 0) return null;
+                    return (
+                      <text
+                        key={d.date}
+                        x={trendChartParams.toX(i)}
+                        y={trendChartHeight - 8}
+                        textAnchor="middle"
+                        className="text-[10px] fill-gray-400"
+                      >
+                        {d.date.slice(5)}
+                      </text>
+                    );
+                  })}
+
+                  {/* 库存填充区域 */}
+                  <path d={trendChartParams.makeArea('stock')} fill="rgba(37,99,235,0.08)" />
+                  {/* 入库填充区域 */}
+                  <path d={trendChartParams.makeArea('inbound')} fill="rgba(22,163,74,0.06)" />
+
+                  {/* 库存折线 */}
+                  <path d={trendChartParams.makePath('stock')} fill="none" stroke="#2563EB" strokeWidth={2} />
+                  {/* 入库折线 */}
+                  <path d={trendChartParams.makePath('inbound')} fill="none" stroke="#16A34A" strokeWidth={1.5} />
+                  {/* 出库折线 */}
+                  <path d={trendChartParams.makePath('outbound')} fill="none" stroke="#DC2626" strokeWidth={1.5} />
+
+                  {/* 数据点 - 库存 */}
+                  {trendChartParams.data.map((d, i) => {
+                    if (i % Math.max(1, Math.floor(trendChartParams.data.length / 15)) !== 0) return null;
+                    return (
+                      <circle
+                        key={`s-${i}`}
+                        cx={trendChartParams.toX(i)}
+                        cy={trendChartParams.toY(d.stock)}
+                        r={3}
+                        fill="#2563EB"
+                        stroke="white"
+                        strokeWidth={1.5}
+                      />
+                    );
+                  })}
+                </svg>
+              </div>
+
+              {/* 趋势明细表 */}
+              <div className="bg-white rounded-lg border border-gray-200 mt-4">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50/50">
+                      <th className="text-left px-4 py-2 font-medium text-gray-500">日期</th>
+                      <th className="text-right px-4 py-2 font-medium text-gray-500">入库</th>
+                      <th className="text-right px-4 py-2 font-medium text-gray-500">出库</th>
+                      <th className="text-right px-4 py-2 font-medium text-gray-500">净变化</th>
+                      <th className="text-right px-4 py-2 font-medium text-gray-500">结存</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {trendData.trend.slice().reverse().map((d) => {
+                      const net = d.inbound - d.outbound;
+                      return (
+                        <tr key={d.date} className="border-b border-gray-50 hover:bg-gray-50/50">
+                          <td className="px-4 py-2 text-gray-700 font-mono text-xs">{d.date}</td>
+                          <td className="px-4 py-2 text-right font-mono text-green-600">{d.inbound > 0 ? d.inbound.toFixed(0) : '-'}</td>
+                          <td className="px-4 py-2 text-right font-mono text-red-600">{d.outbound > 0 ? d.outbound.toFixed(0) : '-'}</td>
+                          <td className={`px-4 py-2 text-right font-mono font-medium ${net >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {net !== 0 ? `${net >= 0 ? '+' : ''}${net.toFixed(0)}` : '-'}
+                          </td>
+                          <td className="px-4 py-2 text-right font-mono font-medium text-gray-900">{d.stock.toFixed(0)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* 物料进出记录弹窗 */}
       <Dialog open={!!txProductId} onOpenChange={(open) => { if (!open) setTxProductId(''); }}>
@@ -345,7 +937,6 @@ export default function InventoryPage() {
             <div className="py-12 text-center text-gray-400">暂无进出记录</div>
           ) : (
             <>
-              {/* 汇总统计 */}
               <div className="flex gap-8 mb-5 px-1">
                 <div className="flex items-center gap-2">
                   <ArrowDownCircle className="w-5 h-5 text-green-600" />
@@ -363,7 +954,6 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              {/* 进出记录表格 */}
               <div className="border border-gray-200 rounded-lg">
                 <table className="w-full text-sm" style={{ tableLayout: 'auto' }}>
                   <thead>
