@@ -4,7 +4,22 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { translateUnit } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ArrowDownCircle, ArrowUpCircle, MapPin } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, MapPin, Info } from 'lucide-react';
+
+// 库位号颜色配置 - A~F 各区域独立配色
+const LOCATION_COLORS: Record<string, { bg: string; text: string; border: string; light: string; desc: string }> = {
+  A: { bg: 'bg-red-500', text: 'text-white', border: 'border-red-500', light: 'bg-red-50 text-red-700 border-red-200', desc: 'A区 - 靠近出货口' },
+  B: { bg: 'bg-orange-500', text: 'text-white', border: 'border-orange-500', light: 'bg-orange-50 text-orange-700 border-orange-200', desc: 'B区 - 次靠近出货口' },
+  C: { bg: 'bg-amber-500', text: 'text-white', border: 'border-amber-500', light: 'bg-amber-50 text-amber-700 border-amber-200', desc: 'C区 - 中间区域' },
+  D: { bg: 'bg-emerald-500', text: 'text-white', border: 'border-emerald-500', light: 'bg-emerald-50 text-emerald-700 border-emerald-200', desc: 'D区 - 远离出货口' },
+  E: { bg: 'bg-blue-500', text: 'text-white', border: 'border-blue-500', light: 'bg-blue-50 text-blue-700 border-blue-200', desc: 'E区 - 仓储区' },
+  F: { bg: 'bg-purple-500', text: 'text-white', border: 'border-purple-500', light: 'bg-purple-50 text-purple-700 border-purple-200', desc: 'F区 - 备用区' },
+};
+
+function getLocationColor(loc: string) {
+  const key = loc.toUpperCase().charAt(0);
+  return LOCATION_COLORS[key] || null;
+}
 
 interface Product {
   id: string;
@@ -477,6 +492,22 @@ export default function InventoryPage() {
             </div>
           )}
 
+          {/* 库位号图例说明 */}
+          <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
+            <div className="flex items-center gap-2 mb-2">
+              <Info className="w-4 h-4 text-gray-400" />
+              <span className="text-sm font-medium text-gray-600">库位号说明</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(LOCATION_COLORS).map(([key, color]) => (
+                <div key={key} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm font-bold ${color.light}`}>
+                  <span className={`inline-flex items-center justify-center w-7 h-7 rounded text-lg font-black ${color.bg} ${color.text}`}>{key}</span>
+                  <span className="text-xs font-normal whitespace-nowrap">{color.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className="bg-white rounded-lg border border-gray-200">
             <table className="w-full text-sm">
               <thead>
@@ -533,24 +564,44 @@ export default function InventoryPage() {
                                   className="h-7 w-28 text-xs font-mono"
                                   placeholder="输入库位号"
                                 />
-                                <div className="flex gap-0.5 flex-wrap">
-                                  {['A','B','C','D','E','F'].map(loc => (
-                                    <button
-                                      key={loc}
-                                      className={`px-1.5 py-0.5 text-[10px] font-mono rounded border cursor-pointer ${editingLocationValue === loc ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-blue-50 hover:border-blue-300'}`}
-                                      onMouseDown={(e) => { e.preventDefault(); setEditingLocationValue(loc); }}
-                                    >{loc}</button>
-                                  ))}
+                                <div className="flex gap-1 flex-wrap">
+                                  {['A','B','C','D','E','F'].map(loc => {
+                                    const color = getLocationColor(loc);
+                                    const selected = editingLocationValue === loc;
+                                    return (
+                                      <button
+                                        key={loc}
+                                        className={`inline-flex items-center justify-center w-9 h-9 rounded-lg text-lg font-black border-2 cursor-pointer transition-all ${
+                                          selected
+                                            ? `${color?.bg || 'bg-blue-600'} ${color?.text || 'text-white'} ${color?.border || 'border-blue-600'} shadow-md scale-110`
+                                            : `${color?.light || 'bg-gray-50 text-gray-600 border-gray-200'} hover:scale-105`
+                                        }`}
+                                        onMouseDown={(e) => { e.preventDefault(); setEditingLocationValue(loc); }}
+                                      >{loc}</button>
+                                    );
+                                  })}
                                 </div>
                               </div>
                             ) : (
                               <button
-                                className="flex items-center gap-1 text-xs font-mono text-gray-600 hover:text-blue-600 cursor-pointer group"
+                                className="flex items-center gap-1 cursor-pointer group"
                                 onClick={() => startEditLocation({ id: summary.warehouses[0].inventoryId, location_no: summary.warehouses[0].locationNo } as InventoryItem)}
                                 title="点击编辑库位号"
                               >
-                                <MapPin className="w-3 h-3 text-gray-400 group-hover:text-blue-500" />
-                                {locationDisplay || <span className="text-gray-300">未设置</span>}
+                                {(() => {
+                                  const loc = summary.warehouses[0].locationNo;
+                                  const color = loc ? getLocationColor(loc) : null;
+                                  return color ? (
+                                    <span className={`inline-flex items-center justify-center w-10 h-10 rounded-lg text-xl font-black ${color.bg} ${color.text} shadow-sm group-hover:shadow-md transition-all`}>
+                                      {loc}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-xs text-gray-300 group-hover:text-blue-400">
+                                      <MapPin className="w-3 h-3" />
+                                      未设置
+                                    </span>
+                                  );
+                                })()}
                               </button>
                             )
                           ) : (
@@ -570,29 +621,47 @@ export default function InventoryPage() {
                                       className="h-7 w-28 text-xs font-mono"
                                       placeholder="输入库位号"
                                     />
-                                    <div className="flex gap-0.5 flex-wrap">
-                                      {['A','B','C','D','E','F'].map(loc => (
-                                        <button
-                                          key={loc}
-                                          className={`px-1.5 py-0.5 text-[10px] font-mono rounded border cursor-pointer ${editingLocationValue === loc ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-blue-50 hover:border-blue-300'}`}
-                                          onMouseDown={(e) => { e.preventDefault(); setEditingLocationValue(loc); }}
-                                        >{loc}</button>
-                                      ))}
+                                    <div className="flex gap-1 flex-wrap">
+                                      {['A','B','C','D','E','F'].map(loc => {
+                                        const color = getLocationColor(loc);
+                                        const selected = editingLocationValue === loc;
+                                        return (
+                                          <button
+                                            key={loc}
+                                            className={`inline-flex items-center justify-center w-9 h-9 rounded-lg text-lg font-black border-2 cursor-pointer transition-all ${
+                                              selected
+                                                ? `${color?.bg || 'bg-blue-600'} ${color?.text || 'text-white'} ${color?.border || 'border-blue-600'} shadow-md scale-110`
+                                                : `${color?.light || 'bg-gray-50 text-gray-600 border-gray-200'} hover:scale-105`
+                                            }`}
+                                            onMouseDown={(e) => { e.preventDefault(); setEditingLocationValue(loc); }}
+                                          >{loc}</button>
+                                        );
+                                      })}
                                     </div>
                                   </div>
                                 ) : (
                                   <button
                                     key={w.inventoryId}
-                                    className="flex items-center gap-1 text-xs font-mono text-gray-600 hover:text-blue-600 cursor-pointer group"
+                                    className="flex items-center gap-1 cursor-pointer group"
                                     onClick={() => {
                                       setEditingLocationId(w.inventoryId);
                                       setEditingLocationValue(w.locationNo || '');
                                     }}
                                     title={`${w.name} - 点击编辑库位号`}
                                   >
-                                    <MapPin className="w-3 h-3 text-gray-400 group-hover:text-blue-500" />
-                                    <span className="text-gray-400">{w.name}:</span>
-                                    {w.locationNo || <span className="text-gray-300">未设置</span>}
+                                    {(() => {
+                                      const color = w.locationNo ? getLocationColor(w.locationNo) : null;
+                                      return color ? (
+                                        <span className={`inline-flex items-center justify-center w-10 h-10 rounded-lg text-xl font-black ${color.bg} ${color.text} shadow-sm group-hover:shadow-md transition-all`}>
+                                          {w.locationNo}
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 text-xs text-gray-300 group-hover:text-blue-400">
+                                          <MapPin className="w-3 h-3" />
+                                          {w.name}: 未设置
+                                        </span>
+                                      );
+                                    })()}
                                   </button>
                                 )
                               ))}
@@ -681,9 +750,18 @@ export default function InventoryPage() {
                               <span className="text-xs font-mono font-medium">{loc.quantity.toFixed(0)}</span>
                               <span className="text-[10px] opacity-70">周转{loc.turnover.toFixed(0)}</span>
                             </div>
-                            {loc.location_no && (
-                              <div className="text-[10px] opacity-60 mt-0.5">库位: {loc.location_no}</div>
-                            )}
+                            {loc.location_no && (() => {
+                              const color = getLocationColor(loc.location_no);
+                              return color ? (
+                                <div className="mt-1">
+                                  <span className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-black ${color.bg} ${color.text}`}>
+                                    {loc.location_no}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="text-[10px] opacity-60 mt-0.5">库位: {loc.location_no}</div>
+                              );
+                            })()}
                           </div>
                         ))}
                       </div>
