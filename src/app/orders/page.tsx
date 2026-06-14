@@ -72,7 +72,7 @@ interface OrderItem {
   id?: string;
   product_id: string;
   quantity: number;
-  unit_price: number | null;
+  price: number | null;
   delivered_qty: number;
   reserved_qty: number;
   remark: string | null;
@@ -513,7 +513,7 @@ export default function OrdersPage() {
       order.customer_order_items?.map((item) => ({
         product_id: item.product_id,
         quantity: item.quantity,
-        unit_price: item.unit_price,
+        unit_price: item.price,
         delivery_date: item.customer_order_schedules?.[0]?.schedule_date || order.delivery_deadline || '',
         remark: item.remark || '',
         schedules: item.customer_order_schedules?.map((s) => ({
@@ -992,7 +992,7 @@ export default function OrdersPage() {
                                     <div>
                                       <div>{order.order_no}</div>
                                       {(() => {
-                                        const total = order.customer_order_items?.reduce((sum: number, i: OrderItem) => sum + (i.quantity || 0) * (i.unit_price || 0), 0) || 0;
+                                        const total = order.customer_order_items?.reduce((sum: number, i: OrderItem) => sum + (i.quantity || 0) * (i.price || 0), 0) || 0;
                                         return total > 0 ? <div className="text-orange-600 font-sans font-medium text-xs mt-0.5">¥{total.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div> : null;
                                       })()}
                                     </div>
