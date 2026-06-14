@@ -4,37 +4,45 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/components/auth-context';
 
 interface NavItem {
   href?: string;
   label: string;
   icon: string;
-  children?: { href: string; label: string; icon: string }[];
+  permission?: string;
+  children?: { href: string; label: string; icon: string; permission?: string }[];
 }
 
 const navItems: NavItem[] = [
-  { href: '/', label: '工作台', icon: '⊞' },
+  { href: '/', label: '工作台', icon: '⊞', permission: 'dashboard' },
   {
     label: '基础资料',
     icon: '◫',
     children: [
-      { href: '/customers', label: '客户管理', icon: '◉' },
-      { href: '/bom', label: '商品资料', icon: '☰' },
-      { href: '/drawings', label: '图纸管理', icon: '☖' },
+      { href: '/customers', label: '客户管理', icon: '◉', permission: 'customers' },
+      { href: '/bom', label: '商品资料', icon: '☰', permission: 'products' },
     ],
   },
-  { href: '/orders', label: '客户订单', icon: '▤' },
-  { href: '/production', label: '生产订单', icon: '⚙' },
-  { href: '/inbound', label: '入库单', icon: '↓' },
-  { href: '/delivery', label: '送货单', icon: '→' },
-  { href: '/reconciliation', label: '对账管理', icon: '⇌' },
-  { href: '/inventory', label: '库存管理', icon: '▦' },
-  { href: '/settings', label: '系统设置', icon: '⚙' },
-  { href: '/backup', label: '备份恢复', icon: '⬡' },
+  { href: '/orders', label: '客户订单', icon: '▤', permission: 'orders' },
+  { href: '/production', label: '生产订单', icon: '⚙', permission: 'production' },
+  { href: '/inbound', label: '入库单', icon: '↓', permission: 'inbound' },
+  { href: '/delivery', label: '送货单', icon: '→', permission: 'delivery' },
+  { href: '/inventory', label: '库存管理', icon: '▦', permission: 'inventory' },
+  {
+    label: '系统管理',
+    icon: '▦',
+    children: [
+      { href: '/system/users', label: '用户管理', icon: '◈', permission: 'system:users' },
+      { href: '/system/roles', label: '角色管理', icon: '◇', permission: 'system:roles' },
+    ],
+  },
+  { href: '/backup', label: '备份恢复', icon: '⬡', permission: 'backup' },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user, hasPermission, logout } = useAuth();
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const toggleGroup = (label: string) => {
@@ -44,13 +52,35 @@ export function Sidebar() {
   const isGroupActive = (children: { href: string }[]) =>
     children.some((c) => pathname === c.href || pathname.startsWith(c.href));
 
+  // 过滤掉没有权限的菜单项
+  const filterNavItems = (items: NavItem[]) => {
+    return items.filter(item => {
+      if (item.children) {
+        const filteredChildren = item.children.filter(child =>
+          !child.permission || hasPermission(child.permission)
+        );
+        return filteredChildren.length > 0;
+      }
+      return !item.permission || hasPermission(item.permission);
+    }).map(item => {
+      if (item.children) {
+        return { ...item, children: item.children.filter(child =>
+          !child.permission || hasPermission(child.permission)
+        )};
+      }
+      return item;
+    });
+  };
+
+  const visibleItems = filterNavItems(navItems);
+
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-[240px] bg-[#1F2937] text-white flex flex-col z-50">
       <div className="h-16 flex items-center px-5 border-b border-white/10">
         <span className="text-lg font-semibold tracking-tight">仓库进销存</span>
       </div>
       <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
           if (item.children) {
             const collapsed = collapsedGroups[item.label];
             const active = isGroupActive(item.children);
@@ -125,8 +155,28 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="px-5 py-3 border-t border-white/10 text-xs text-gray-500">
-        v1.0.0
+      {/* 用户信息区域 */}
+      <div className="px-3 py-3 border-t border-white/10">
+        <div className="flex items-center gap-2 px-3 py-2">
+          <div className="w-8 h-8 rounded-full bg-[#1E40AF] flex items-center justify-center text-sm font-medium">
+            {user?.display_name?.charAt(0) || '?'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm text-white truncate">{user?.display_name || '未知用户'}</div>
+            <div className="text-xs text-gray-500 truncate">{user?.username || ''}</div>
+          </div>
+          <button
+            onClick={logout}
+            className="text-gray-500 hover:text-white transition-colors p-1"
+            title="退出登录"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </aside>
   );

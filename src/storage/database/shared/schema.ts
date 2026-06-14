@@ -316,3 +316,91 @@ export const productDrawings = pgTable(
     index("product_drawings_product_id_idx").on(table.product_id),
   ]
 );
+
+// ========== RBAC 权限系统表 ==========
+
+// 用户表
+export const users = pgTable(
+  "users",
+  {
+    id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+    username: varchar("username", { length: 50 }).notNull().unique(),
+    password_hash: varchar("password_hash", { length: 200 }).notNull(),
+    display_name: varchar("display_name", { length: 100 }).notNull(),
+    phone: varchar("phone", { length: 30 }),
+    email: varchar("email", { length: 200 }),
+    is_active: boolean("is_active").default(true).notNull(),
+    last_login_at: timestamp("last_login_at", { withTimezone: true }),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("users_username_idx").on(table.username),
+  ]
+);
+
+// 角色表
+export const roles = pgTable(
+  "roles",
+  {
+    id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+    code: varchar("code", { length: 50 }).notNull().unique(),
+    name: varchar("name", { length: 100 }).notNull(),
+    description: text("description"),
+    is_system: boolean("is_system").default(false).notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("roles_code_idx").on(table.code),
+  ]
+);
+
+// 权限表
+export const permissions = pgTable(
+  "permissions",
+  {
+    id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+    code: varchar("code", { length: 100 }).notNull().unique(),
+    name: varchar("name", { length: 100 }).notNull(),
+    module: varchar("module", { length: 50 }).notNull(),
+    type: varchar("type", { length: 20 }).notNull().default("menu"), // menu=菜单, button=按钮
+    description: text("description"),
+    sort_order: integer("sort_order").default(0),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("permissions_code_idx").on(table.code),
+    index("permissions_module_idx").on(table.module),
+  ]
+);
+
+// 用户-角色关联表
+export const userRoles = pgTable(
+  "user_roles",
+  {
+    id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+    user_id: varchar("user_id", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+    role_id: varchar("role_id", { length: 36 }).notNull().references(() => roles.id, { onDelete: "cascade" }),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("user_roles_user_id_idx").on(table.user_id),
+    index("user_roles_role_id_idx").on(table.role_id),
+  ]
+);
+
+// 角色-权限关联表
+export const rolePermissions = pgTable(
+  "role_permissions",
+  {
+    id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+    role_id: varchar("role_id", { length: 36 }).notNull().references(() => roles.id, { onDelete: "cascade" }),
+    permission_id: varchar("permission_id", { length: 36 }).notNull().references(() => permissions.id, { onDelete: "cascade" }),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("role_permissions_role_id_idx").on(table.role_id),
+    index("role_permissions_permission_id_idx").on(table.permission_id),
+  ]
+);
