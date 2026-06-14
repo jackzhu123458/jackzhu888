@@ -395,7 +395,7 @@ export default function ProductionPage() {
                         </button>
                       )}
                       {order.status === 'in_progress' && (
-                        <button onClick={() => { setCompleteOrderId(order.id); setCompleteWarehouseId(warehouses.length > 0 ? warehouses[0].id : ''); }} className="text-[11px] px-2 py-0.5 rounded bg-green-600 text-white hover:bg-green-700 transition-colors">
+                        <button onClick={() => { setCompleteOrderId(order.id); setCompleteWarehouseId(warehouses.find(w => (w as unknown as Record<string, unknown>)['type'] === 'product')?.id || warehouses[0]?.id || ''); }} className="text-[11px] px-2 py-0.5 rounded bg-green-600 text-white hover:bg-green-700 transition-colors">
                           完成入库
                         </button>
                       )}
@@ -552,7 +552,7 @@ export default function ProductionPage() {
                     <Button size="sm" onClick={() => handleStatusChange(detailOrder.id, 'in_progress')}>开始生产</Button>
                   )}
                   {detailOrder.status === 'in_progress' && (
-                    <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => { setCompleteOrderId(detailOrder.id); setCompleteWarehouseId(warehouses[0]?.id || ''); }}>
+                    <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => { setCompleteOrderId(detailOrder.id); setCompleteWarehouseId(warehouses.find(w => (w as unknown as Record<string, unknown>)['type'] === 'product')?.id || warehouses[0]?.id || ''); }}>
                       完成入库
                     </Button>
                   )}
@@ -710,7 +710,7 @@ export default function ProductionPage() {
             <SelectTrigger><SelectValue placeholder="选择仓库" /></SelectTrigger>
             <SelectContent>
               {warehouses.map((w) => (
-                <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                <SelectItem key={w.id} value={w.id}>{w.name}{(w as unknown as Record<string, unknown>)['type'] === 'raw_material' ? ' (原材料仓)' : ' (产品仓)'}</SelectItem>
               ))}
             </SelectContent>
           </Select>
