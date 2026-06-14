@@ -28,7 +28,6 @@ import {
   Search,
   Calendar,
   Package,
-  ArrowDownToLine,
   ScanLine,
   History,
 } from 'lucide-react';
@@ -175,17 +174,6 @@ export default function OrdersPage() {
     child_product: Product;
   }>>([]);
 
-  // 下推相关
-  const [pushDownOrderId, setPushDownOrderId] = useState<string | null>(null);
-  const [pushDownWarehouseId, setPushDownWarehouseId] = useState('');
-  const [pushDownLoading, setPushDownLoading] = useState(false);
-  const [pushDownResult, setPushDownResult] = useState<{
-    produced: Array<{ product_id: string; product_name: string; quantity: number; production_order_id: string }>;
-    reserved: Array<{ product_id: string; product_name: string; quantity: number }>;
-    insufficient: Array<{ product_id: string; product_name: string; required: number; available: number; shortage: number }>;
-  } | null>(null);
-  const [warehouses, setWarehouses] = useState<Array<{ id: string; name: string }>>([]);
-
   // 追溯相关
   const [traceOrderId, setTraceOrderId] = useState<string | null>(null);
   const [traceData, setTraceData] = useState<{
@@ -196,22 +184,19 @@ export default function OrdersPage() {
   const [traceLoading, setTraceLoading] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [ordersRes, customersRes, productsRes, warehousesRes, bomRes] = await Promise.all([
+    const [ordersRes, customersRes, productsRes, bomRes] = await Promise.all([
       fetch('/api/orders'),
       fetch('/api/customers'),
       fetch('/api/products'),
-      fetch('/api/warehouses'),
       fetch('/api/bom'),
     ]);
     const ordersData = await ordersRes.json();
     const customersData = await customersRes.json();
     const productsData = await productsRes.json();
-    const warehousesData = await warehousesRes.json();
     const bomDataResult = await bomRes.json();
     setOrders(Array.isArray(ordersData) ? ordersData : []);
     setCustomers(Array.isArray(customersData) ? customersData : []);
     setProducts(Array.isArray(productsData) ? productsData : []);
-    if (Array.isArray(warehousesData)) setWarehouses(warehousesData);
     if (Array.isArray(bomDataResult)) setBomData(bomDataResult);
 
     // 默认展开所有客户
@@ -557,6 +542,30 @@ export default function OrdersPage() {
     });
 
     if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const pushDown = (data as Record<string, unknown>)['_pushDown'] as {
+        reserved?: Array<{ product_name: string; quantity: number }>;
+        produced?: Array<{ product_name: string; quantity: number; production_order_id: string }>;
+        shortage?: Array<{ product_name: string; required: number; available: number }>;
+      } | undefined;
+
+      if (pushDown && (pushDown.produced?.length || pushDown.reserved?.length || pushDown.shortage?.length)) {
+        const lines: string[] = ['订单已保存，自动下推结果：'];
+        if (pushDown.produced?.length) {
+          lines.push(`\n生成生产订单 ${pushDown.produced.length} 条：`);
+          pushDown.produced.forEach((p) => lines.push(`  - ${p.product_name} × ${p.quantity}`));
+        }
+        if (pushDown.reserved?.length) {
+          lines.push(`\n预扣库存 ${pushDown.reserved.length} 项：`);
+          pushDown.reserved.forEach((p) => lines.push(`  - ${p.product_name} × ${p.quantity}`));
+        }
+        if (pushDown.shortage?.length) {
+          lines.push(`\n缺料 ${pushDown.shortage.length} 项：`);
+          pushDown.shortage.forEach((p) => lines.push(`  - ${p.product_name}（需${p.required}，可用${p.available}）`));
+        }
+        alert(lines.join('\n'));
+      }
+
       setIsFormOpen(false);
       loadData();
     } else {
@@ -653,28 +662,6 @@ export default function OrdersPage() {
 
   const getCustomerName = (customerId: string) => {
     return customers.find((c) => c.id === customerId)?.name || '未知客户';
-  };
-
-  // 下推处理
-  const handlePushDown = async () => {
-    if (!pushDownOrderId || !pushDownWarehouseId) return;
-    setPushDownLoading(true);
-    try {
-      const res = await fetch('/api/orders/push-down', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: pushDownOrderId, warehouse_id: pushDownWarehouseId }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setPushDownResult(data);
-      } else {
-        alert(data.error || '下推失败');
-      }
-    } catch (e) {
-      alert('下推请求失败: ' + String(e));
-    }
-    setPushDownLoading(false);
   };
 
   // 获取BOM父产品ID集合（有BOM的成品）
@@ -1042,19 +1029,6 @@ export default function OrdersPage() {
                                       >
                                         <Pencil className="w-3.5 h-3.5" />
                                       </button>
-                                      {order.status === 'pending' && (
-                                        <button
-                                          onClick={() => {
-                                            setPushDownOrderId(order.id);
-                                            setPushDownResult(null);
-                                            setPushDownWarehouseId(warehouses[0]?.id || '');
-                                          }}
-                                          className="p-1 text-gray-400 hover:text-green-600"
-                                          title="下推"
-                                        >
-                                          <ArrowDownToLine className="w-3.5 h-3.5" />
-                                        </button>
-                                      )}
                                       <button
                                         onClick={() => handleStatusChange(
                                           order.id,
@@ -1449,133 +1423,6 @@ export default function OrdersPage() {
               取消
             </Button>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* 下推对话框 */}
-      <Dialog open={!!pushDownOrderId} onOpenChange={(open) => { if (!open) { setPushDownOrderId(null); setPushDownResult(null); } }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>订单下推</DialogTitle>
-          </DialogHeader>
-          {!pushDownResult ? (
-            <div className="space-y-4">
-              <p className="text-sm text-gray-600">
-                下推将自动检查订单物料的BOM和库存情况：
-                <br />- 有BOM且库存充足 → 自动预扣库存
-                <br />- 有BOM且库存不足 → 自动生成生产订单（含用料清单）
-                <br />- 无BOM且库存充足 → 自动预扣库存
-                <br />- 无BOM且库存不足 → 生成生产订单（用料清单为空）
-              </p>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">选择仓库 *</label>
-                <Select value={pushDownWarehouseId} onValueChange={setPushDownWarehouseId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择仓库" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {warehouses.map((w) => (
-                      <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => { setPushDownOrderId(null); setPushDownResult(null); }}>取消</Button>
-                <Button
-                  className="bg-[#1E40AF] hover:bg-[#1D4ED8]"
-                  onClick={handlePushDown}
-                  disabled={pushDownLoading || !pushDownWarehouseId}
-                >
-                  {pushDownLoading ? '下推中...' : '确认下推'}
-                </Button>
-              </DialogFooter>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {pushDownResult.produced.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-blue-500" /> 已生成生产订单
-                  </h4>
-                  <table className="w-full text-xs border border-gray-200 rounded">
-                    <thead>
-                      <tr className="bg-gray-50">
-                        <th className="px-3 py-1.5 text-left">产品</th>
-                        <th className="px-3 py-1.5 text-right">数量</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pushDownResult.produced.map((p, i) => (
-                        <tr key={i} className="border-t border-gray-100">
-                          <td className="px-3 py-1.5">{p.product_name}</td>
-                          <td className="px-3 py-1.5 text-right font-mono">{p.quantity}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {pushDownResult.reserved.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-green-500" /> 已预扣库存
-                  </h4>
-                  <table className="w-full text-xs border border-gray-200 rounded">
-                    <thead>
-                      <tr className="bg-gray-50">
-                        <th className="px-3 py-1.5 text-left">产品</th>
-                        <th className="px-3 py-1.5 text-right">预扣数量</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pushDownResult.reserved.map((r, i) => (
-                        <tr key={i} className="border-t border-gray-100">
-                          <td className="px-3 py-1.5">{r.product_name}</td>
-                          <td className="px-3 py-1.5 text-right font-mono">{r.quantity}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {pushDownResult.insufficient.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-red-500" /> 库存不足
-                  </h4>
-                  <table className="w-full text-xs border border-gray-200 rounded">
-                    <thead>
-                      <tr className="bg-gray-50">
-                        <th className="px-3 py-1.5 text-left">产品</th>
-                        <th className="px-3 py-1.5 text-right">需求</th>
-                        <th className="px-3 py-1.5 text-right">可用</th>
-                        <th className="px-3 py-1.5 text-right">缺口</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pushDownResult.insufficient.map((s, i) => (
-                        <tr key={i} className="border-t border-gray-100">
-                          <td className="px-3 py-1.5">{s.product_name}</td>
-                          <td className="px-3 py-1.5 text-right font-mono">{s.required}</td>
-                          <td className="px-3 py-1.5 text-right font-mono">{s.available}</td>
-                          <td className="px-3 py-1.5 text-right font-mono text-red-600">{s.shortage}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {pushDownResult.produced.length === 0 && pushDownResult.reserved.length === 0 && pushDownResult.insufficient.length === 0 && (
-                <p className="text-sm text-gray-500 text-center py-4">订单物料已全部处理完成</p>
-              )}
-              <DialogFooter>
-                <Button className="bg-[#1E40AF] hover:bg-[#1D4ED8]" onClick={() => { setPushDownOrderId(null); setPushDownResult(null); loadData(); }}>
-                  确定
-                </Button>
-              </DialogFooter>
-            </div>
-          )}
         </DialogContent>
       </Dialog>
 

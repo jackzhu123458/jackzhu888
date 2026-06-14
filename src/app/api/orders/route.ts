@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { pushDownOrder } from './push-down/push-down-core';
 
 // GET /api/orders - 获取客户订单列表，按客户分组
 export async function GET(request: NextRequest) {
@@ -185,6 +186,15 @@ export async function POST(request: NextRequest) {
 
     if (fetchError) {
       return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    }
+
+    // 自动下推：创建订单后自动检查BOM/库存并生成生产订单或预扣库存
+    try {
+      const pushDownResult = await pushDownOrder(order.id);
+      (fullOrder as Record<string, unknown>)['_pushDown'] = pushDownResult;
+    } catch (e) {
+      // 下推失败不影响订单创建，仅记录日志
+      console.error('自动下推失败:', e);
     }
 
     return NextResponse.json(fullOrder, { status: 201 });
