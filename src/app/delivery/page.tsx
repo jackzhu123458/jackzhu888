@@ -1859,8 +1859,9 @@ export default function DeliveryPage() {
                 const validGroups = editingGroups.filter(g => g.group_name.trim());
                 // 重新编号
                 const renumbered = validGroups.map((g, i) => ({
-                  ...g,
                   group_no: i + 1,
+                  group_name: g.group_name,
+                  categories: g.categories,
                 }));
                 const res = await fetch('/api/delivery/category-groups', {
                   method: 'POST',
@@ -1872,7 +1873,8 @@ export default function DeliveryPage() {
                   setCategoryGroups(data);
                   setGroupManageOpen(false);
                 } else {
-                  alert('保存失败');
+                  const err = await res.json().catch(() => ({}));
+                  alert('保存失败: ' + (err.error || res.statusText));
                 }
               }}
             >
