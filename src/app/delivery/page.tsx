@@ -1387,7 +1387,7 @@ export default function DeliveryPage() {
                             </div>
                             <div style={{ fontSize: '22px', fontWeight: 'bold', marginTop: '1px', letterSpacing: '8px' }}>送 货 单</div>
                           </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', fontSize: '20px', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', fontSize: '20px' }}>
                             <div>
                               <span style={{ marginRight: '16px' }}>客户：{printData?.customer_name || ''}</span>
                               <span>交货地点：{printData?.customer_address || ''}</span>
@@ -1462,10 +1462,10 @@ export default function DeliveryPage() {
                       {/* 底部备注 + 签署（仅最后一页） */}
                       {isLastPage && (
                         <>
-                          <div style={{ marginTop: '2px', fontSize: '20px', textAlign: 'center' }}>
+                          <div style={{ marginTop: '2px', fontSize: '20px' }}>
                             <div>备注：{printData?.remark || ''}</div>
                           </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '20px', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '20px' }}>
                             <div>收货单位及经手人：________________</div>
                             <div>送货单位及经手人：{companyInfo.short_name || '新　顺'}________________</div>
                           </div>
