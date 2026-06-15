@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
         customers(id, name, code, contact, phone),
         customer_order_items(
           *,
-          products(id, code, name, spec, unit),
+          products(id, code, name, spec, unit, category),
           customer_order_schedules(*)
         )
       `)
@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
         customers(id, name, code, contact, phone),
         customer_order_items(
           *,
-          products(id, code, name, spec, unit),
+          products(id, code, name, spec, unit, category),
           customer_order_schedules(*)
         )
       `)
@@ -307,7 +307,7 @@ export async function PUT(request: NextRequest) {
         customers(id, name, code, contact, phone),
         customer_order_items(
           *,
-          products(id, code, name, spec, unit),
+          products(id, code, name, spec, unit, category),
           customer_order_schedules(*)
         )
       `)
