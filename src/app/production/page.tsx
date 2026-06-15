@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -97,6 +97,7 @@ export default function ProductionPage() {
   const [completeOrderId, setCompleteOrderId] = useState<string | null>(null);
   const [completeWarehouseId, setCompleteWarehouseId] = useState('');
   const [completing, setCompleting] = useState(false);
+  const completeDialogRef = React.useRef<HTMLDivElement>(null);
 
   // 详情
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
@@ -697,7 +698,7 @@ export default function ProductionPage() {
 
     {/* 完成入库对话框 */}
     <Dialog open={!!completeOrderId} onOpenChange={(open) => { if (!open) setCompleteOrderId(null); }}>
-      <DialogContent>
+      <DialogContent ref={completeDialogRef}>
         <DialogHeader>
           <DialogTitle>完成生产 - 自动入库</DialogTitle>
         </DialogHeader>
@@ -708,7 +709,7 @@ export default function ProductionPage() {
           <label className="block text-sm font-medium text-gray-700 mb-1">入库仓库 *</label>
           <Select value={completeWarehouseId} onValueChange={setCompleteWarehouseId}>
             <SelectTrigger><SelectValue placeholder="选择仓库" /></SelectTrigger>
-            <SelectContent>
+            <SelectContent container={completeDialogRef}>
               {warehouses.map((w) => (
                 <SelectItem key={w.id} value={w.id}>{w.name}{(w as unknown as Record<string, unknown>)['type'] === 'raw_material' ? ' (原材料仓)' : ' (产品仓)'}</SelectItem>
               ))}
