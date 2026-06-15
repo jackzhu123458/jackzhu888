@@ -25,10 +25,49 @@ export async function POST(req: NextRequest) {
       await supabase.from('production_orders').update({ status: 'completed' }).eq('id', production_order_id);
     });
 
-    // 3. 创建入库单（成品入产品仓库）
-    const { data: productWarehouses } = await supabase.from('warehouses').select('id').eq('type', 'product').limit(1);
-    // 兼容：如果没有产品仓库，取第一个仓库
-    const warehouseId = productWarehouses?.[0]?.id || (await supabase.from('warehouses').select('id').limit(1)).data?.[0]?.id;
+    // 3. 根据BOM库位号自动匹配入库仓库
+    // 查找该产品的BOM记录，获取库位号
+    const { data: bomRecords } = await supabase
+      .from('bom')
+      .select('location_no')
+      .eq('parent_product_id', prodOrder.product_id)
+      .limit(1);
+
+    const bomLocationNo = bomRecords?.[0]?.location_no || '';
+
+    let warehouseId: string;
+    let locationNo = '';
+
+    if (bomLocationNo) {
+      // 有库位号：查找该库位号对应的仓库
+      const { data: invWithLocation } = await supabase
+        .from('inventory')
+        .select('warehouse_id, location_no')
+        .eq('location_no', bomLocationNo)
+        .limit(1);
+
+      if (invWithLocation && invWithLocation.length > 0) {
+        // 已有该库位号的库存记录，使用相同仓库
+        warehouseId = invWithLocation[0].warehouse_id;
+        locationNo = bomLocationNo;
+      } else {
+        // 库位号存在但尚未有库存记录，入到产品仓库
+        const { data: productWarehouses } = await supabase.from('warehouses').select('id').eq('type', 'product').limit(1);
+        warehouseId = productWarehouses?.[0]?.id || (await supabase.from('warehouses').select('id').eq('type', 'product').limit(1)).data?.[0]?.id || '';
+        locationNo = bomLocationNo;
+      }
+    } else {
+      // 无库位号：默认入待发货仓（虚拟仓库）
+      const { data: virtualWarehouses } = await supabase.from('warehouses').select('id').eq('type', 'virtual').limit(1);
+      if (virtualWarehouses && virtualWarehouses.length > 0) {
+        warehouseId = virtualWarehouses[0].id;
+      } else {
+        // 兼容：没有虚拟仓库，用产品仓库
+        const { data: productWarehouses } = await supabase.from('warehouses').select('id').eq('type', 'product').limit(1);
+        warehouseId = productWarehouses?.[0]?.id || '';
+      }
+    }
+
     if (!warehouseId) return NextResponse.json({ error: '请先创建仓库' }, { status: 400 });
 
     const noteNo = `IN-${Date.now().toString(36).toUpperCase()}`;
@@ -42,15 +81,19 @@ export async function POST(req: NextRequest) {
     if (inboundNote) {
       await supabase.from('inbound_note_items').insert({ note_id: inboundNote.id, product_id: prodOrder.product_id, quantity: prodOrder.quantity });
 
-      // 成品库存 upsert
+      // 成品库存 upsert（包含库位号）
       const { data: existingInv } = await supabase.from('inventory').select('*').eq('product_id', prodOrder.product_id).eq('warehouse_id', warehouseId).maybeSingle();
       if (existingInv) {
         updateOps.push(async () => {
-          await supabase.from('inventory').update({ quantity: Number(existingInv.quantity) + Number(prodOrder.quantity) }).eq('id', existingInv.id);
+          const updateData: Record<string, unknown> = { quantity: Number(existingInv.quantity) + Number(prodOrder.quantity) };
+          if (locationNo && !existingInv.location_no) {
+            updateData.location_no = locationNo;
+          }
+          await supabase.from('inventory').update(updateData).eq('id', existingInv.id);
         });
       } else {
         updateOps.push(async () => {
-          await supabase.from('inventory').insert({ product_id: prodOrder.product_id, warehouse_id: warehouseId, quantity: prodOrder.quantity, reserved_qty: 0 });
+          await supabase.from('inventory').insert({ product_id: prodOrder.product_id, warehouse_id: warehouseId, quantity: prodOrder.quantity, reserved_qty: 0, location_no: locationNo || '' });
         });
       }
     }
@@ -108,7 +151,7 @@ export async function POST(req: NextRequest) {
     // 7. 并行执行所有更新
     await Promise.all(updateOps.map(fn => fn()));
 
-    return NextResponse.json({ success: true, message: '生产完成，已自动入库' });
+    return NextResponse.json({ success: true, message: `生产完成，已自动入库${locationNo ? `（库位${locationNo}）` : '（待发货仓）'}` });
   } catch (err) {
     console.error('完成生产失败:', err);
     return NextResponse.json({ error: '完成生产失败' }, { status: 500 });

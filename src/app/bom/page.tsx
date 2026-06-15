@@ -55,6 +55,7 @@ interface BomItem {
   parent_product_id: string;
   child_product_id: string;
   quantity: string;
+  location_no: string | null;
   remark: string | null;
   parent_product: Product;
   child_product: Product;
@@ -205,6 +206,7 @@ export default function BomPage() {
   const [childType, setChildType] = useState('raw_material');
   const [quantity, setQuantity] = useState('');
   const [remark, setRemark] = useState('');
+  const [locationNo, setLocationNo] = useState('');
   const [showChildCategoryDropdown, setShowChildCategoryDropdown] = useState(false);
 
   // 删除确认
@@ -416,6 +418,7 @@ export default function BomPage() {
     setChildType('raw_material');
     setQuantity('');
     setRemark('');
+    setLocationNo('');
     setSheetOpen(true);
   };
 
@@ -441,6 +444,9 @@ export default function BomPage() {
     setChildType('raw_material');
     setQuantity('');
     setRemark('');
+    // 加载库位号（从BOM记录中获取）
+    const existingBom = bomList.find(b => b.parent_product_id === product.id);
+    setLocationNo(existingBom?.location_no || '');
     setSheetOpen(true);
   };
 
@@ -467,6 +473,17 @@ export default function BomPage() {
           }),
         });
         if (res.ok) {
+          // 保存库位号到BOM记录
+          if (locationNo.trim()) {
+            const existingBom = bomList.find(b => b.parent_product_id === editProduct.id);
+            if (existingBom) {
+              await fetch('/api/bom', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: existingBom.id, location_no: locationNo.trim() }),
+              });
+            }
+          }
           setSheetOpen(false);
           loadData();
         } else {
@@ -534,6 +551,7 @@ export default function BomPage() {
                 parent_product_id: parentId,
                 child_product_id: childProd.id,
                 quantity,
+                location_no: locationNo.trim() || null,
                 remark: remark || null,
               }),
             });
@@ -816,7 +834,7 @@ export default function BomPage() {
           {/* 右侧数据表格 */}
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
             {/* 表头 */}
-            <div className="grid grid-cols-[50px_80px_120px_1fr_50px_90px_90px_90px_1fr_60px_50px] bg-[#E8EBF0] border-b border-gray-300 shrink-0">
+            <div className="grid grid-cols-[50px_80px_120px_1fr_50px_90px_90px_90px_1fr_70px_60px_50px] bg-[#E8EBF0] border-b border-gray-300 shrink-0">
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">序号</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品类别</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品编号</div>
@@ -826,6 +844,7 @@ export default function BomPage() {
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-right border-r border-gray-300">不含税单价</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-right border-r border-gray-300">含税单价</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品描述</div>
+              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">库位号</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">图纸</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center">操作</div>
             </div>
@@ -842,10 +861,12 @@ export default function BomPage() {
                 filteredProducts.map((product, idx) => {
                   const isSelected = selectedProductId === product.id;
                   const bomCount = getBomChildCount(product.id);
+                  // 查找该产品的BOM库位号（从BOM记录中获取）
+                  const productLocationNo = bomList.find(b => b.parent_product_id === product.id)?.location_no || '';
                   return (
                     <div
                       key={product.id}
-                      className={`grid grid-cols-[50px_80px_120px_1fr_50px_90px_90px_90px_1fr_60px_50px] items-center border-b border-gray-200 cursor-pointer transition-colors ${
+                      className={`grid grid-cols-[50px_80px_120px_1fr_50px_90px_90px_90px_1fr_70px_60px_50px] items-center border-b border-gray-200 cursor-pointer transition-colors ${
                         isSelected
                           ? 'bg-[#1E40AF]/10 border-l-2 border-l-[#1E40AF]'
                           : idx % 2 === 0
@@ -886,6 +907,23 @@ export default function BomPage() {
                       </div>
                       <div className="px-2 py-2.5 text-xs text-gray-500 truncate border-r border-gray-100">
                         {product.spec || product.remark || '-'}
+                      </div>
+                      <div className="px-1 py-2.5 text-center border-r border-gray-100">
+                        {productLocationNo ? (
+                          <span className={`inline-flex items-center justify-center w-8 h-8 rounded text-white font-bold text-sm ${
+                            productLocationNo === 'A' ? 'bg-red-500' :
+                            productLocationNo === 'B' ? 'bg-orange-500' :
+                            productLocationNo === 'C' ? 'bg-amber-500' :
+                            productLocationNo === 'D' ? 'bg-green-500' :
+                            productLocationNo === 'E' ? 'bg-blue-500' :
+                            productLocationNo === 'F' ? 'bg-purple-500' :
+                            'bg-gray-500'
+                          }`}>
+                            {productLocationNo}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-300">-</span>
+                        )}
                       </div>
                       <div className="px-2 py-2.5 text-xs text-center">
                         <button
@@ -1053,6 +1091,39 @@ export default function BomPage() {
               />
             </div>
 
+            {/* 库位号 */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">库位号</label>
+              <div className="flex gap-1.5">
+                {['A', 'B', 'C', 'D', 'E', 'F'].map(loc => (
+                  <button
+                    key={loc}
+                    type="button"
+                    onClick={() => setLocationNo(locationNo === loc ? '' : loc)}
+                    className={`w-9 h-9 rounded text-sm font-bold transition-all ${
+                      locationNo === loc
+                        ? loc === 'A' ? 'bg-red-500 text-white ring-2 ring-red-300' :
+                          loc === 'B' ? 'bg-orange-500 text-white ring-2 ring-orange-300' :
+                          loc === 'C' ? 'bg-amber-500 text-white ring-2 ring-amber-300' :
+                          loc === 'D' ? 'bg-green-500 text-white ring-2 ring-green-300' :
+                          loc === 'E' ? 'bg-blue-500 text-white ring-2 ring-blue-300' :
+                          'bg-purple-500 text-white ring-2 ring-purple-300'
+                        : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                    }`}
+                  >
+                    {loc}
+                  </button>
+                ))}
+                <Input
+                  value={locationNo}
+                  onChange={(e) => setLocationNo(e.target.value)}
+                  placeholder="或输入自定义库位"
+                  className="flex-1 h-9 text-sm"
+                />
+              </div>
+              <p className="text-xs text-gray-400 mt-1">生产完成后成品自动入此库位</p>
+            </div>
+
             {/* === 物料明细分隔线（仅新增时显示） === */}
             {!editProduct && (
               <div className="border-t pt-4 mt-4">
@@ -1141,8 +1212,8 @@ export default function BomPage() {
                     </div>
                   </div>
 
-                  {/* 子级类型 + 用量 */}
-                  <div className="grid grid-cols-2 gap-3">
+                  {/* 子级类型 + 用量 + 库位号 */}
+                  <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1.5 block">子级类型</label>
                       <Select value={childType} onValueChange={setChildType}>
@@ -1158,6 +1229,10 @@ export default function BomPage() {
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1.5 block">用量</label>
                       <Input value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="如: 2" type="number" step="0.0001" />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1.5 block">库位号</label>
+                      <Input value={locationNo} onChange={(e) => setLocationNo(e.target.value)} placeholder="如: A" />
                     </div>
                   </div>
 

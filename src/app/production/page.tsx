@@ -95,7 +95,6 @@ export default function ProductionPage() {
 
   // 完成入库
   const [completeOrderId, setCompleteOrderId] = useState<string | null>(null);
-  const [completeWarehouseId, setCompleteWarehouseId] = useState('');
   const [completing, setCompleting] = useState(false);
   const completeDialogRef = React.useRef<HTMLDivElement>(null);
 
@@ -239,16 +238,17 @@ export default function ProductionPage() {
   };
 
   const handleCompleteInbound = async () => {
-    if (!completeOrderId || !completeWarehouseId) return;
+    if (!completeOrderId) return;
     setCompleting(true);
     try {
       const res = await fetch('/api/production/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ production_order_id: completeOrderId, warehouse_id: completeWarehouseId }),
+        body: JSON.stringify({ production_order_id: completeOrderId }),
       });
       const data = await res.json();
       if (data.error) { alert(data.error); }
+      else { alert(data.message || '生产完成，已自动入库'); }
       setCompleteOrderId(null);
       fetchOrders();
     } catch { /* ignore */ }
@@ -396,7 +396,7 @@ export default function ProductionPage() {
                         </button>
                       )}
                       {order.status === 'in_progress' && (
-                        <button onClick={() => { setCompleteOrderId(order.id); setCompleteWarehouseId(warehouses.find(w => (w as unknown as Record<string, unknown>)['type'] === 'product')?.id || warehouses[0]?.id || ''); }} className="text-[11px] px-2 py-0.5 rounded bg-green-600 text-white hover:bg-green-700 transition-colors">
+                        <button onClick={() => { setCompleteOrderId(order.id); }} className="text-[11px] px-2 py-0.5 rounded bg-green-600 text-white hover:bg-green-700 transition-colors">
                           完成入库
                         </button>
                       )}
@@ -553,7 +553,7 @@ export default function ProductionPage() {
                     <Button size="sm" onClick={() => handleStatusChange(detailOrder.id, 'in_progress')}>开始生产</Button>
                   )}
                   {detailOrder.status === 'in_progress' && (
-                    <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => { setCompleteOrderId(detailOrder.id); setCompleteWarehouseId(warehouses.find(w => (w as unknown as Record<string, unknown>)['type'] === 'product')?.id || warehouses[0]?.id || ''); }}>
+                    <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => { setCompleteOrderId(detailOrder.id); }}>
                       完成入库
                     </Button>
                   )}
@@ -703,22 +703,25 @@ export default function ProductionPage() {
           <DialogTitle>完成生产 - 自动入库</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-gray-600">
-          完成生产后将自动创建入库单，成品入库到指定仓库，并扣减原材料库存。
+          完成生产后将自动创建入库单，系统根据BOM库位号自动匹配入库仓库，无库位号则入待发货仓。
         </p>
-        <div className="mt-2">
-          <label className="block text-sm font-medium text-gray-700 mb-1">入库仓库 *</label>
-          <Select value={completeWarehouseId} onValueChange={setCompleteWarehouseId}>
-            <SelectTrigger><SelectValue placeholder="选择仓库" /></SelectTrigger>
-            <SelectContent container={completeDialogRef}>
-              {warehouses.map((w) => (
-                <SelectItem key={w.id} value={w.id}>{w.name}{(w as unknown as Record<string, unknown>)['type'] === 'raw_material' ? ' (原材料仓)' : ' (产品仓)'}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {completeOrderId && (() => {
+          const order = orders.find(o => o.id === completeOrderId);
+          if (!order) return null;
+          return (
+            <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="text-sm font-medium text-gray-800">
+                产品：{order.products?.code} {order.products?.name}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">
+                数量：{Number(order.quantity).toLocaleString()} {order.products?.unit || '个'}
+              </div>
+            </div>
+          );
+        })()}
         <DialogFooter>
           <Button variant="outline" onClick={() => setCompleteOrderId(null)}>取消</Button>
-          <Button className="bg-green-600 hover:bg-green-700" onClick={handleCompleteInbound} disabled={completing || !completeWarehouseId}>
+          <Button className="bg-green-600 hover:bg-green-700" onClick={handleCompleteInbound} disabled={completing}>
             {completing ? '处理中...' : '确认完成入库'}
           </Button>
         </DialogFooter>

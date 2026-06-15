@@ -39,7 +39,7 @@ export const warehouses = pgTable(
     id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
     name: varchar("name", { length: 100 }).notNull(),
     location: varchar("location", { length: 200 }),
-    type: varchar("type", { length: 30 }).notNull().default("product"), // raw_material=原材料仓库, product=产品仓库
+    type: varchar("type", { length: 30 }).notNull().default("product"), // raw_material=原材料仓库, product=产品仓库, virtual=虚拟仓库
     remark: text("remark"),
     is_active: boolean("is_active").default(true).notNull(),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -77,6 +77,7 @@ export const bom = pgTable(
     parent_product_id: varchar("parent_product_id", { length: 36 }).notNull().references(() => products.id),
     child_product_id: varchar("child_product_id", { length: 36 }).notNull().references(() => products.id),
     quantity: numeric("quantity", { precision: 12, scale: 4 }).notNull(),
+    location_no: varchar("location_no", { length: 50 }).default(""),
     remark: text("remark"),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp("updated_at", { withTimezone: true }),
