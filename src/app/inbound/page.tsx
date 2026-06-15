@@ -1,36 +1,64 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { translateUnit } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { translateUnit } from '@/lib/utils';
-import { Search, Plus, Trash2 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Save,
+  X,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Minus,
+} from 'lucide-react';
 
+/* ─── Types ─── */
 interface Product {
   id: string;
   code: string;
   name: string;
   spec: string | null;
   unit: string;
+  location_no?: string;
 }
-
 interface Warehouse {
   id: string;
   name: string;
   location: string | null;
+  type?: string;
 }
-
-interface InboundNoteItem {
-  id: string;
+interface InboundItem {
+  id?: string;
   product_id: string;
-  quantity: string;
-  products: Product;
+  product?: Product;
+  products?: Product | Product[];
+  quantity: number;
+  remark: string;
 }
-
 interface InboundNote {
   id: string;
   note_no: string;
@@ -41,35 +69,84 @@ interface InboundNote {
   status: string;
   remark: string | null;
   created_at: string;
-  warehouses: Warehouse;
-  inbound_note_items: InboundNoteItem[];
+  warehouses?: Warehouse | Warehouse[] | null;
+  inbound_note_items: InboundItem[];
 }
 
+/* ─── Helpers ─── */
+const formatDate = (d: string) => {
+  try {
+    return new Date(d).toISOString().split('T')[0];
+  } catch {
+    return d;
+  }
+};
+
+const statusLabel = (s: string) => {
+  const m: Record<string, { label: string; cls: string }> = {
+    pending: { label: '待入库', cls: 'bg-yellow-100 text-yellow-800' },
+    confirmed: { label: '已入库', cls: 'bg-green-100 text-green-800' },
+    completed: { label: '已入库', cls: 'bg-green-100 text-green-800' },
+  };
+  return m[s] || { label: s, cls: 'bg-gray-100 text-gray-800' };
+};
+
+const typeLabel = (s: string) => {
+  const m: Record<string, string> = { production: '生产入库', other: '其他入库' };
+  return m[s] || s;
+};
+
+const emptyNote = (): Omit<InboundNote, 'id' | 'created_at'> => ({
+  note_no: '',
+  type: 'other',
+  production_order_id: null,
+  warehouse_id: '',
+  operator: null,
+  status: 'confirmed',
+  remark: '',
+  inbound_note_items: [],
+});
+
+const getProdObj = (raw: Product | Product[] | undefined): Product | undefined => {
+  if (!raw) return undefined;
+  if (Array.isArray(raw)) return raw[0];
+  return raw;
+};
+
+const getWhObj = (raw: Warehouse | Warehouse[] | null | undefined): Warehouse | undefined => {
+  if (!raw) return undefined;
+  if (Array.isArray(raw)) return raw[0];
+  return raw;
+};
+
+/* ─── Component ─── */
 export default function InboundPage() {
   const [notes, setNotes] = useState<InboundNote[]>([]);
-  const [loading, setLoading] = useState(true);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [showCreate, setShowCreate] = useState(false);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [currentIdx, setCurrentIdx] = useState(-1);
+  const [editMode, setEditMode] = useState(false);
+  const [isFormDirty, setIsFormDirty] = useState(false);
+
+  // Form state
+  const [form, setForm] = useState<Omit<InboundNote, 'id' | 'created_at'> & { id?: string }>(emptyNote());
+
+  // Dialogs
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [itemSearches, setItemSearches] = useState<Record<number, string>>({});
+  const [showItemDropdown, setShowItemDropdown] = useState<number | null>(null);
 
-  // 新建表单
-  const [formWarehouse, setFormWarehouse] = useState('');
-  const [formRemark, setFormRemark] = useState('');
-  const [formItems, setFormItems] = useState<Array<{ product_id: string; quantity: string }>>([
-    { product_id: '', quantity: '' },
-  ]);
+  const current = currentIdx >= 0 ? notes[currentIdx] : null;
 
-  const loadNotes = useCallback(async () => {
-    setLoading(true);
+  /* ─── Data fetching ─── */
+  const fetchNotes = useCallback(async () => {
     const res = await fetch('/api/inbound');
     const data = await res.json();
-    if (Array.isArray(data)) setNotes(data);
-    setLoading(false);
+    setNotes(Array.isArray(data) ? data : []);
   }, []);
 
-  const loadMeta = useCallback(async () => {
+  const fetchMeta = useCallback(async () => {
     const [wRes, pRes] = await Promise.all([fetch('/api/warehouses'), fetch('/api/products')]);
     const wData = await wRes.json();
     const pData = await pRes.json();
@@ -77,281 +154,546 @@ export default function InboundPage() {
     if (Array.isArray(pData)) setProducts(pData);
   }, []);
 
-  useEffect(() => {
-    loadNotes();
-    loadMeta();
-  }, [loadNotes, loadMeta]);
+  useEffect(() => { fetchNotes(); fetchMeta(); }, [fetchNotes, fetchMeta]);
 
-  const statusLabel: Record<string, string> = {
-    pending: '待入库',
-    confirmed: '已入库',
-    completed: '已入库',
-  };
-  const statusColor: Record<string, string> = {
-    pending: 'bg-amber-100 text-amber-800',
-    confirmed: 'bg-green-100 text-green-800',
-    completed: 'bg-green-100 text-green-800',
-  };
-  const typeLabel: Record<string, string> = {
-    production: '生产入库',
-    other: '其他入库',
+  /* ─── Navigation ─── */
+  const goTo = (idx: number) => {
+    if (editMode && isFormDirty) {
+      if (!window.confirm('当前修改尚未保存，是否放弃？')) return;
+    }
+    const clamped = Math.max(0, Math.min(idx, notes.length - 1));
+    setCurrentIdx(clamped);
+    setEditMode(false);
+    setIsFormDirty(false);
+    if (notes[clamped]) loadForm(notes[clamped]);
   };
 
-  const handleAddItem = () => {
-    setFormItems([...formItems, { product_id: '', quantity: '' }]);
-  };
-
-  const handleRemoveItem = (index: number) => {
-    setFormItems(formItems.filter((_, i) => i !== index));
-  };
-
-  const handleItemChange = (index: number, field: 'product_id' | 'quantity', value: string) => {
-    const updated = [...formItems];
-    updated[index] = { ...updated[index], [field]: value };
-    setFormItems(updated);
-  };
-
-  const handleCreate = async () => {
-    if (!formWarehouse) return alert('请选择仓库');
-    const validItems = formItems.filter((item) => item.product_id && parseFloat(item.quantity) > 0);
-    if (validItems.length === 0) return alert('请至少添加一条入库明细');
-
-    const res = await fetch('/api/inbound', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        warehouse_id: formWarehouse,
-        type: 'other',
-        remark: formRemark,
-        items: validItems.map((item) => ({
-          product_id: item.product_id,
-          quantity: parseFloat(item.quantity),
-        })),
-      }),
+  const loadForm = (note: InboundNote) => {
+    setForm({
+      id: note.id,
+      note_no: note.note_no,
+      type: note.type,
+      production_order_id: note.production_order_id,
+      warehouse_id: note.warehouse_id,
+      operator: note.operator,
+      status: note.status,
+      remark: note.remark || '',
+      inbound_note_items: Array.isArray(note.inbound_note_items)
+        ? note.inbound_note_items.map((it) => {
+            const product = getProdObj(it.products as Product | Product[] | undefined);
+            return {
+              ...it,
+              product,
+              remark: it.remark || '',
+            };
+          })
+        : [],
     });
-    if (res.ok) {
-      setShowCreate(false);
-      resetForm();
-      loadNotes();
-    } else {
-      const err = await res.json();
-      alert(err.error || '创建失败');
+  };
+
+  // 首次加载后自动选择第一条记录
+  useEffect(() => {
+    if (notes.length > 0 && currentIdx < 0 && !editMode) {
+      setCurrentIdx(0);
+      void loadForm(notes[0]);
+    }
+  }, [notes, currentIdx, editMode]);
+
+  /* ─── CRUD ─── */
+  const handleNew = () => {
+    setForm({
+      ...emptyNote(),
+      warehouse_id: warehouses.find(w => w.type === 'product')?.id || '',
+      inbound_note_items: [],
+    });
+    setCurrentIdx(-1);
+    setEditMode(true);
+    setIsFormDirty(false);
+  };
+
+  const handleEdit = () => {
+    if (!current) return;
+    setEditMode(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.warehouse_id) {
+      alert('请选择入库仓库');
+      return;
+    }
+    const validItems = form.inbound_note_items.filter(it => it.product_id && Number(it.quantity) > 0);
+    if (validItems.length === 0) {
+      alert('请至少添加一条入库明细');
+      return;
+    }
+
+    const payload = {
+      ...form,
+      items: validItems.map(it => ({
+        product_id: it.product_id,
+        quantity: Number(it.quantity),
+        remark: it.remark,
+      })),
+    };
+
+    try {
+      if (form.id) {
+        // 更新
+        const { id, inbound_note_items, warehouses, ...noteFields } = payload as typeof payload & { id?: string; inbound_note_items?: unknown; warehouses?: unknown };
+        const res = await fetch('/api/inbound', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, ...noteFields, items: payload.items }),
+        });
+        const data = await res.json();
+        if (data.error) { alert('保存失败: ' + data.error); return; }
+        await fetchNotes();
+      } else {
+        // 新建
+        const { id, inbound_note_items, warehouses, ...noteFields } = payload as typeof payload & { id?: string; inbound_note_items?: unknown; warehouses?: unknown };
+        const res = await fetch('/api/inbound', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(noteFields),
+        });
+        const created = await res.json();
+        if (created.error) { alert('保存失败: ' + created.error); return; }
+        setForm(prev => ({ ...prev, id: created.id }));
+        const refreshed = await fetch('/api/inbound').then(r => r.json());
+        if (Array.isArray(refreshed)) {
+          setNotes(refreshed);
+          const idx = refreshed.findIndex((n: InboundNote) => n.id === created.id);
+          if (idx >= 0) setCurrentIdx(idx);
+        }
+      }
+      setEditMode(false);
+      setIsFormDirty(false);
+    } catch (e) {
+      alert('保存失败: ' + String(e));
     }
   };
 
-  const resetForm = () => {
-    setFormWarehouse('');
-    setFormRemark('');
-    setFormItems([{ product_id: '', quantity: '' }]);
+  const handleCancel = () => {
+    if (current) loadForm(current);
+    else setForm(emptyNote());
+    setEditMode(false);
+    setIsFormDirty(false);
+    setItemSearches({});
+    setShowItemDropdown(null);
   };
 
   const handleDelete = async () => {
-    if (!deleteId) return;
-    const res = await fetch(`/api/inbound?id=${deleteId}`, { method: 'DELETE' });
-    if (res.ok) {
-      loadNotes();
-    } else {
+    if (!form.id) return;
+    const res = await fetch(`/api/inbound?id=${form.id}`, { method: 'DELETE' });
+    if (!res.ok) {
       const err = await res.json();
       alert(err.error || '删除失败');
+      setDeleteOpen(false);
+      return;
     }
-    setDeleteId(null);
+    setDeleteOpen(false);
+    setEditMode(false);
+    setForm(emptyNote());
+    setCurrentIdx(-1);
+    await fetchNotes();
   };
 
+  /* ─── Items manipulation ─── */
+  const addEmptyItem = () => {
+    setForm(prev => ({
+      ...prev,
+      inbound_note_items: [...prev.inbound_note_items, {
+        product_id: '',
+        quantity: 0,
+        remark: '',
+      }],
+    }));
+    setIsFormDirty(true);
+  };
+
+  const removeItem = (idx: number) => {
+    setForm(prev => ({
+      ...prev,
+      inbound_note_items: prev.inbound_note_items.filter((_, i) => i !== idx),
+    }));
+    setIsFormDirty(true);
+  };
+
+  const updateItem = (idx: number, field: keyof InboundItem, value: string | number) => {
+    setForm(prev => {
+      const items = [...prev.inbound_note_items];
+      items[idx] = { ...items[idx], [field]: value };
+      return { ...prev, inbound_note_items: items };
+    });
+    setIsFormDirty(true);
+  };
+
+  /* ─── Search products for inline picker ─── */
+  const searchInboundProducts = (query: string) => {
+    if (!query.trim()) return [];
+    const q = query.toLowerCase();
+    return products.filter(
+      p => p.code?.toLowerCase().includes(q) || p.name?.toLowerCase().includes(q) || p.spec?.toLowerCase().includes(q)
+    ).slice(0, 20);
+  };
+
+  const selectProductForItem = (idx: number, p: Product) => {
+    setForm(prev => {
+      const items = [...prev.inbound_note_items];
+      items[idx] = {
+        ...items[idx],
+        product_id: p.id,
+        product: p,
+      };
+      return { ...prev, inbound_note_items: items };
+    });
+    setItemSearches(prev => {
+      const next = { ...prev };
+      next[idx] = `${p.code} ${p.name}`;
+      return next;
+    });
+    setShowItemDropdown(null);
+    setIsFormDirty(true);
+  };
+
+  // Filtered notes for list
+  const filteredNotes = searchText.trim()
+    ? notes.filter(note => {
+        const s = searchText.trim().toLowerCase();
+        const wh = getWhObj(note.warehouses);
+        if (note.note_no?.toLowerCase().includes(s)) return true;
+        if (wh?.name?.toLowerCase().includes(s)) return true;
+        return (note.inbound_note_items || []).some(item => {
+          const prod = getProdObj(item.products as Product | Product[] | undefined);
+          return prod?.code?.toLowerCase().includes(s) || prod?.name?.toLowerCase().includes(s);
+        });
+      })
+    : notes;
+
+  /* ─── Render ─── */
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">入库单</h1>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="搜索单号/物料编码/物料名称/仓库..."
-              value={searchText}
-              onChange={e => setSearchText(e.target.value)}
-              className="pl-9 w-72 h-9"
-            />
+    <div className="flex h-[calc(100vh-64px)] overflow-hidden">
+      {/* ─── Left: 入库单列表 ─── */}
+      <div className="w-[280px] border-r border-gray-200 bg-gray-50/50 flex flex-col shrink-0">
+        <div className="p-3 border-b border-gray-200">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+              <Input
+                placeholder="搜索单号/物料/仓库..."
+                value={searchText}
+                onChange={e => setSearchText(e.target.value)}
+                className="pl-8 h-8 text-xs"
+              />
+            </div>
+            <Button size="sm" className="h-8 bg-[#1E40AF] hover:bg-[#1D4ED8] px-2" onClick={handleNew}>
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
           </div>
-          <Button onClick={() => setShowCreate(true)} className="bg-[#1E40AF] hover:bg-[#1D4ED8]">
-            新增入库单
-          </Button>
         </div>
+        <div className="flex-1 overflow-y-auto">
+          {filteredNotes.length === 0 ? (
+            <div className="p-4 text-center text-xs text-gray-400">暂无入库单</div>
+          ) : (
+            filteredNotes.map((note) => {
+              const wh = getWhObj(note.warehouses);
+              const noteIdx = notes.indexOf(note);
+              const isActive = noteIdx === currentIdx;
+              const st = statusLabel(note.status);
+              return (
+                <div
+                  key={note.id}
+                  onClick={() => goTo(noteIdx)}
+                  className={`px-3 py-2.5 border-b border-gray-100 cursor-pointer transition-colors ${
+                    isActive ? 'bg-blue-50 border-l-2 border-l-[#1E40AF]' : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono text-xs text-gray-900 font-medium">{note.note_no}</span>
+                    <Badge className={`${st.cls} text-[10px] px-1.5 py-0`}>{st.label}</Badge>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                    <span>{wh?.name || '-'}</span>
+                    <span>·</span>
+                    <span>{typeLabel(note.type)}</span>
+                  </div>
+                  <div className="text-[11px] text-gray-400 mt-0.5">
+                    {note.created_at ? new Date(note.created_at).toLocaleDateString('zh-CN') : ''}
+                    <span className="ml-2">{note.inbound_note_items?.length || 0}项</span>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+        {/* Navigation */}
+        {notes.length > 0 && (
+          <div className="flex items-center justify-center gap-1 p-2 border-t border-gray-200 bg-white">
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => goTo(0)} disabled={currentIdx <= 0}>
+              <ChevronsLeft className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => goTo(currentIdx - 1)} disabled={currentIdx <= 0}>
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            <span className="text-xs text-gray-500 px-1">
+              {currentIdx >= 0 ? currentIdx + 1 : 0}/{notes.length}
+            </span>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => goTo(currentIdx + 1)} disabled={currentIdx >= notes.length - 1}>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => goTo(notes.length - 1)} disabled={currentIdx >= notes.length - 1}>
+              <ChevronsRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-200 bg-gray-50/50">
-              <th className="text-left px-4 py-3 font-medium text-gray-500 w-36">入库单号</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500 w-24">类型</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500 w-24">仓库</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500 w-36">入库时间</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500 w-28">物料编码</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">物料描述</th>
-              <th className="text-center px-4 py-3 font-medium text-gray-500 w-16">单位</th>
-              <th className="text-right px-4 py-3 font-medium text-gray-500 w-20">数量</th>
-              <th className="text-center px-4 py-3 font-medium text-gray-500 w-20">状态</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500 w-28">备注</th>
-              <th className="text-center px-4 py-3 font-medium text-gray-500 w-20">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={10} className="px-4 py-12 text-center text-gray-400">加载中...</td></tr>
-            ) : (() => {
-              const filtered = searchText.trim()
-                ? notes.filter(note => {
-                    const s = searchText.trim().toLowerCase();
-                    const warehouse = (note.warehouses as unknown as Record<string, unknown> | null)?.name;
-                    const items = note.inbound_note_items || [];
-                    // 匹配入库单号
-                    if (note.note_no?.toLowerCase().includes(s)) return true;
-                    // 匹配仓库名称
-                    if (warehouse && String(warehouse).toLowerCase().includes(s)) return true;
-                    // 匹配物料编码/名称
-                    return items.some(item => {
-                      const prod = item.products as unknown as Record<string, unknown> | null;
-                      const code = prod?.code ? String(prod.code).toLowerCase() : '';
-                      const name = prod?.name ? String(prod.name).toLowerCase() : '';
-                      return code.includes(s) || name.includes(s);
-                    });
-                  })
-                : notes;
-              return filtered.length === 0 ? (
-                <tr><td colSpan={10} className="px-4 py-12 text-center text-gray-400">{searchText.trim() ? '未找到匹配的入库单' : '暂无入库单'}</td></tr>
-              ) : (
-                filtered.map((note) => {
-                const items = note.inbound_note_items || [];
-                return items.map((item, idx) => (
-                  <tr
-                    key={`${note.id}-${item.id}`}
-                    className={`border-b border-gray-50 hover:bg-gray-50/50 ${idx > 0 ? '' : ''} ${idx > 0 ? 'border-t-0' : ''}`}
-                  >
-                    {/* 入库单号 - 仅第一行显示 */}
-                    <td className={`px-4 py-3 font-mono text-gray-900 ${idx > 0 ? 'text-transparent' : ''}`}>
-                      {note.note_no}
-                    </td>
-                    {/* 类型 */}
-                    <td className={`px-4 py-3 text-gray-700 ${idx > 0 ? 'text-transparent' : ''}`}>
-                      {typeLabel[note.type] || note.type}
-                    </td>
-                    {/* 仓库 */}
-                    <td className={`px-4 py-3 text-gray-700 ${idx > 0 ? 'text-transparent' : ''}`}>
-                      {note.warehouses?.name || '-'}
-                    </td>
-                    {/* 入库时间 */}
-                    <td className={`px-4 py-3 text-gray-700 text-xs ${idx > 0 ? 'text-transparent' : ''}`}>
-                      {note.created_at ? new Date(note.created_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}
-                    </td>
-                    {/* 物料编码 */}
-                    <td className="px-4 py-3 font-mono text-gray-900 text-xs">
-                      {String((item.products as unknown as Record<string, unknown>)?.code ?? '-')}
-                    </td>
-                    {/* 物料描述 */}
-                    <td className="px-4 py-3 text-gray-700">
-                      {String((item.products as unknown as Record<string, unknown>)?.name ?? '-')}
-                    </td>
-                    {/* 单位 */}
-                    <td className="px-4 py-3 text-center text-gray-500">
-                      {translateUnit(String((item.products as unknown as Record<string, unknown>)?.unit ?? '-'))}
-                    </td>
-                    {/* 数量 */}
-                    <td className="px-4 py-3 text-right font-mono text-gray-900">
-                      {Number(item.quantity).toLocaleString()}
-                    </td>
-                    {/* 状态 - 仅第一行显示 */}
-                    <td className={`px-4 py-3 text-center ${idx > 0 ? 'invisible' : ''}`}>
-                      <Badge className={statusColor[note.status] || 'bg-gray-100 text-gray-800'}>
-                        {statusLabel[note.status] || note.status}
-                      </Badge>
-                    </td>
-                    {/* 备注 - 仅第一行显示 */}
-                    <td className={`px-4 py-3 text-gray-500 text-xs max-w-[120px] truncate ${idx > 0 ? 'text-transparent' : ''}`}>
-                      {note.remark || '-'}
-                    </td>
-                    {/* 操作 - 仅第一行显示 */}
-                    <td className={`px-4 py-3 text-center ${idx > 0 ? 'invisible' : ''}`}>
-                      {note.status === 'pending' && (
-                        <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => setDeleteId(note.id)}>
-                          删除
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ));
-              })
-            )})()}
-          </tbody>
-        </table>
-      </div>
-
-      {/* 新增入库单抽屉 */}
-      <Sheet open={showCreate} onOpenChange={setShowCreate}>
-        <SheetContent className="w-[520px] sm:max-w-[520px] overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>新增入库单</SheetTitle>
-          </SheetHeader>
-          <div className="py-6 space-y-5">
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1.5 block">入库仓库</label>
-              <Select value={formWarehouse} onValueChange={setFormWarehouse}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="选择仓库" />
-                </SelectTrigger>
-                <SelectContent>
-                  {warehouses.map((w) => (
-                    <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1.5 block">备注</label>
-              <Input value={formRemark} onChange={(e) => setFormRemark(e.target.value)} placeholder="可选" />
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-gray-700">入库明细</label>
-                <Button variant="outline" size="sm" onClick={handleAddItem}>添加行</Button>
+      {/* ─── Right: 入库单详情 ─── */}
+      <div className="flex-1 overflow-y-auto">
+        {!editMode && !form.id ? (
+          /* 空状态 */
+          <div className="flex flex-col items-center justify-center h-full text-gray-400">
+            <p className="text-sm">点击左侧入库单查看详情</p>
+            <p className="text-xs mt-1">或点击 + 新增入库单</p>
+          </div>
+        ) : (
+          <div className="p-6 max-w-4xl mx-auto">
+            {/* ─── Header ─── */}
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h1 className="text-xl font-semibold text-gray-900">
+                  {editMode ? (form.id ? '编辑入库单' : '新增入库单') : '入库单详情'}
+                </h1>
+                {form.note_no && (
+                  <p className="text-sm text-gray-500 font-mono mt-0.5">{form.note_no}</p>
+                )}
               </div>
-              <div className="space-y-3">
-                {formItems.map((item, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <Select value={item.product_id} onValueChange={(v) => handleItemChange(index, 'product_id', v)}>
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="选择物料" />
+              <div className="flex items-center gap-2">
+                {editMode ? (
+                  <>
+                    <Button variant="outline" size="sm" onClick={handleCancel}>
+                      <X className="h-4 w-4 mr-1" />取消
+                    </Button>
+                    <Button size="sm" className="bg-[#1E40AF] hover:bg-[#1D4ED8]" onClick={handleSave}>
+                      <Save className="h-4 w-4 mr-1" />保存
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="outline" size="sm" onClick={handleEdit}>
+                      <Pencil className="h-4 w-4 mr-1" />编辑
+                    </Button>
+                    <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700" onClick={() => setDeleteOpen(true)}>
+                      <Trash2 className="h-4 w-4 mr-1" />删除
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* ─── 表单区域 ─── */}
+            <div className="bg-white border border-gray-200 rounded-lg">
+              {/* 顶部信息栏 */}
+              <div className="grid grid-cols-4 gap-4 p-4 border-b border-gray-100">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">入库仓库</label>
+                  {editMode ? (
+                    <Select value={form.warehouse_id} onValueChange={v => { setForm(prev => ({ ...prev, warehouse_id: v })); setIsFormDirty(true); }}>
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="选择仓库" />
                       </SelectTrigger>
                       <SelectContent>
-                        {products.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
+                        {warehouses.map(w => (
+                          <SelectItem key={w.id} value={w.id}>
+                            {w.name}{w.type === 'virtual' ? ' (虚拟)' : w.type === 'product' ? ' (产品)' : w.type === 'raw_material' ? ' (原材料)' : ''}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    <Input
-                      type="number"
-                      className="w-28"
-                      placeholder="数量"
-                      value={item.quantity}
-                      onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
-                    />
-                    {formItems.length > 1 && (
-                      <Button variant="ghost" size="sm" className="text-red-500" onClick={() => handleRemoveItem(index)}>
-                        删
-                      </Button>
+                  ) : (
+                    <p className="text-sm text-gray-900">
+                      {getWhObj(notes.find(n => n.id === form.id)?.warehouses as Warehouse | Warehouse[] | null)?.name || '-'}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">入库类型</label>
+                  <p className="text-sm text-gray-900">{typeLabel(form.type)}</p>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">入库时间</label>
+                  <p className="text-sm text-gray-900">
+                    {form.id ? (notes.find(n => n.id === form.id)?.created_at
+                      ? new Date(notes.find(n => n.id === form.id)!.created_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                      : '-') : new Date().toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">状态</label>
+                  <Badge className={statusLabel(form.status).cls}>{statusLabel(form.status).label}</Badge>
+                </div>
+              </div>
+
+              {/* 备注 */}
+              <div className="px-4 py-3 border-b border-gray-100">
+                <label className="text-xs text-gray-500 mb-1 block">备注</label>
+                {editMode ? (
+                  <Input
+                    value={form.remark || ''}
+                    onChange={e => { setForm(prev => ({ ...prev, remark: e.target.value })); setIsFormDirty(true); }}
+                    placeholder="可选"
+                    className="h-8 text-sm"
+                  />
+                ) : (
+                  <p className="text-sm text-gray-700">{form.remark || '-'}</p>
+                )}
+              </div>
+
+              {/* ─── 入库明细表 ─── */}
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-medium text-gray-900">
+                    入库明细
+                    <span className="text-gray-400 font-normal ml-2">
+                      {form.inbound_note_items.length}项 · 合计 {form.inbound_note_items.reduce((s, it) => s + Number(it.quantity), 0).toLocaleString()}
+                    </span>
+                  </h3>
+                  {editMode && (
+                    <Button variant="outline" size="sm" onClick={addEmptyItem}>
+                      <Plus className="h-3.5 w-3.5 mr-1" />添加行
+                    </Button>
+                  )}
+                </div>
+
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50/50">
+                      <th className="text-left px-3 py-2 font-medium text-gray-500 w-8">#</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-500 w-32">物料编码</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-500">物料名称</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-500 w-16">单位</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-500 w-16">库位</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">数量</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-500 w-32">备注</th>
+                      {editMode && <th className="w-10"></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {form.inbound_note_items.length === 0 ? (
+                      <tr>
+                        <td colSpan={editMode ? 8 : 7} className="px-3 py-8 text-center text-gray-400 text-xs">
+                          {editMode ? '点击"添加行"按钮添加入库物料' : '暂无明细'}
+                        </td>
+                      </tr>
+                    ) : (
+                      form.inbound_note_items.map((item, idx) => {
+                        const prod = item.product || getProdObj(item.products as Product | Product[] | undefined);
+                        return (
+                          <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50/30">
+                            <td className="px-3 py-2.5 text-gray-400 text-xs">{idx + 1}</td>
+                            <td className="px-3 py-2.5 font-mono text-xs text-gray-900">
+                              {editMode ? (
+                                <div className="relative">
+                                  <Input
+                                    value={itemSearches[idx] !== undefined ? itemSearches[idx] : (prod?.code || '')}
+                                    onChange={e => {
+                                      setItemSearches(prev => ({ ...prev, [idx]: e.target.value }));
+                                      setShowItemDropdown(idx);
+                                    }}
+                                    onFocus={() => {
+                                      if (!item.product_id) {
+                                        setItemSearches(prev => ({ ...prev, [idx]: '' }));
+                                        setShowItemDropdown(idx);
+                                      }
+                                    }}
+                                    placeholder="输入编码/名称搜索"
+                                    className="h-8 text-xs font-mono"
+                                  />
+                                  {showItemDropdown === idx && itemSearches[idx] !== undefined && itemSearches[idx].trim() && (
+                                    <>
+                                      <div className="fixed inset-0 z-40" onClick={() => { setShowItemDropdown(null); }} />
+                                      <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-48 overflow-y-auto mt-0.5">
+                                        {searchInboundProducts(itemSearches[idx]).length === 0 ? (
+                                          <div className="px-3 py-2 text-xs text-gray-400">无匹配结果</div>
+                                        ) : (
+                                          searchInboundProducts(itemSearches[idx]).map(p => (
+                                            <div
+                                              key={p.id}
+                                              className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-xs"
+                                              onClick={() => selectProductForItem(idx, p)}
+                                            >
+                                              <span className="font-mono">{p.code}</span>
+                                              <span className="text-gray-500 ml-2">{p.name}</span>
+                                              {p.location_no && <span className="text-blue-600 ml-1">[{p.location_no}]</span>}
+                                            </div>
+                                          ))
+                                        )}
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              ) : (
+                                prod?.code || '-'
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 text-gray-700 text-xs">{prod?.name || '-'}</td>
+                            <td className="px-3 py-2.5 text-center text-gray-500 text-xs">{prod ? translateUnit(prod.unit) : '-'}</td>
+                            <td className="px-3 py-2.5 text-center text-xs">
+                              {prod?.location_no ? (
+                                <Badge className="bg-blue-50 text-blue-700 text-[10px] px-1.5 py-0">{prod.location_no}</Badge>
+                              ) : '-'}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono text-gray-900 text-xs">
+                              {editMode ? (
+                                <Input
+                                  type="number"
+                                  value={item.quantity || ''}
+                                  onChange={e => updateItem(idx, 'quantity', e.target.value)}
+                                  className="h-8 w-20 text-right text-xs font-mono ml-auto"
+                                  min={0}
+                                />
+                              ) : (
+                                Number(item.quantity).toLocaleString()
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 text-xs text-gray-500">
+                              {editMode ? (
+                                <Input
+                                  value={item.remark || ''}
+                                  onChange={e => updateItem(idx, 'remark', e.target.value)}
+                                  placeholder="可选"
+                                  className="h-8 text-xs"
+                                />
+                              ) : (
+                                item.remark || '-'
+                              )}
+                            </td>
+                            {editMode && (
+                              <td className="px-1 py-2.5">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0 text-red-500 hover:text-red-600"
+                                  onClick={() => removeItem(idx)}
+                                >
+                                  <Minus className="h-3.5 w-3.5" />
+                                </Button>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })
                     )}
-                  </div>
-                ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
-          <SheetFooter>
-            <Button variant="outline" onClick={() => setShowCreate(false)}>取消</Button>
-            <Button onClick={handleCreate} className="bg-[#1E40AF] hover:bg-[#1D4ED8]">确认入库</Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+        )}
+      </div>
 
       {/* 删除确认 */}
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除</AlertDialogTitle>

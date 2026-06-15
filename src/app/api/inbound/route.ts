@@ -6,10 +6,22 @@ export async function GET(request: NextRequest) {
   const supabase = getSupabaseClient();
   const { searchParams } = new URL(request.url);
   const productionOrderId = searchParams.get('production_order_id');
+  const id = searchParams.get('id');
+
+  // 单条查询
+  if (id) {
+    const { data, error } = await supabase
+      .from('inbound_notes')
+      .select('*, warehouses(id, name, location), inbound_note_items(*, products(id, code, name, spec, unit, location_no))')
+      .eq('id', id)
+      .single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(data);
+  }
 
   let query = supabase
     .from('inbound_notes')
-    .select('*, warehouses(id, name, location), inbound_note_items(*, products(id, code, name, spec, unit))')
+    .select('*, warehouses(id, name, location), inbound_note_items(*, products(id, code, name, spec, unit, location_no))')
     .order('created_at', { ascending: false });
 
   if (productionOrderId) {
@@ -63,7 +75,7 @@ export async function POST(request: NextRequest) {
   const { data: insertedItems, error: itemsError } = await supabase
     .from('inbound_note_items')
     .insert(inboundItems)
-    .select('*, products(id, code, name, spec, unit))');
+    .select('*, products(id, code, name, spec, unit, location_no)');
 
   if (itemsError) return NextResponse.json({ error: itemsError.message }, { status: 500 });
 
@@ -97,7 +109,61 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ ...note, inbound_note_items: insertedItems }, { status: 201 });
 }
 
-// DELETE /api/inbound?id=xxx - 删除入库单（仅待入库状态）
+// PUT /api/inbound - 更新入库单（仅pending状态可编辑）
+export async function PUT(request: NextRequest) {
+  const supabase = getSupabaseClient();
+  const body = await request.json();
+  const { id, warehouse_id, remark, items, operator } = body;
+
+  if (!id) return NextResponse.json({ error: '缺少入库单ID' }, { status: 400 });
+
+  // 检查状态
+  const { data: existing } = await supabase.from('inbound_notes').select('status, warehouse_id').eq('id', id).single();
+  if (!existing) return NextResponse.json({ error: '入库单不存在' }, { status: 404 });
+  if (existing.status === 'completed') return NextResponse.json({ error: '已入库的单据不能修改' }, { status: 400 });
+
+  // 更新主表
+  const updates: Record<string, unknown> = {};
+  if (warehouse_id) updates.warehouse_id = warehouse_id;
+  if (remark !== undefined) updates.remark = remark;
+  if (operator !== undefined) updates.operator = operator;
+
+  if (Object.keys(updates).length > 0) {
+    const { error: updateError } = await supabase.from('inbound_notes').update(updates).eq('id', id);
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  // 更新明细（如果提供了items）
+  if (items && Array.isArray(items)) {
+    // 先删除旧明细
+    await supabase.from('inbound_note_items').delete().eq('note_id', id);
+
+    // 插入新明细
+    const newItems = items.map((item: { product_id: string; quantity: number; remark?: string }) => ({
+      note_id: id,
+      product_id: item.product_id,
+      quantity: item.quantity,
+      remark: item.remark || null,
+    }));
+
+    const { error: insertError } = await supabase
+      .from('inbound_note_items')
+      .insert(newItems);
+    if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+  }
+
+  // 返回更新后的完整数据
+  const { data: updated, error: fetchError } = await supabase
+    .from('inbound_notes')
+    .select('*, warehouses(id, name, location), inbound_note_items(*, products(id, code, name, spec, unit, location_no))')
+    .eq('id', id)
+    .single();
+  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+
+  return NextResponse.json(updated);
+}
+
+// DELETE /api/inbound?id=xxx - 删除入库单（仅pending/confirmed状态可删除）
 export async function DELETE(request: NextRequest) {
   const supabase = getSupabaseClient();
   const { searchParams } = new URL(request.url);
