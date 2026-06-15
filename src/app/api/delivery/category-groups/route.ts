@@ -9,12 +9,10 @@ export async function GET() {
       .select('*')
       .order('group_no');
     if (error) {
-      console.error('[category-groups GET] Supabase error:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     return NextResponse.json(data || []);
   } catch (e) {
-    console.error('[category-groups GET] Exception:', e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
@@ -22,19 +20,15 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    console.log('[category-groups POST] Received body:', JSON.stringify(body));
 
-    if (!Array.isArray(body)) {
-      return NextResponse.json({ error: 'Expected array' }, { status: 400 });
-    }
+    // Support both { groups: [...] } and [...] formats
+    const rawGroups = Array.isArray(body) ? body : (body.groups || []);
 
-    const groups = body.map((g: Record<string, unknown>) => ({
-      group_no: Number(g.group_no),
+    const groups = rawGroups.map((g: Record<string, unknown>, i: number) => ({
+      group_no: Number(g.group_no) || (i + 1),
       group_name: String(g.group_name || ''),
       categories: String(g.categories || ''),
-    }));
-
-    console.log('[category-groups POST] Parsed groups:', JSON.stringify(groups));
+    })).filter((g: { group_name: string }) => g.group_name);
 
     const supabase = getSupabaseClient();
 
@@ -45,15 +39,12 @@ export async function POST(request: Request) {
 
     const existingIds = (existing || []).map((r: Record<string, unknown>) => r.id);
 
-    console.log('[category-groups POST] Existing IDs to delete:', existingIds);
-
     if (existingIds.length > 0) {
       const { error: delError } = await supabase
         .from('delivery_category_groups')
         .delete()
         .in('id', existingIds);
       if (delError) {
-        console.error('[category-groups POST] Delete error:', delError);
         return NextResponse.json({ error: '删除失败: ' + delError.message }, { status: 500 });
       }
     }
@@ -65,16 +56,13 @@ export async function POST(request: Request) {
         .insert(groups)
         .select();
       if (insError) {
-        console.error('[category-groups POST] Insert error:', insError);
         return NextResponse.json({ error: '插入失败: ' + insError.message }, { status: 500 });
       }
-      console.log('[category-groups POST] Inserted:', data?.length, 'rows');
       return NextResponse.json(data);
     }
 
     return NextResponse.json([]);
   } catch (e) {
-    console.error('[category-groups POST] Exception:', e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
@@ -91,12 +79,10 @@ export async function DELETE(request: Request) {
       .delete()
       .eq('id', Number(id));
     if (error) {
-      console.error('[category-groups DELETE] Error:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     return NextResponse.json({ success: true });
   } catch (e) {
-    console.error('[category-groups DELETE] Exception:', e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

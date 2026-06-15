@@ -1866,7 +1866,7 @@ export default function DeliveryPage() {
                 const res = await fetch('/api/delivery/category-groups', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(renumbered),
+                  body: JSON.stringify({ groups: renumbered }),
                 });
                 if (res.ok) {
                   const data = await res.json();
