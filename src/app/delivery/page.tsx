@@ -182,6 +182,7 @@ export default function DeliveryPage() {
   const [shipDialogOpen, setShipDialogOpen] = useState(false);
   const [shipWarehouseId, setShipWarehouseId] = useState('');
   const [itemSearches, setItemSearches] = useState<Record<number, string>>({});
+  const [orderInventoryMap, setOrderInventoryMap] = useState<Record<string, { quantity: number; reserved_qty: number }>>({});
 
   const printRef = useRef<HTMLDivElement>(null);
   const labelPrintRef = useRef<HTMLDivElement>(null);
@@ -400,7 +401,6 @@ export default function DeliveryPage() {
     try {
       const invRes = await fetch('/api/inventory');
       const invData = await invRes.json();
-      // API returns { items: InventorySummary[] } — each item has total_quantity, total_reserved, inventory_records
       const items = Array.isArray(invData) ? invData : (invData.items || []);
       for (const item of items) {
         const pid = item.product_id;
@@ -415,18 +415,20 @@ export default function DeliveryPage() {
         }
       }
     } catch { /* ignore */ }
+    setOrderInventoryMap(inventoryMap);
 
-    // 过滤：只导入有足够可用库存的物料（可用库存 = quantity - reserved_qty）
+    // 过滤：只导入有库存的物料
+    // 注意：可用库存 = quantity（总库存），而非 quantity - reserved_qty
+    // 因为 reserved_qty 是为这些客户订单预扣的，送货时正是要扣减这些预扣量
     const filteredItems = (order.customer_order_items || []).filter((item) => {
       const undelivered = Number(item.quantity) - Number(item.delivered_qty);
       if (undelivered <= 0) return false;
       const inv = inventoryMap[item.product_id];
-      const available = inv ? inv.quantity - inv.reserved_qty : 0;
-      return available > 0;
+      return inv && inv.quantity > 0;
     });
 
     if (filteredItems.length === 0) {
-      alert('该订单中所有物料均无可用库存，无法导入。请先完成生产入库。');
+      alert('该订单中所有物料均无库存，无法导入。请先完成生产入库。');
       return;
     }
 
@@ -434,8 +436,7 @@ export default function DeliveryPage() {
       const undelivered = Number(item.quantity) - Number(item.delivered_qty);
       if (undelivered <= 0) return false;
       const inv = inventoryMap[item.product_id];
-      const available = inv ? inv.quantity - inv.reserved_qty : 0;
-      return available <= 0;
+      return !inv || inv.quantity <= 0;
     });
 
     if (hasUnavailable) {
@@ -456,10 +457,10 @@ export default function DeliveryPage() {
       }
 
       const undelivered = Number(item.quantity) - Number(item.delivered_qty);
-      // 可用库存数量，限制送货数量不超过可用量
+      // 库存数量，限制送货数量不超过库存总量
       const inv = inventoryMap[item.product_id];
-      const available = inv ? inv.quantity - inv.reserved_qty : 0;
-      const deliverQty = Math.min(undelivered, available);
+      const stockQty = inv ? inv.quantity : 0;
+      const deliverQty = Math.min(undelivered, stockQty);
 
       return {
         product_id: item.product_id,
@@ -467,7 +468,7 @@ export default function DeliveryPage() {
         quantity: deliverQty,
         unit_price: Number(item.price) || 0,
         per_box_qty: deliverQty,
-        remark: available < undelivered ? `欠交 ${undelivered - available}` : (item.remark || ''),
+        remark: stockQty < undelivered ? `欠交 ${undelivered - stockQty}` : (item.remark || ''),
         customer_order_item_id: item.id,
         customer_order: order.order_no,
       };
@@ -1663,7 +1664,7 @@ export default function DeliveryPage() {
           <DialogHeader>
             <DialogTitle>从客户订单导入</DialogTitle>
           </DialogHeader>
-          <div className="text-xs text-gray-500 mb-2">仅导入有可用库存的物料，未完成生产的物料不会导入。可用库存 = 总库存 - 预留量</div>
+          <div className="text-xs text-gray-500 mb-2">仅导入有库存的物料，已预扣的库存可用于送货出库</div>
           <div className="max-h-96 overflow-auto">
             {customerOrders.length === 0 ? (
               <p className="text-sm text-gray-400 py-8 text-center">暂无可导入的客户订单，请先在客户订单中下推</p>
@@ -1675,7 +1676,7 @@ export default function DeliveryPage() {
                     <th className="py-2 px-2 text-left">客户</th>
                     <th className="py-2 px-2 text-left">物料</th>
                     <th className="py-2 px-2 text-right">未交数量</th>
-                    <th className="py-2 px-2 text-right">可用库存</th>
+                    <th className="py-2 px-2 text-right">库存量</th>
                     <th className="py-2 px-2 text-center">状态</th>
                     <th className="py-2 px-2 w-20"></th>
                   </tr>
@@ -1686,11 +1687,10 @@ export default function DeliveryPage() {
                     if (orderItems.length === 0) return null;
                     return orderItems.map((item, idx) => {
                       const undelivered = Number(item.quantity) - Number(item.delivered_qty);
-                      // 从products列表查找库存
-                      const availableStock = (() => {
-                        const inv = products.find(p => p.id === item.product_id);
-                        // 这里无法精确获取库存，但可以通过备注标明
-                        return -1; // 未知
+                      // 从orderInventoryMap查找库存总量
+                      const totalStock = (() => {
+                        const inv = orderInventoryMap[item.product_id];
+                        return inv ? inv.quantity : 0;
                       })();
                       const prodName = (() => {
                         const rawProd = item.products;
@@ -1714,7 +1714,7 @@ export default function DeliveryPage() {
                           ) : null}
                           <td className="py-2 px-2">{prodName} <span className="text-gray-400">{prodCode}</span></td>
                           <td className="py-2 px-2 text-right font-mono">{undelivered}</td>
-                          <td className="py-2 px-2 text-right font-mono text-gray-400">-</td>
+                          <td className="py-2 px-2 text-right font-mono">{totalStock > 0 ? <span className="text-green-600">{totalStock}</span> : <span className="text-red-500">0</span>}</td>
                           <td className="py-2 px-2 text-center">
                             <span className="text-xs text-gray-400">导入时检查</span>
                           </td>
