@@ -400,18 +400,18 @@ export default function DeliveryPage() {
     try {
       const invRes = await fetch('/api/inventory');
       const invData = await invRes.json();
-      if (Array.isArray(invData)) {
-        for (const inv of invData) {
-          const existing = inventoryMap[inv.product_id];
-          if (existing) {
-            existing.quantity += Number(inv.quantity) || 0;
-            existing.reserved_qty += Number(inv.reserved_qty) || 0;
-          } else {
-            inventoryMap[inv.product_id] = {
-              quantity: Number(inv.quantity) || 0,
-              reserved_qty: Number(inv.reserved_qty) || 0,
-            };
-          }
+      // API returns { items: InventorySummary[] } — each item has total_quantity, total_reserved, inventory_records
+      const items = Array.isArray(invData) ? invData : (invData.items || []);
+      for (const item of items) {
+        const pid = item.product_id;
+        const existing = inventoryMap[pid];
+        const qty = Number(item.total_quantity) || 0;
+        const reserved = Number(item.total_reserved) || 0;
+        if (existing) {
+          existing.quantity += qty;
+          existing.reserved_qty += reserved;
+        } else {
+          inventoryMap[pid] = { quantity: qty, reserved_qty: reserved };
         }
       }
     } catch { /* ignore */ }
