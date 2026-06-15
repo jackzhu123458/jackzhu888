@@ -1366,9 +1366,24 @@ export default function DeliveryPage() {
                   pages.push(allItems.slice(i, i + MAX_ROWS));
                 }
                 if (pages.length === 0) pages.push([]);
-                const orderNo = (printData as DeliveryNote & { customer_orders?: { order_no?: string } | null })?.customer_orders?.order_no || '';
+                const deliveryOrderNo = (printData as DeliveryNote & { customer_orders?: { order_no?: string } | null })?.customer_orders?.order_no || '';
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const getProduct = (item: any) => item.products || item.product || {};
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const getItemOrderNo = (item: any) => {
+                  // 优先从 customer_order_items 关联获取
+                  const coi = item.customer_order_items;
+                  if (coi && typeof coi === 'object' && !Array.isArray(coi)) {
+                    const co = (coi as Record<string, unknown>).customer_orders;
+                    if (co && typeof co === 'object' && !Array.isArray(co)) {
+                      return (co as Record<string, unknown>).order_no as string || '';
+                    }
+                  }
+                  // 其次从 item 自身的 customer_order 字段（前端临时数据）
+                  if (item.customer_order) return item.customer_order as string;
+                  // 最后用送货单级的订单号
+                  return deliveryOrderNo;
+                };
 
                 return pages.map((pageItems, pageIdx) => {
                   const isLastPage = pageIdx === pages.length - 1;
@@ -1423,7 +1438,7 @@ export default function DeliveryPage() {
                                 <tr key={`item-${pageIdx}-${idx}`}>
                                   <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px' }}>{pageIdx * MAX_ROWS + idx + 1}</td>
                                   <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '19px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {orderNo}
+                                    {getItemOrderNo(item)}
                                   </td>
                                   <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '19px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {prod.code || ''}

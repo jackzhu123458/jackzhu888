@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   if (id) {
     const { data, error } = await client
       .from('delivery_notes')
-      .select('*, delivery_note_items(*, products(id, code, name, spec, unit)), customer_orders(id, order_no)')
+      .select('*, delivery_note_items(*, products(id, code, name, spec, unit), customer_order_items(id, order_id, customer_orders(id, order_no))), customer_orders(id, order_no)')
       .eq('id', id)
       .maybeSingle();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
