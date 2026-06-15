@@ -822,24 +822,24 @@ export default function BomPage() {
 
           {/* 右侧数据表格 */}
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-            {/* 表头 */}
-            <div className="grid grid-cols-[50px_80px_120px_1fr_50px_80px_80px_80px_1fr_80px_60px_50px] bg-[#E8EBF0] border-b border-gray-300 shrink-0">
-              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">序号</div>
-              <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品类别</div>
-              <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品编号</div>
-              <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品名称</div>
-              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">单位</div>
-              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-right border-r border-gray-300">成本单价</div>
-              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-right border-r border-gray-300">不含税单价</div>
-              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-right border-r border-gray-300">含税单价</div>
-              <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品描述</div>
-              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">库位号</div>
-              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">图纸</div>
-              <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center">操作</div>
-            </div>
-
-            {/* 表体 */}
             <div className="flex-1 overflow-y-auto">
+              {/* 表头 - sticky固定 */}
+              <div className="grid grid-cols-[50px_80px_120px_1fr_50px_80px_80px_80px_1fr_80px_60px_50px] bg-[#E8EBF0] border-b border-gray-300 sticky top-0 z-10">
+                <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">序号</div>
+                <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品类别</div>
+                <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品编号</div>
+                <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品名称</div>
+                <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">单位</div>
+                <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-right border-r border-gray-300">成本单价</div>
+                <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-right border-r border-gray-300">不含税单价</div>
+                <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-right border-r border-gray-300">含税单价</div>
+                <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品描述</div>
+                <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">库位号</div>
+                <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">图纸</div>
+                <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center">操作</div>
+              </div>
+
+              {/* 表体 */}
               {loading ? (
                 <div className="text-center py-12 text-gray-400 text-sm">加载中...</div>
               ) : filteredProducts.length === 0 ? (
