@@ -257,15 +257,24 @@ export default function InventoryPage() {
             };
           }));
         }
-      } else if (warehouseId) {
+      } else {
         // 创建新库存记录（产品还没有库存记录时）
-        const res = await fetch('/api/inventory', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ product_id: productId, warehouse_id: warehouseId, [field]: numValue }),
-        });
-        if (res.ok) {
-          loadInventory();
+        // 如果没有指定仓库，默认使用第一个非虚拟仓库
+        let targetWarehouseId = warehouseId;
+        if (!targetWarehouseId) {
+          const productItem = inventory.find(i => i.product_id === productId);
+          const defaultWarehouse = warehouses.find(w => w.type !== 'virtual');
+          targetWarehouseId = defaultWarehouse?.id || warehouses[0]?.id || '';
+        }
+        if (targetWarehouseId) {
+          const res = await fetch('/api/inventory', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product_id: productId, warehouse_id: targetWarehouseId, [field]: numValue }),
+          });
+          if (res.ok) {
+            loadInventory();
+          }
         }
       }
     } catch {
@@ -803,10 +812,12 @@ export default function InventoryPage() {
                         </td>
                         <td className="px-5 py-3 text-gray-600 text-xs">
                           <div className="space-y-1">
-                            {summary.warehouses.map((w) => (
-                              <div key={w.inventoryId} className="flex items-center gap-1.5">
+                            {summary.warehouses.map((w) => {
+                              const editKey = w.inventoryId || `${productId}-${w.warehouseId}`;
+                              return (
+                              <div key={w.inventoryId || w.warehouseId} className="flex items-center gap-1.5">
                                 <span className="text-gray-500">{w.name}:</span>
-                                {editingQtyId === w.inventoryId && editingQtyField === 'quantity' ? (
+                                {editingQtyId === editKey && editingQtyField === 'quantity' ? (
                                   <Input
                                     autoFocus
                                     type="number"
@@ -825,7 +836,7 @@ export default function InventoryPage() {
                                   <button
                                     className="font-mono text-gray-700 hover:text-blue-600 hover:underline cursor-pointer"
                                     onClick={() => {
-                                      setEditingQtyId(w.inventoryId);
+                                      setEditingQtyId(editKey);
                                       setEditingQtyField('quantity');
                                       setEditingQtyValue(w.qty);
                                     }}
@@ -835,7 +846,7 @@ export default function InventoryPage() {
                                   </button>
                                 )}
                                 <span className="text-gray-400">(预留</span>
-                                {editingQtyId === w.inventoryId && editingQtyField === 'reserved_qty' ? (
+                                {editingQtyId === editKey && editingQtyField === 'reserved_qty' ? (
                                   <Input
                                     autoFocus
                                     type="number"
@@ -854,7 +865,7 @@ export default function InventoryPage() {
                                   <button
                                     className="font-mono text-amber-600 hover:text-blue-600 hover:underline cursor-pointer"
                                     onClick={() => {
-                                      setEditingQtyId(w.inventoryId);
+                                      setEditingQtyId(editKey);
                                       setEditingQtyField('reserved_qty');
                                       setEditingQtyValue(w.reserved);
                                     }}
@@ -865,7 +876,8 @@ export default function InventoryPage() {
                                 )}
                                 <span className="text-gray-400">)</span>
                               </div>
-                            ))}
+                            );
+                            })}
                           </div>
                         </td>
                       </tr>
