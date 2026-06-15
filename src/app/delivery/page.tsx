@@ -55,6 +55,7 @@ interface Product {
   name: string;
   spec: string | null;
   unit: string;
+  category: string | null;
 }
 interface Customer {
   id: string;
@@ -104,6 +105,7 @@ interface DeliveryNote {
   customer_order?: string | null;
   customer_order_id?: string | null;
   warehouse_id?: string | null;
+  delivery_category?: string | null;
   delivery_date: string;
   status: string;
   remark: string | null;
@@ -139,6 +141,7 @@ const emptyNote = (): Omit<DeliveryNote, 'id' | 'created_at'> => ({
   customer_order: '',
   customer_order_id: null,
   warehouse_id: null,
+  delivery_category: '',
   delivery_date: new Date().toISOString().split('T')[0],
   status: 'draft',
   remark: '',
@@ -183,6 +186,7 @@ export default function DeliveryPage() {
   const [shipWarehouseId, setShipWarehouseId] = useState('');
   const [itemSearches, setItemSearches] = useState<Record<number, string>>({});
   const [orderInventoryMap, setOrderInventoryMap] = useState<Record<string, { quantity: number; reserved_qty: number }>>({});
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
 
   const printRef = useRef<HTMLDivElement>(null);
   const labelPrintRef = useRef<HTMLDivElement>(null);
@@ -213,6 +217,14 @@ export default function DeliveryPage() {
     if (Array.isArray(oData)) setCustomerOrders(oData.filter((o: CustomerOrder) => o.status === 'confirmed' || o.status === 'in_progress' || o.status === 'pending'));
     if (Array.isArray(whData)) setWarehouses(whData);
     setProducts(Array.isArray(pData) ? pData : []);
+    // 提取产品类目列表（去重，排除空值和BOM占位）
+    const cats = new Set<string>();
+    (Array.isArray(pData) ? pData : []).forEach((p: Product) => {
+      if (p.category && p.category !== '0' && !p.code.startsWith('BOM-')) {
+        cats.add(p.category);
+      }
+    });
+    setAvailableCategories(Array.from(cats).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })));
     if (sData?.company_info) setCompanyInfo(sData.company_info);
   }, []);
 
@@ -420,11 +432,20 @@ export default function DeliveryPage() {
     // 过滤：只导入有库存的物料
     // 注意：可用库存 = quantity（总库存），而非 quantity - reserved_qty
     // 因为 reserved_qty 是为这些客户订单预扣的，送货时正是要扣减这些预扣量
+    // 同时按送货类目筛选：如果设置了类目，只导入属于该类目的产品
+    const selectedCategories = (form.delivery_category || '').split(',').filter(Boolean);
     const filteredItems = (order.customer_order_items || []).filter((item) => {
       const undelivered = Number(item.quantity) - Number(item.delivered_qty);
       if (undelivered <= 0) return false;
       const inv = inventoryMap[item.product_id];
-      return inv && inv.quantity > 0;
+      if (!inv || inv.quantity <= 0) return false;
+      // 按类目筛选
+      if (selectedCategories.length > 0) {
+        const rawProd = item.products;
+        const prod = Array.isArray(rawProd) ? rawProd[0] as Product : rawProd as Product;
+        if (!prod?.category || !selectedCategories.includes(prod.category)) return false;
+      }
+      return true;
     });
 
     if (filteredItems.length === 0) {
@@ -1032,6 +1053,52 @@ export default function DeliveryPage() {
                   <span className="text-xs text-[#111827]">{formatDate(form.delivery_date)}</span>
                 )}
               </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500 whitespace-nowrap w-16">送货类目</label>
+                {editMode ? (
+                  <div className="flex gap-1.5 flex-wrap">
+                    {availableCategories.map((cat) => {
+                      const isSelected = (form.delivery_category || '').split(',').includes(cat);
+                      const catProductNames = products.filter((p) => p.category === cat).slice(0, 2).map((p) => p.name);
+                      const catLabel = catProductNames.length > 0 ? catProductNames.join('/') : cat;
+                      return (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => {
+                            const current = (form.delivery_category || '').split(',').filter(Boolean);
+                            const next = isSelected
+                              ? current.filter((c) => c !== cat)
+                              : [...current, cat];
+                            setForm((prev) => ({ ...prev, delivery_category: next.join(',') }));
+                            setIsFormDirty(true);
+                          }}
+                          className={`h-7 px-2.5 rounded text-xs font-medium border transition-colors ${
+                            isSelected
+                              ? 'bg-[#1E40AF] text-white border-[#1E40AF]'
+                              : 'bg-white text-gray-600 border-gray-300 hover:border-[#1E40AF] hover:text-[#1E40AF]'
+                          }`}
+                          title={catProductNames.length > 0 ? `类目${cat}：${catProductNames.join('、')}` : `类目${cat}`}
+                        >
+                          {catLabel}
+                        </button>
+                      );
+                    })}
+                    {availableCategories.length === 0 && (
+                      <span className="text-xs text-gray-400">暂无产品类目</span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-xs text-[#111827]">
+                    {form.delivery_category
+                      ? form.delivery_category.split(',').map((c) => {
+                          const catProductNames = products.filter((p) => p.category === c).slice(0, 2).map((p) => p.name);
+                          return catProductNames.length > 0 ? catProductNames.join('/') : `类目${c}`;
+                        }).join('、')
+                      : '-'}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1354,6 +1421,10 @@ export default function DeliveryPage() {
                 <div style={{ textAlign: 'right' }}>
                   <div>送货单号：{printData?.note_no || ''}</div>
                   <div>单据日期：{printData?.delivery_date ? formatDate(printData.delivery_date) : ''}</div>
+                  {printData?.delivery_category && <div>类目：{printData.delivery_category.split(',').map((c: string) => {
+                    const catProducts = products.filter((p) => p.category === c);
+                    return catProducts.slice(0, 2).map((p) => p.name).join('/') || `类目${c}`;
+                  }).join('、')}</div>}
                 </div>
               </div>
 
@@ -1410,6 +1481,10 @@ export default function DeliveryPage() {
                             <div>
                               <span style={{ marginRight: '16px' }}>送货单号：{printData?.note_no || ''}</span>
                               <span>日期：{printData?.delivery_date || ''}</span>
+                              {printData?.delivery_category && <span style={{ marginLeft: '16px' }}>类目：{printData.delivery_category.split(',').map((c: string) => {
+                                const catProducts = products.filter((p) => p.category === c);
+                                return catProducts.slice(0, 2).map((p) => p.name).join('/') || `类目${c}`;
+                              }).join('、')}</span>}
                             </div>
                           </div>
                         </>
@@ -1670,6 +1745,25 @@ export default function DeliveryPage() {
             <DialogTitle>从客户订单导入</DialogTitle>
           </DialogHeader>
           <div className="text-xs text-gray-500 mb-2">仅导入有库存的物料，已预扣的库存可用于送货出库</div>
+          {/* 类目筛选 */}
+          {form.delivery_category && (
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs text-gray-500">按类目筛选：</span>
+              <div className="flex gap-1">
+                {form.delivery_category.split(',').filter(Boolean).map((cat) => {
+                  const catProducts = products.filter((p) => p.category === cat);
+                  const catLabel = catProducts.slice(0, 2).map((p) => p.name).join('/') || cat;
+                  return (
+                    <span key={cat} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-medium">
+                      {catLabel}
+                      <span className="text-blue-400">({catProducts.length}种)</span>
+                    </span>
+                  );
+                })}
+              </div>
+              <span className="text-xs text-gray-400 ml-1">仅显示选中类目的物料</span>
+            </div>
+          )}
           <div className="max-h-96 overflow-auto">
             {customerOrders.length === 0 ? (
               <p className="text-sm text-gray-400 py-8 text-center">暂无可导入的客户订单，请先在客户订单中下推</p>
@@ -1680,6 +1774,7 @@ export default function DeliveryPage() {
                     <th className="py-2 px-2 text-left">订单号</th>
                     <th className="py-2 px-2 text-left">客户</th>
                     <th className="py-2 px-2 text-left">物料</th>
+                    <th className="py-2 px-2 text-left">类目</th>
                     <th className="py-2 px-2 text-right">未交数量</th>
                     <th className="py-2 px-2 text-right">库存量</th>
                     <th className="py-2 px-2 text-center">状态</th>
@@ -1690,9 +1785,18 @@ export default function DeliveryPage() {
                   {customerOrders.map((order) => {
                     const orderItems = (order.customer_order_items || []).filter(i => Number(i.quantity) - Number(i.delivered_qty) > 0);
                     if (orderItems.length === 0) return null;
-                    return orderItems.map((item, idx) => {
+                    // 按类目筛选
+                    const selectedCategories = (form.delivery_category || '').split(',').filter(Boolean);
+                    const filteredOrderItems = selectedCategories.length > 0
+                      ? orderItems.filter((item) => {
+                          const rawProd = item.products;
+                          const prod = Array.isArray(rawProd) ? rawProd[0] as Product : rawProd as Product;
+                          return prod?.category && selectedCategories.includes(prod.category);
+                        })
+                      : orderItems;
+                    if (filteredOrderItems.length === 0) return null;
+                    return filteredOrderItems.map((item, idx) => {
                       const undelivered = Number(item.quantity) - Number(item.delivered_qty);
-                      // 从orderInventoryMap查找库存总量
                       const totalStock = (() => {
                         const inv = orderInventoryMap[item.product_id];
                         return inv ? inv.quantity : 0;
@@ -1707,24 +1811,38 @@ export default function DeliveryPage() {
                         if (Array.isArray(rawProd)) return (rawProd[0] as Product)?.code || '';
                         return (rawProd as Product)?.code || '';
                       })();
+                      const prodCategory = (() => {
+                        const rawProd = item.products;
+                        if (Array.isArray(rawProd)) return (rawProd[0] as Product)?.category || '';
+                        return (rawProd as Product)?.category || '';
+                      })();
                       return (
                         <tr key={`${order.id}-${idx}`} className="border-b hover:bg-gray-50">
                           {idx === 0 ? (
                             <>
-                              <td className="py-2 px-2 font-mono" rowSpan={orderItems.length}>{order.order_no}</td>
-                              <td className="py-2 px-2" rowSpan={orderItems.length}>
+                              <td className="py-2 px-2 font-mono" rowSpan={filteredOrderItems.length}>{order.order_no}</td>
+                              <td className="py-2 px-2" rowSpan={filteredOrderItems.length}>
                                 {customers.find(c => c.id === order.customer_id)?.name || '-'}
                               </td>
                             </>
                           ) : null}
                           <td className="py-2 px-2">{prodName} <span className="text-gray-400">{prodCode}</span></td>
+                          <td className="py-2 px-2">
+                            {prodCategory ? (
+                              <span className="inline-block px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
+                                {products.filter((p) => p.category === prodCategory).slice(0, 2).map((p) => p.name).join('/') || prodCategory}
+                              </span>
+                            ) : (
+                              <span className="text-gray-300">-</span>
+                            )}
+                          </td>
                           <td className="py-2 px-2 text-right font-mono">{undelivered}</td>
                           <td className="py-2 px-2 text-right font-mono">{totalStock > 0 ? <span className="text-green-600">{totalStock}</span> : <span className="text-red-500">0</span>}</td>
                           <td className="py-2 px-2 text-center">
                             <span className="text-xs text-gray-400">导入时检查</span>
                           </td>
                           {idx === 0 ? (
-                            <td className="py-2 px-2 text-center" rowSpan={orderItems.length}>
+                            <td className="py-2 px-2 text-center" rowSpan={filteredOrderItems.length}>
                               <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => void importFromOrder(order)}>
                                 导入
                               </Button>
