@@ -21,30 +21,37 @@ function getLocationColor(loc: string) {
   return LOCATION_COLORS[key] || null;
 }
 
-interface Product {
-  id: string;
-  code: string;
-  name: string;
-  spec: string | null;
-  unit: string;
-}
-
 interface Warehouse {
   id: string;
   name: string;
-  location: string | null;
   type?: string;
 }
 
-interface InventoryItem {
+interface InventoryRecord {
   id: string;
-  product_id: string;
   warehouse_id: string;
-  quantity: string;
-  reserved_qty: string;
-  location_no: string | null;
-  products: Product;
-  warehouses: Warehouse;
+  warehouse_name: string;
+  warehouse_type: string;
+  quantity: number;
+  reserved_qty: number;
+  available: number;
+  location_no: string;
+}
+
+interface InventorySummary {
+  product_id: string;
+  product_code: string;
+  product_name: string;
+  product_spec: string | null;
+  product_unit: string;
+  product_category: string | null;
+  product_type: string | null;
+  product_price: number;
+  product_location_no: string;
+  total_quantity: number;
+  total_reserved: number;
+  total_available: number;
+  inventory_records: InventoryRecord[];
 }
 
 interface Transaction {
@@ -132,7 +139,8 @@ type TabKey = 'inventory' | 'heatmap' | 'fifo' | 'trend';
 
 export default function InventoryPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('inventory');
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [inventory, setInventory] = useState<InventorySummary[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState('');
   const [warehouseType, setWarehouseType] = useState<string>('all');
@@ -175,7 +183,10 @@ export default function InventoryPage() {
     setLoading(true);
     const res = await fetch('/api/inventory');
     const data = await res.json();
-    if (Array.isArray(data)) setInventory(data);
+    if (data.items) {
+      setInventory(data.items);
+      setWarehouses(data.warehouses || []);
+    }
     setLoading(false);
   }, []);
 
@@ -201,16 +212,16 @@ export default function InventoryPage() {
     setTxLoading(false);
   }, []);
 
-  // 保存库位号
-  const saveLocationNo = useCallback(async (inventoryId: string, locationNo: string) => {
+  // 保存库位号（更新产品表）
+  const saveLocationNo = useCallback(async (productId: string, locationNo: string) => {
     try {
-      await fetch('/api/inventory', {
+      await fetch('/api/products', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: inventoryId, location_no: locationNo }),
+        body: JSON.stringify({ id: productId, location_no: locationNo }),
       });
       setInventory(prev => prev.map(item =>
-        item.id === inventoryId ? { ...item, location_no: locationNo } : item
+        item.product_id === productId ? { ...item, product_location_no: locationNo } : item
       ));
     } catch {
       // 失败时静默回退
@@ -218,35 +229,55 @@ export default function InventoryPage() {
     setEditingLocationId(null);
   }, []);
 
-  // 保存数量修改
-  const saveQty = useCallback(async (inventoryId: string, field: 'quantity' | 'reserved_qty', value: string) => {
+  // 保存数量修改（如果有库存记录则更新，否则创建）
+  const saveQty = useCallback(async (recordId: string | null, productId: string, warehouseId: string | null, field: 'quantity' | 'reserved_qty', value: string) => {
     const numValue = parseFloat(value);
     if (isNaN(numValue) || numValue < 0) {
       setEditingQtyId(null);
       return;
     }
     try {
-      const res = await fetch('/api/inventory', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: inventoryId, [field]: numValue }),
-      });
-      if (res.ok) {
-        const updated = await res.json();
-        setInventory(prev => prev.map(item =>
-          item.id === inventoryId ? { ...item, [field]: String(numValue) } : item
-        ));
+      if (recordId) {
+        // 更新已有库存记录
+        const res = await fetch('/api/inventory', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: recordId, [field]: numValue }),
+        });
+        if (res.ok) {
+          setInventory(prev => prev.map(item => {
+            if (item.product_id !== productId) return item;
+            return {
+              ...item,
+              inventory_records: item.inventory_records.map(r =>
+                r.id === recordId ? { ...r, [field]: numValue, available: r.quantity - r.reserved_qty } : r
+              ),
+              total_quantity: item.inventory_records.reduce((s, r) => s + (r.id === recordId ? (field === 'quantity' ? numValue : r.quantity) : r.quantity), 0),
+              total_reserved: item.inventory_records.reduce((s, r) => s + (r.id === recordId ? (field === 'reserved_qty' ? numValue : r.reserved_qty) : r.reserved_qty), 0),
+            };
+          }));
+        }
+      } else if (warehouseId) {
+        // 创建新库存记录（产品还没有库存记录时）
+        const res = await fetch('/api/inventory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ product_id: productId, warehouse_id: warehouseId, [field]: numValue }),
+        });
+        if (res.ok) {
+          loadInventory();
+        }
       }
     } catch {
       // 失败时静默回退
     }
     setEditingQtyId(null);
-  }, []);
+  }, [loadInventory]);
 
   // 开始编辑库位号
-  const startEditLocation = useCallback((item: InventoryItem) => {
-    setEditingLocationId(item.id);
-    setEditingLocationValue(item.location_no || '');
+  const startEditLocation = useCallback((item: InventorySummary) => {
+    setEditingLocationId(item.product_id);
+    setEditingLocationValue(item.product_location_no || '');
   }, []);
 
   // 导入库位号Excel
@@ -313,27 +344,31 @@ export default function InventoryPage() {
   const filteredInventory = (() => {
     let result = inventory;
     if (warehouseType !== 'all') {
-      result = result.filter(item => item.warehouses?.type === warehouseType);
+      result = result.filter(item =>
+        item.inventory_records.some(r => r.warehouse_type === warehouseType)
+      );
     }
     if (keyword) {
       const kw = keyword.toLowerCase();
       result = result.filter(
         (item) =>
-          item.products?.code?.toLowerCase().includes(kw) ||
-          item.products?.name?.toLowerCase().includes(kw) ||
-          (item.location_no && item.location_no.toLowerCase().includes(kw))
+          item.product_code?.toLowerCase().includes(kw) ||
+          item.product_name?.toLowerCase().includes(kw) ||
+          (item.product_location_no && item.product_location_no.toLowerCase().includes(kw))
       );
     }
     return result;
   })();
 
-  // 按产品汇总库存
+  // 转换为旧的汇总格式，保持表格渲染逻辑不变
   const summaryMap = new Map<string, {
-    product: Product;
+    product: { id: string; code: string; name: string; unit: string; type: string | null; location_no?: string; [key: string]: unknown };
+    product_location_no: string;
     totalQty: number;
     totalReserved: number;
     warehouses: Array<{
       inventoryId: string;
+      warehouseId: string;
       name: string;
       qty: string;
       reserved: string;
@@ -342,23 +377,27 @@ export default function InventoryPage() {
   }>();
   filteredInventory.forEach((item) => {
     const key = item.product_id;
-    if (!summaryMap.has(key)) {
-      summaryMap.set(key, {
-        product: item.products,
-        totalQty: 0,
-        totalReserved: 0,
-        warehouses: [],
-      });
-    }
-    const entry = summaryMap.get(key)!;
-    entry.totalQty += parseFloat(item.quantity) || 0;
-    entry.totalReserved += parseFloat(item.reserved_qty) || 0;
-    entry.warehouses.push({
-      inventoryId: item.id,
-      name: item.warehouses?.name || '默认',
-      qty: item.quantity,
-      reserved: item.reserved_qty || '0',
-      locationNo: item.location_no || null,
+    const product = {
+      id: item.product_id,
+      code: item.product_code,
+      name: item.product_name,
+      unit: item.product_unit,
+      location_no: item.product_location_no,
+      type: item.product_type || '',
+    };
+    summaryMap.set(key, {
+      product,
+      product_location_no: item.product_location_no || '',
+      totalQty: item.total_quantity,
+      totalReserved: item.total_reserved,
+      warehouses: item.inventory_records.map(r => ({
+        inventoryId: r.id,
+        warehouseId: r.warehouse_id,
+        name: r.warehouse_name,
+        qty: r.quantity.toString(),
+        reserved: r.reserved_qty.toString(),
+        locationNo: r.location_no,
+      })),
     });
   });
 
@@ -575,7 +614,7 @@ export default function InventoryPage() {
                         </td>
                         <td className="px-5 py-3 text-gray-900">{summary.product.name}</td>
                         <td className="px-5 py-3 text-right">
-                          {editingQtyId === summary.warehouses[0]?.inventoryId && editingQtyField === 'quantity' && summary.warehouses.length === 1 ? (
+                          {editingQtyId === (summary.warehouses[0]?.inventoryId || productId) && editingQtyField === 'quantity' && summary.warehouses.length <= 1 ? (
                             <Input
                               autoFocus
                               type="number"
@@ -583,9 +622,9 @@ export default function InventoryPage() {
                               min="0"
                               value={editingQtyValue}
                               onChange={(e) => setEditingQtyValue(e.target.value)}
-                              onBlur={() => saveQty(summary.warehouses[0].inventoryId, 'quantity', editingQtyValue)}
+                              onBlur={() => saveQty(summary.warehouses[0]?.inventoryId || null, productId, summary.warehouses[0]?.warehouseId || null, 'quantity', editingQtyValue)}
                               onKeyDown={(e) => {
-                                if (e.key === 'Enter') saveQty(summary.warehouses[0].inventoryId, 'quantity', editingQtyValue);
+                                if (e.key === 'Enter') saveQty(summary.warehouses[0]?.inventoryId || null, productId, summary.warehouses[0]?.warehouseId || null, 'quantity', editingQtyValue);
                                 if (e.key === 'Escape') setEditingQtyId(null);
                               }}
                               className="h-7 w-24 text-right font-mono text-sm"
@@ -594,13 +633,13 @@ export default function InventoryPage() {
                             <button
                               className="font-mono font-medium text-gray-900 hover:text-blue-600 hover:underline cursor-pointer group"
                               onClick={() => {
-                                if (summary.warehouses.length === 1) {
-                                  setEditingQtyId(summary.warehouses[0].inventoryId);
+                                if (summary.warehouses.length <= 1) {
+                                  setEditingQtyId(summary.warehouses[0]?.inventoryId || productId);
                                   setEditingQtyField('quantity');
                                   setEditingQtyValue(summary.totalQty.toFixed(2));
                                 }
                               }}
-                              title={summary.warehouses.length === 1 ? '点击修改库存数量' : '请在仓库明细中修改'}
+                              title={summary.warehouses.length <= 1 ? '点击修改库存数量' : '请在仓库明细中修改'}
                             >
                               {summary.totalQty.toFixed(2)}
                               <Pencil className="inline w-3 h-3 ml-1 opacity-0 group-hover:opacity-50 transition-opacity" />
@@ -608,7 +647,7 @@ export default function InventoryPage() {
                           )}
                         </td>
                         <td className="px-5 py-3 text-right">
-                          {editingQtyId === summary.warehouses[0]?.inventoryId && editingQtyField === 'reserved_qty' && summary.warehouses.length === 1 ? (
+                          {editingQtyId === (summary.warehouses[0]?.inventoryId || productId) && editingQtyField === 'reserved_qty' && summary.warehouses.length <= 1 ? (
                             <Input
                               autoFocus
                               type="number"
@@ -616,9 +655,9 @@ export default function InventoryPage() {
                               min="0"
                               value={editingQtyValue}
                               onChange={(e) => setEditingQtyValue(e.target.value)}
-                              onBlur={() => saveQty(summary.warehouses[0].inventoryId, 'reserved_qty', editingQtyValue)}
+                              onBlur={() => saveQty(summary.warehouses[0]?.inventoryId || null, productId, summary.warehouses[0]?.warehouseId || null, 'reserved_qty', editingQtyValue)}
                               onKeyDown={(e) => {
-                                if (e.key === 'Enter') saveQty(summary.warehouses[0].inventoryId, 'reserved_qty', editingQtyValue);
+                                if (e.key === 'Enter') saveQty(summary.warehouses[0]?.inventoryId || null, productId, summary.warehouses[0]?.warehouseId || null, 'reserved_qty', editingQtyValue);
                                 if (e.key === 'Escape') setEditingQtyId(null);
                               }}
                               className="h-7 w-24 text-right font-mono text-sm"
@@ -627,13 +666,13 @@ export default function InventoryPage() {
                             <button
                               className="font-mono text-amber-600 hover:text-blue-600 hover:underline cursor-pointer group"
                               onClick={() => {
-                                if (summary.warehouses.length === 1) {
-                                  setEditingQtyId(summary.warehouses[0].inventoryId);
+                                if (summary.warehouses.length <= 1) {
+                                  setEditingQtyId(summary.warehouses[0]?.inventoryId || productId);
                                   setEditingQtyField('reserved_qty');
                                   setEditingQtyValue(summary.totalReserved.toFixed(2));
                                 }
                               }}
-                              title={summary.warehouses.length === 1 ? '点击修改预留数量' : '请在仓库明细中修改'}
+                              title={summary.warehouses.length <= 1 ? '点击修改预留数量' : '请在仓库明细中修改'}
                             >
                               {summary.totalReserved.toFixed(2)}
                               <Pencil className="inline w-3 h-3 ml-1 opacity-0 group-hover:opacity-50 transition-opacity" />
@@ -650,9 +689,9 @@ export default function InventoryPage() {
                                   autoFocus
                                   value={editingLocationValue}
                                   onChange={(e) => setEditingLocationValue(e.target.value)}
-                                  onBlur={() => setTimeout(() => saveLocationNo(summary.warehouses[0].inventoryId, editingLocationValue), 150)}
+                                  onBlur={() => setTimeout(() => saveLocationNo(summary.product.id, editingLocationValue), 150)}
                                   onKeyDown={(e) => {
-                                    if (e.key === 'Enter') saveLocationNo(summary.warehouses[0].inventoryId, editingLocationValue);
+                                    if (e.key === 'Enter') saveLocationNo(summary.product.id, editingLocationValue);
                                     if (e.key === 'Escape') setEditingLocationId(null);
                                   }}
                                   className="h-7 w-28 text-xs font-mono"
@@ -679,11 +718,11 @@ export default function InventoryPage() {
                             ) : (
                               <button
                                 className="flex items-center gap-1 cursor-pointer group"
-                                onClick={() => startEditLocation({ id: summary.warehouses[0].inventoryId, location_no: summary.warehouses[0].locationNo } as InventoryItem)}
+                                onClick={() => { setEditingLocationId(summary.product.id); setEditingLocationValue(summary.warehouses[0]?.locationNo || ''); }}
                                 title="点击编辑库位号"
                               >
                                 {(() => {
-                                  const loc = summary.warehouses[0].locationNo;
+                                  const loc = summary.product_location_no || summary.warehouses[0]?.locationNo || '';
                                   const color = loc ? getLocationColor(loc) : null;
                                   return color ? (
                                     <span className={`inline-flex items-center justify-center w-10 h-10 rounded-lg text-xl font-black ${color.bg} ${color.text} shadow-sm group-hover:shadow-md transition-all`}>
@@ -707,9 +746,9 @@ export default function InventoryPage() {
                                       autoFocus
                                       value={editingLocationValue}
                                       onChange={(e) => setEditingLocationValue(e.target.value)}
-                                      onBlur={() => setTimeout(() => saveLocationNo(w.inventoryId, editingLocationValue), 150)}
+                                      onBlur={() => setTimeout(() => saveLocationNo(summary.product.id, editingLocationValue), 150)}
                                       onKeyDown={(e) => {
-                                        if (e.key === 'Enter') saveLocationNo(w.inventoryId, editingLocationValue);
+                                        if (e.key === 'Enter') saveLocationNo(summary.product.id, editingLocationValue);
                                         if (e.key === 'Escape') setEditingLocationId(null);
                                       }}
                                       className="h-7 w-28 text-xs font-mono"
@@ -738,7 +777,7 @@ export default function InventoryPage() {
                                     key={w.inventoryId}
                                     className="flex items-center gap-1 cursor-pointer group"
                                     onClick={() => {
-                                      setEditingLocationId(w.inventoryId);
+                                      setEditingLocationId(summary.product.id);
                                       setEditingLocationValue(w.locationNo || '');
                                     }}
                                     title={`${w.name} - 点击编辑库位号`}
@@ -775,9 +814,9 @@ export default function InventoryPage() {
                                     min="0"
                                     value={editingQtyValue}
                                     onChange={(e) => setEditingQtyValue(e.target.value)}
-                                    onBlur={() => saveQty(w.inventoryId, 'quantity', editingQtyValue)}
+                                    onBlur={() => saveQty(w.inventoryId, productId, w.warehouseId, 'quantity', editingQtyValue)}
                                     onKeyDown={(e) => {
-                                      if (e.key === 'Enter') saveQty(w.inventoryId, 'quantity', editingQtyValue);
+                                      if (e.key === 'Enter') saveQty(w.inventoryId, productId, w.warehouseId, 'quantity', editingQtyValue);
                                       if (e.key === 'Escape') setEditingQtyId(null);
                                     }}
                                     className="h-6 w-20 text-right font-mono text-xs"
@@ -804,9 +843,9 @@ export default function InventoryPage() {
                                     min="0"
                                     value={editingQtyValue}
                                     onChange={(e) => setEditingQtyValue(e.target.value)}
-                                    onBlur={() => saveQty(w.inventoryId, 'reserved_qty', editingQtyValue)}
+                                    onBlur={() => saveQty(w.inventoryId, productId, w.warehouseId, 'reserved_qty', editingQtyValue)}
                                     onKeyDown={(e) => {
-                                      if (e.key === 'Enter') saveQty(w.inventoryId, 'reserved_qty', editingQtyValue);
+                                      if (e.key === 'Enter') saveQty(w.inventoryId, productId, w.warehouseId, 'reserved_qty', editingQtyValue);
                                       if (e.key === 'Escape') setEditingQtyId(null);
                                     }}
                                     className="h-6 w-20 text-right font-mono text-xs"
