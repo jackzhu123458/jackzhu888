@@ -1,16 +1,14 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { translateUnit } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -46,107 +44,32 @@ import {
   Minus,
   ArrowRight,
 } from 'lucide-react';
-import JsBarcode from 'jsbarcode';
 
-/* ─── Types ─── */
-interface Product {
-  id: string;
-  code: string;
-  name: string;
-  spec: string | null;
-  unit: string;
-  category: string | null;
-}
-interface Customer {
-  id: string;
-  code: string;
-  name: string;
-  contact: string | null;
-  phone: string | null;
-  address: string | null;
-}
-interface OrderItem {
-  id: string;
-  product_id: string;
-  quantity: number;
-  delivered_qty: number;
-  price: number | null;
-  remark: string | null;
-  products?: Product | Product[];
-}
-interface CustomerOrder {
-  id: string;
-  order_no: string;
-  customer_id: string;
-  status: string;
-  customer_order_items?: OrderItem[];
-  customers?: Customer;
-}
-interface DeliveryItem {
-  id?: string;
-  product_id: string;
-  product?: Product;
-  products?: Product | Product[];
-  quantity: number;
-  unit_price: number;
-  per_box_qty: number;
-  remark: string;
-  customer_order_item_id?: string | null;
-  customer_order?: string;
-}
-interface DeliveryNote {
-  id: string;
-  note_no: string;
-  customer_id?: string | null;
-  customer_name: string;
-  customer_address?: string | null;
-  customer_contact?: string | null;
-  customer_phone?: string | null;
-  customer_order?: string | null;
-  customer_order_id?: string | null;
-  warehouse_id?: string | null;
-  delivery_category?: string | null;
-  delivery_date: string;
-  status: string;
-  remark: string | null;
-  created_at: string;
-  delivery_note_items: DeliveryItem[];
-}
+// Extracted components
+import DeliveryPrintArea from './delivery-print';
+import LabelPrintDialog from './label-print-dialog';
+import CategoryGroupDialog from './category-group-dialog';
+import OrderPickerDialog from './order-picker-dialog';
+import ShipDialog from './ship-dialog';
 
-/* ─── Helpers ─── */
-const formatDate = (d: string) => {
-  try {
-    return new Date(d).toISOString().split('T')[0];
-  } catch {
-    return d;
-  }
-};
-const statusLabel = (s: string) => {
-  const m: Record<string, { label: string; cls: string }> = {
-    draft: { label: '草稿', cls: 'bg-yellow-100 text-yellow-800' },
-    confirmed: { label: '已确认', cls: 'bg-blue-100 text-blue-800' },
-    shipped: { label: '已出货', cls: 'bg-blue-100 text-blue-800' },
-    printed: { label: '已打印', cls: 'bg-green-100 text-green-800' },
-  };
-  return m[s] || { label: s, cls: 'bg-gray-100 text-gray-800' };
-};
-
-const emptyNote = (): Omit<DeliveryNote, 'id' | 'created_at'> => ({
-  note_no: '',
-  customer_id: null,
-  customer_name: '',
-  customer_address: '',
-  customer_contact: '',
-  customer_phone: '',
-  customer_order: '',
-  customer_order_id: null,
-  warehouse_id: null,
-  delivery_category: '',
-  delivery_date: new Date().toISOString().split('T')[0],
-  status: 'draft',
-  remark: '',
-  delivery_note_items: [],
-});
+// Shared types & utils
+import type {
+  Product,
+  Customer,
+  CustomerOrder,
+  DeliveryItem,
+  DeliveryNote,
+  CategoryGroup,
+  CompanyInfo,
+} from './types';
+import {
+  resolveProduct,
+  parseCategories,
+  formatDate,
+  statusLabel,
+  emptyNote,
+  filterItemsByCategory,
+} from './types';
 
 /* ─── Component ─── */
 export default function DeliveryPage() {
@@ -157,50 +80,35 @@ export default function DeliveryPage() {
   const [editMode, setEditMode] = useState(false);
   const [isFormDirty, setIsFormDirty] = useState(false);
 
-  // Form state (the note being edited / viewed)
+  // Form state
   const [form, setForm] = useState<Omit<DeliveryNote, 'id' | 'created_at'> & { id?: string }>(emptyNote());
 
   // Dialogs
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [productPickerOpen, setProductPickerOpen] = useState(false);
-  const [addingRowIdx, setAddingRowIdx] = useState(-1);
   const [searchQuery, setSearchQuery] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
-  // Delivery print preview
+  // Print preview
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
   const [printData, setPrintData] = useState<DeliveryNote | null>(null);
-  const [companyInfo, setCompanyInfo] = useState<{ name?: string; short_name?: string; code?: string; address?: string; contact?: string; phone?: string; fax?: string; email?: string; tax_no?: string; bank_name?: string; bank_account?: string; invoice_title?: string }>({});
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo>({});
 
   // Label printing
   const [labelOpen, setLabelOpen] = useState(false);
-  const [labelBoxes, setLabelBoxes] = useState<number[][]>([]);
-  const [labelPreview, setLabelPreview] = useState(false);
 
   // Order picker
   const [orderPickerOpen, setOrderPickerOpen] = useState(false);
   const [customerOrders, setCustomerOrders] = useState<CustomerOrder[]>([]);
   const [warehouses, setWarehouses] = useState<Array<{ id: string; name: string }>>([]);
   const [shipDialogOpen, setShipDialogOpen] = useState(false);
-  const [shipWarehouseId, setShipWarehouseId] = useState('');
   const [itemSearches, setItemSearches] = useState<Record<number, string>>({});
   const [orderInventoryMap, setOrderInventoryMap] = useState<Record<string, { quantity: number; reserved_qty: number }>>({});
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
 
-  // 类目分组
-  interface CategoryGroup {
-    id?: number;
-    group_no: number;
-    group_name: string;
-    categories: string; // 逗号分隔
-  }
+  // Category groups
   const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
   const [groupManageOpen, setGroupManageOpen] = useState(false);
-  const [editingGroups, setEditingGroups] = useState<CategoryGroup[]>([]);
-
-  const printRef = useRef<HTMLDivElement>(null);
-  const labelPrintRef = useRef<HTMLDivElement>(null);
 
   const current = currentIdx >= 0 ? notes[currentIdx] : null;
 
@@ -219,16 +127,16 @@ export default function DeliveryPage() {
       fetch('/api/warehouses'),
       fetch('/api/settings'),
     ]);
-    const cData = await cRes.json();
-    const pData = await pRes.json();
-    const oData = await oRes.json();
-    const whData = await whRes.json();
-    const sData = await sRes.json();
+    const [cData, pData, oData, whData, sData] = await Promise.all([
+      cRes.json(), pRes.json(), oRes.json(), whRes.json(), sRes.json(),
+    ]);
+
     setCustomers(Array.isArray(cData) ? cData : []);
-    if (Array.isArray(oData)) setCustomerOrders(oData.filter((o: CustomerOrder) => o.status === 'confirmed' || o.status === 'in_progress' || o.status === 'pending'));
+    if (Array.isArray(oData)) setCustomerOrders(oData.filter((o: CustomerOrder) => ['confirmed', 'in_progress', 'pending'].includes(o.status)));
     if (Array.isArray(whData)) setWarehouses(whData);
     setProducts(Array.isArray(pData) ? pData : []);
-    // 提取产品类目列表（去重，排除空值和BOM占位）
+
+    // 提取产品类目列表
     const cats = new Set<string>();
     (Array.isArray(pData) ? pData : []).forEach((p: Product) => {
       if (p.category && p.category !== '0' && !p.code.startsWith('BOM-')) {
@@ -287,16 +195,12 @@ export default function DeliveryPage() {
       delivery_date: formatDate(fullNote.delivery_date),
       status: fullNote.status,
       remark: fullNote.remark || '',
+      delivery_category: fullNote.delivery_category || '',
       delivery_note_items: Array.isArray(fullNote.delivery_note_items)
         ? fullNote.delivery_note_items
             .filter((it: DeliveryItem) => !('count' in (it as unknown as Record<string, unknown>) && Object.keys(it as unknown as Record<string, unknown>).length <= 2))
             .map((it: DeliveryItem & { products?: Product | Product[] }) => {
-              // Supabase JOIN 返回 products (复数)，统一转为 product (单数)
-              const rawProd = it.products;
-              let product: Product | undefined;
-              if (rawProd) {
-                product = Array.isArray(rawProd) ? rawProd[0] : rawProd;
-              }
+              const product = resolveProduct(it.products);
               return {
                 ...it,
                 product,
@@ -309,7 +213,7 @@ export default function DeliveryPage() {
     });
   };
 
-  // 首次加载后自动选择第一条记录
+  // 首次加载后自动选择第一条
   useEffect(() => {
     if (notes.length > 0 && currentIdx < 0 && !editMode) {
       setCurrentIdx(0);
@@ -332,11 +236,6 @@ export default function DeliveryPage() {
     setIsFormDirty(false);
   };
 
-  const handleEdit = () => {
-    if (!current) return;
-    setEditMode(true);
-  };
-
   const handleSave = async () => {
     if (!form.customer_name) {
       alert('请填写客户名称');
@@ -344,8 +243,7 @@ export default function DeliveryPage() {
     }
     const payload = {
       ...form,
-      delivery_date: form.delivery_date,
-      items: form.delivery_note_items.map((it) => ({
+      items: form.delivery_note_items.map(it => ({
         product_id: it.product_id,
         quantity: it.quantity,
         unit_price: it.unit_price,
@@ -354,7 +252,7 @@ export default function DeliveryPage() {
         customer_order_item_id: it.customer_order_item_id || null,
       })),
     };
-    // Only keep fields that belong to delivery_notes table + items
+    // 排除非数据库字段
     const { id, delivery_note_items, customer_order, customer_orders, items, ...noteFields } = payload as typeof payload & { id?: string; customer_order?: unknown; customer_orders?: unknown };
 
     try {
@@ -375,7 +273,7 @@ export default function DeliveryPage() {
         });
         const created = await res.json();
         if (created.error) { alert('保存失败: ' + created.error); return; }
-        setForm((prev) => ({ ...prev, id: created.id }));
+        setForm(prev => ({ ...prev, id: created.id }));
         const refreshed = await fetch('/api/delivery').then(r => r.json());
         if (Array.isArray(refreshed)) {
           setNotes(refreshed);
@@ -409,7 +307,7 @@ export default function DeliveryPage() {
 
   /* ─── Customer auto-fill ─── */
   const pickCustomer = (cust: Customer) => {
-    setForm((prev) => ({
+    setForm(prev => ({
       ...prev,
       customer_id: cust.id,
       customer_name: cust.name,
@@ -424,17 +322,17 @@ export default function DeliveryPage() {
 
   /* ─── Import from customer order ─── */
   const importFromOrder = async (order: CustomerOrder) => {
-    // 获取可用库存信息，按 product_id 汇总
+    // 获取库存
     let inventoryMap: Record<string, { quantity: number; reserved_qty: number }> = {};
     try {
       const invRes = await fetch('/api/inventory');
       const invData = await invRes.json();
-      const items = Array.isArray(invData) ? invData : (invData.items || []);
-      for (const item of items) {
+      const invItems = Array.isArray(invData) ? invData : (invData.items || []);
+      for (const item of invItems) {
         const pid = item.product_id;
-        const existing = inventoryMap[pid];
         const qty = Number(item.total_quantity) || 0;
         const reserved = Number(item.total_reserved) || 0;
+        const existing = inventoryMap[pid];
         if (existing) {
           existing.quantity += qty;
           existing.reserved_qty += reserved;
@@ -445,23 +343,13 @@ export default function DeliveryPage() {
     } catch { /* ignore */ }
     setOrderInventoryMap(inventoryMap);
 
-    // 过滤：只导入有库存的物料
-    // 注意：可用库存 = quantity（总库存），而非 quantity - reserved_qty
-    // 因为 reserved_qty 是为这些客户订单预扣的，送货时正是要扣减这些预扣量
-    // 同时按送货类目筛选：如果设置了类目，只导入属于该类目的产品
-    const selectedCategories = (form.delivery_category || '').split(',').filter(Boolean);
-    const filteredItems = (order.customer_order_items || []).filter((item) => {
-      const undelivered = Number(item.quantity) - Number(item.delivered_qty);
-      if (undelivered <= 0) return false;
+    const selectedCategories = parseCategories(form.delivery_category);
+    const orderItems = (order.customer_order_items || []).filter(i => Number(i.quantity) - Number(i.delivered_qty) > 0);
+
+    // 按类目筛选 + 检查库存
+    const filteredItems = filterItemsByCategory(orderItems, selectedCategories).filter(item => {
       const inv = inventoryMap[item.product_id];
-      if (!inv || inv.quantity <= 0) return false;
-      // 按类目筛选
-      if (selectedCategories.length > 0) {
-        const rawProd = item.products;
-        const prod = Array.isArray(rawProd) ? rawProd[0] as Product : rawProd as Product;
-        if (!prod?.category || !selectedCategories.includes(prod.category)) return false;
-      }
-      return true;
+      return inv && inv.quantity > 0;
     });
 
     if (filteredItems.length === 0) {
@@ -469,39 +357,23 @@ export default function DeliveryPage() {
       return;
     }
 
-    const hasUnavailable = (order.customer_order_items || []).some((item) => {
+    const hasUnavailable = orderItems.some(item => {
       const undelivered = Number(item.quantity) - Number(item.delivered_qty);
       if (undelivered <= 0) return false;
       const inv = inventoryMap[item.product_id];
       return !inv || inv.quantity <= 0;
     });
+    if (hasUnavailable && !window.confirm('部分物料库存不足（未完成生产），仅导入有库存的物料。是否继续？')) return;
 
-    if (hasUnavailable) {
-      const proceed = window.confirm('部分物料库存不足（未完成生产），仅导入有库存的物料。是否继续？');
-      if (!proceed) return;
-    }
-
-    const items: DeliveryItem[] = filteredItems.map((item) => {
-      // Supabase JOIN 返回 products 为对象或数组，统一提取为单对象
-      const rawProd = item.products;
-      let product: Product | undefined;
-      if (rawProd) {
-        if (Array.isArray(rawProd)) {
-          product = rawProd[0] as Product;
-        } else if (typeof rawProd === 'object') {
-          product = rawProd as Product;
-        }
-      }
-
+    const items: DeliveryItem[] = filteredItems.map(item => {
+      const prod = resolveProduct(item.products);
       const undelivered = Number(item.quantity) - Number(item.delivered_qty);
-      // 库存数量，限制送货数量不超过库存总量
-      const inv = inventoryMap[item.product_id];
-      const stockQty = inv ? inv.quantity : 0;
+      const stockQty = inventoryMap[item.product_id]?.quantity || 0;
       const deliverQty = Math.min(undelivered, stockQty);
 
       return {
         product_id: item.product_id,
-        product,
+        product: prod,
         quantity: deliverQty,
         unit_price: Number(item.price) || 0,
         per_box_qty: deliverQty,
@@ -512,7 +384,7 @@ export default function DeliveryPage() {
     });
 
     const cust = order.customers as Record<string, string> | undefined;
-    setForm((prev) => ({
+    setForm(prev => ({
       ...prev,
       customer_id: order.customer_id || '',
       customer_name: cust?.name || '',
@@ -529,54 +401,19 @@ export default function DeliveryPage() {
   };
 
   /* ─── Items manipulation ─── */
-  const addItem = (product: Product) => {
-    setForm((prev) => ({
-      ...prev,
-      delivery_note_items: [
-        ...prev.delivery_note_items,
-        {
-          product_id: product.id,
-          product: product,
-          quantity: 0,
-          unit_price: 0,
-          per_box_qty: 0,
-          remark: '',
-        },
-      ],
-    }));
-    setProductPickerOpen(false);
-    setIsFormDirty(true);
-  };
-
   const removeItem = (idx: number) => {
-    setForm((prev) => ({
+    setForm(prev => ({
       ...prev,
       delivery_note_items: prev.delivery_note_items.filter((_, i) => i !== idx),
     }));
     setIsFormDirty(true);
   };
 
-  const addEmptyItem = () => {
-    setForm((prev) => ({
-      ...prev,
-      delivery_note_items: [...prev.delivery_note_items, {
-        product_id: '',
-        quantity: 0,
-        unit_price: 0,
-        per_box_qty: 0,
-        remark: '',
-      }],
-    }));
-  };
-
   const updateItem = (idx: number, field: keyof DeliveryItem, value: string | number) => {
-    setForm((prev) => {
+    setForm(prev => {
       const items = [...prev.delivery_note_items];
       items[idx] = { ...items[idx], [field]: value };
-      // Auto-fill per_box_qty = quantity when quantity changes
-      if (field === 'quantity') {
-        items[idx].per_box_qty = Number(value);
-      }
+      if (field === 'quantity') items[idx].per_box_qty = Number(value);
       return { ...prev, delivery_note_items: items };
     });
     setIsFormDirty(true);
@@ -586,33 +423,23 @@ export default function DeliveryPage() {
   const searchDeliveryProducts = (query: string) => {
     if (!query.trim()) return [];
     const q = query.toLowerCase();
-    return products.filter(
-      (p) => p.code?.toLowerCase().includes(q) || p.name?.toLowerCase().includes(q) || p.spec?.toLowerCase().includes(q)
+    return products.filter(p =>
+      p.code?.toLowerCase().includes(q) || p.name?.toLowerCase().includes(q) || p.spec?.toLowerCase().includes(q)
     ).slice(0, 20);
   };
 
   const selectProductForItem = (idx: number, p: Product) => {
-    setForm((prev) => {
+    setForm(prev => {
       const items = [...prev.delivery_note_items];
-      items[idx] = {
-        ...items[idx],
-        product_id: p.id,
-        product: p,
-        per_box_qty: items[idx].quantity || 0,
-      };
+      items[idx] = { ...items[idx], product_id: p.id, product: p, per_box_qty: items[idx].quantity || 0 };
       return { ...prev, delivery_note_items: items };
     });
-    setItemSearches((prev) => {
-      const next = { ...prev };
-      delete next[idx];
-      return next;
-    });
+    setItemSearches(prev => { const next = { ...prev }; delete next[idx]; return next; });
     setIsFormDirty(true);
   };
 
   /* ─── Print delivery note ─── */
   const handlePrintDelivery = async () => {
-    // 如果有保存过的ID，从API获取完整数据（含订单编号等关联信息）
     if (form.id) {
       try {
         const res = await fetch(`/api/delivery?id=${form.id}`);
@@ -622,38 +449,26 @@ export default function DeliveryPage() {
           setPrintPreviewOpen(true);
           return;
         }
-      } catch {
-        // API获取失败，降级用当前表单数据
-      }
+      } catch { /* fallback to form data */ }
     }
-    // 直接用当前表单数据打印（无论是否已保存）
     setPrintData(form as DeliveryNote);
     setPrintPreviewOpen(true);
   };
 
-  const doPrint = () => {
-    window.print();
-  };
-
-  /* ─── Ship (confirm delivery → deduct inventory) ─── */
-  const handleShip = async () => {
-    if (!form.id || !shipWarehouseId) return;
+  /* ─── Ship ─── */
+  const handleShip = async (warehouseId: string) => {
+    if (!form.id || !warehouseId) return;
     try {
       const res = await fetch('/api/delivery', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: form.id,
-          status: 'shipped',
-          warehouse_id: shipWarehouseId,
-        }),
+        body: JSON.stringify({ id: form.id, status: 'shipped', warehouse_id: warehouseId }),
       });
       const data = await res.json();
       if (res.ok) {
         setShipDialogOpen(false);
         setEditMode(false);
         await fetchNotes();
-        // 重新加载当前表单以更新状态显示
         if (form.id) {
           const freshRes = await fetch(`/api/delivery?id=${form.id}`);
           const freshData = await freshRes.json();
@@ -667,176 +482,34 @@ export default function DeliveryPage() {
     }
   };
 
-  /* ─── Label printing ─── */
-  const openLabelDialog = () => {
-    // Initialize boxes for ALL items
-    const allBoxes: number[][] = form.delivery_note_items.map((item) => {
-      const qty = item.quantity;
-      const perBox = item.per_box_qty || qty;
-      const boxCount = perBox > 0 ? Math.ceil(qty / perBox) : 1;
-      const boxes: number[] = [];
-      let remaining = qty;
-      for (let i = 0; i < boxCount; i++) {
-        const bQty = Math.min(perBox, remaining);
-        boxes.push(bQty);
-        remaining -= bQty;
-      }
-      return boxes;
-    });
-    setLabelBoxes(allBoxes);
-    setLabelOpen(true);
-    setLabelPreview(false);
-  };
-
-  const updateBoxQty = (itemIdx: number, boxIdx: number, value: number) => {
-    setLabelBoxes((prev) => {
-      const newBoxes = prev.map((arr) => [...arr]);
-      if (newBoxes[itemIdx]) {
-        newBoxes[itemIdx] = [...newBoxes[itemIdx]];
-        newBoxes[itemIdx][boxIdx] = value;
-      }
-      return newBoxes;
-    });
-  };
-
-  // Auto-distribute total quantity evenly into N boxes (all integers)
-  const autoDistribute = (total: number, boxCount: number): number[] => {
-    if (boxCount <= 0 || total <= 0) return [total];
-    const base = Math.floor(total / boxCount);
-    const remainder = total % boxCount;
-    const result: number[] = [];
-    for (let i = 0; i < boxCount; i++) {
-      result.push(i < remainder ? base + 1 : base);
-    }
-    return result;
-  };
-
-  const setBoxCount = (itemIdx: number, count: number) => {
-    setLabelBoxes((prev) => {
-      const newBoxes = prev.map((arr) => [...arr]);
-      if (newBoxes[itemIdx]) {
-        const totalQty = form.delivery_note_items[itemIdx]?.quantity || 0;
-        newBoxes[itemIdx] = autoDistribute(totalQty, count);
-      }
-      return newBoxes;
-    });
-  };
-
-  const addBox = (itemIdx: number) => {
-    setLabelBoxes((prev) => {
-      const newBoxes = prev.map((arr) => [...arr]);
-      if (newBoxes[itemIdx]) {
-        const totalQty = form.delivery_note_items[itemIdx]?.quantity || 0;
-        const newCount = newBoxes[itemIdx].length + 1;
-        newBoxes[itemIdx] = autoDistribute(totalQty, newCount);
-      }
-      return newBoxes;
-    });
-  };
-
-  const removeBox = (itemIdx: number, boxIdx: number) => {
-    setLabelBoxes((prev) => {
-      const newBoxes = prev.map((arr) => [...arr]);
-      if (newBoxes[itemIdx] && newBoxes[itemIdx].length > 1) {
-        const totalQty = form.delivery_note_items[itemIdx]?.quantity || 0;
-        const newCount = newBoxes[itemIdx].length - 1;
-        newBoxes[itemIdx] = autoDistribute(totalQty, newCount);
-      }
-      return newBoxes;
-    });
-  };
-
-  const redistributeBoxes = (itemIdx: number) => {
-    setLabelBoxes((prev) => {
-      const newBoxes = prev.map((arr) => [...arr]);
-      if (newBoxes[itemIdx]) {
-        const totalQty = form.delivery_note_items[itemIdx]?.quantity || 0;
-        const boxCount = newBoxes[itemIdx].length;
-        newBoxes[itemIdx] = autoDistribute(totalQty, boxCount);
-      }
-      return newBoxes;
-    });
-  };
-
-  const saveLabelSettings = () => {
-    const items = [...form.delivery_note_items];
-    labelBoxes.forEach((boxes, idx) => {
-      const totalBoxQty = boxes.reduce((a, b) => a + b, 0);
-      if (items[idx] && totalBoxQty === items[idx].quantity) {
-        items[idx] = { ...items[idx], per_box_qty: boxes.length === 1 ? totalBoxQty : boxes[0] };
-      }
-    });
-    setForm((prev) => ({ ...prev, delivery_note_items: items }));
-    setLabelOpen(false);
-  };
-
-  // Check if all items have matching totals
-  const allLabelsValid = form.delivery_note_items.every((item, idx) => {
-    const total = (labelBoxes[idx] || []).reduce((a, b) => a + b, 0);
-    return total === item.quantity;
-  });
-
-  const generateLabels = () => {
-    setLabelPreview(true);
-    setTimeout(() => {
-      const container = labelPrintRef.current;
-      if (!container) return;
-
-      container.innerHTML = '';
-      let globalBoxIdx = 0;
-      form.delivery_note_items.forEach((item, itemIdx) => {
-        const boxes = labelBoxes[itemIdx] || [];
-        const validBoxes = boxes.filter((q) => q > 0);
-        boxes.forEach((boxQty, i) => {
-          if (boxQty <= 0) return;
-          globalBoxIdx++;
-          const label = document.createElement('div');
-          label.className = 'label-card';
-          label.innerHTML = `
-            <div class="label-customer">${form.customer_name || ''}</div>
-            <div class="label-divider"></div>
-            <div class="label-product">${item.product?.name || ''}</div>
-            <div class="label-spec">${item.product?.spec || '-'}</div>
-            <div class="label-row">
-              <span>编码: ${item.product?.code || ''}</span>
-            </div>
-            <div class="label-row">
-              <span>第 ${i + 1}/${validBoxes.length} 箱</span>
-              <span>${boxQty} ${translateUnit(item.product?.unit || '个')}</span>
-            </div>
-            <svg class="label-barcode" id="barcode-${globalBoxIdx}"></svg>
-            <div class="label-note">${form.note_no || ''}</div>
-          `;
-          container.appendChild(label);
-
-          try {
-            JsBarcode(`#barcode-${globalBoxIdx}`, `${item.product?.code || 'N/A'}-${i + 1}`, {
-              format: 'CODE128',
-              width: 1.5,
-              height: 35,
-              displayValue: false,
-              margin: 2,
-            });
-          } catch { /* ignore barcode errors */ }
-        });
-      });
-    }, 100);
-  };
-
-  const handlePrintLabels = () => {
-    window.print();
-  };
-
   /* ─── Search ─── */
   const filteredNotes = searchQuery
-    ? notes.filter((n) =>
-        n.note_no.includes(searchQuery) ||
-        n.customer_name.includes(searchQuery)
-      )
+    ? notes.filter(n => n.note_no.includes(searchQuery) || n.customer_name.includes(searchQuery))
     : notes;
 
-  /* ─── Render ─── */
+  /* ─── Derived state ─── */
   const st = statusLabel(form.status);
+  const selectedCategories = parseCategories(form.delivery_category);
+
+  /* ─── Inline product search result list (reusable) ─── */
+  const ProductSearchDropdown = ({ query, onSelect }: { query: string; onSelect: (p: Product) => void }) => {
+    const results = searchDeliveryProducts(query);
+    return (
+      <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto">
+        {results.length === 0 ? (
+          <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
+        ) : (
+          results.map(p => (
+            <button key={p.id} className="w-full text-left px-2 py-1.5 text-xs hover:bg-blue-50" onClick={() => onSelect(p)}>
+              <span className="font-mono">{p.code}</span>
+              <span className="ml-1 text-gray-500">{p.name}</span>
+              {p.spec && <span className="ml-1 text-gray-400">{p.spec}</span>}
+            </button>
+          ))
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="h-full flex flex-col bg-[#F8F9FA]">
@@ -849,13 +522,14 @@ export default function DeliveryPage() {
           <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => handleNew(true)} disabled={!form.id || editMode}>
             <Copy className="h-3.5 w-3.5 text-orange-500" /> 复制新增
           </Button>
-          <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={handleEdit} disabled={!current || editMode}>
+          <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => setEditMode(true)} disabled={!current || editMode}>
             <Pencil className="h-3.5 w-3.5 text-yellow-600" /> 修改
           </Button>
           <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => setDeleteOpen(true)} disabled={!form.id || editMode}>
             <Trash2 className="h-3.5 w-3.5 text-red-500" /> 删除
           </Button>
           <div className="w-px h-5 bg-gray-300 mx-1" />
+
           {editMode ? (
             <>
               <Button size="sm" className="h-8 gap-1 text-xs bg-[#1E40AF] hover:bg-[#1D4ED8]" onClick={handleSave}>
@@ -871,25 +545,26 @@ export default function DeliveryPage() {
               <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={handlePrintDelivery}>
                 <Printer className="h-3.5 w-3.5" /> 打印送货单
               </Button>
-              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => { if (form.delivery_note_items.length > 0) openLabelDialog(); }} disabled={form.delivery_note_items.length === 0}>
+              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => form.delivery_note_items.length > 0 && setLabelOpen(true)} disabled={form.delivery_note_items.length === 0}>
                 <Tag className="h-3.5 w-3.5" /> 打印标签
               </Button>
             </>
           ) : (
             <>
               {form.status === 'draft' && (
-                <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => { setShipWarehouseId(warehouses[0]?.id || ''); setShipDialogOpen(true); }} disabled={!form.id}>
+                <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => setShipDialogOpen(true)} disabled={!form.id}>
                   <ArrowRight className="h-3.5 w-3.5 text-green-600" /> 确认出货
                 </Button>
               )}
               <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={handlePrintDelivery}>
                 <Printer className="h-3.5 w-3.5" /> 打印送货单
               </Button>
-              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => { if (form.delivery_note_items.length > 0) openLabelDialog(); }} disabled={form.delivery_note_items.length === 0}>
+              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => form.delivery_note_items.length > 0 && setLabelOpen(true)} disabled={form.delivery_note_items.length === 0}>
                 <Tag className="h-3.5 w-3.5" /> 打印标签
               </Button>
             </>
           )}
+
           <div className="w-px h-5 bg-gray-300 mx-1" />
           {/* Navigation */}
           <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => goTo(0)} disabled={notes.length === 0}>
@@ -935,8 +610,7 @@ export default function DeliveryPage() {
 
       {/* ─── Main Content ─── */}
       <div className="flex-1 overflow-auto p-4">
-        {/* ─── Delivery Note Print View ─── */}
-        <div ref={printRef} className="bg-white rounded shadow-sm border border-[#E5E7EB]">
+        <div className="bg-white rounded shadow-sm border border-[#E5E7EB]">
           {/* Header */}
           <div className="bg-[#F0F2F5] px-5 py-3 border-b border-[#E5E7EB] flex items-center justify-between">
             <h2 className="text-base font-semibold text-[#111827]">销售出货单</h2>
@@ -950,9 +624,10 @@ export default function DeliveryPage() {
             )}
           </div>
 
-          {/* Customer info area */}
+          {/* Customer info */}
           <div className="px-5 py-3 bg-[#FAFBFC] border-b border-[#E5E7EB]">
             <div className="grid grid-cols-4 gap-x-4 gap-y-2">
+              {/* 客户编号 */}
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500 whitespace-nowrap w-16">客户编号</label>
                 {editMode ? (
@@ -963,17 +638,11 @@ export default function DeliveryPage() {
                       onChange={(e) => {
                         const val = e.target.value;
                         setCustomerSearch(val);
-                        // 输入时清空客户关联，等从下拉选择后自动填充
-                        setForm((prev) => ({ ...prev, customer_id: null, customer_name: '', customer_address: '', customer_contact: '', customer_phone: '' }));
+                        setForm(prev => ({ ...prev, customer_id: null, customer_name: '', customer_address: '', customer_contact: '', customer_phone: '' }));
                         setShowCustomerDropdown(true);
                         setIsFormDirty(true);
-                        // 精确匹配时自动选中
                         const exact = customers.find(c => c.code.toLowerCase() === val.toLowerCase());
-                        if (exact) {
-                          pickCustomer(exact);
-                          setCustomerSearch(exact.code);
-                          setShowCustomerDropdown(false);
-                        }
+                        if (exact) { pickCustomer(exact); setCustomerSearch(exact.code); setShowCustomerDropdown(false); }
                       }}
                       onFocus={() => { setCustomerSearch(customerSearch || ''); setShowCustomerDropdown(true); }}
                       onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
@@ -997,31 +666,28 @@ export default function DeliveryPage() {
                   <span className="text-xs text-[#111827]">{form.customer_id ? customers.find(c => c.id === form.customer_id)?.code : '-'}</span>
                 )}
               </div>
+
+              {/* 客户名称 */}
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500 whitespace-nowrap w-16">客户名称</label>
                 {editMode ? (
-                  <Input
-                    className="h-7 text-xs flex-1 bg-gray-50"
-                    value={form.customer_name}
-                    readOnly
-                    placeholder="自动填充"
-                  />
+                  <Input className="h-7 text-xs flex-1 bg-gray-50" value={form.customer_name} readOnly placeholder="自动填充" />
                 ) : (
                   <span className="text-xs text-[#111827]">{form.customer_name || '-'}</span>
                 )}
               </div>
+
+              {/* 客户地址 */}
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500 whitespace-nowrap w-16">客户地址</label>
                 {editMode ? (
-                  <Input
-                    className="h-7 text-xs flex-1"
-                    value={form.customer_address || ''}
-                    onChange={(e) => { setForm((prev) => ({ ...prev, customer_address: e.target.value })); setIsFormDirty(true); }}
-                  />
+                  <Input className="h-7 text-xs flex-1" value={form.customer_address || ''} onChange={(e) => { setForm(prev => ({ ...prev, customer_address: e.target.value })); setIsFormDirty(true); }} />
                 ) : (
                   <span className="text-xs text-[#111827]">{form.customer_address || '-'}</span>
                 )}
               </div>
+
+              {/* 结账方式 */}
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500 whitespace-nowrap w-16">结账方式</label>
                 {editMode ? (
@@ -1037,62 +703,68 @@ export default function DeliveryPage() {
                   <span className="text-xs text-[#111827]">-</span>
                 )}
               </div>
+
+              {/* 联络人 */}
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500 whitespace-nowrap w-16">联络人</label>
                 {editMode ? (
-                  <Input className="h-7 text-xs flex-1" value={form.customer_contact || ''} onChange={(e) => { setForm((prev) => ({ ...prev, customer_contact: e.target.value })); setIsFormDirty(true); }} />
+                  <Input className="h-7 text-xs flex-1" value={form.customer_contact || ''} onChange={(e) => { setForm(prev => ({ ...prev, customer_contact: e.target.value })); setIsFormDirty(true); }} />
                 ) : (
                   <span className="text-xs text-[#111827]">{form.customer_contact || '-'}</span>
                 )}
               </div>
+
+              {/* 联络电话 */}
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500 whitespace-nowrap w-16">联络电话</label>
                 {editMode ? (
-                  <Input className="h-7 text-xs flex-1" value={form.customer_phone || ''} onChange={(e) => { setForm((prev) => ({ ...prev, customer_phone: e.target.value })); setIsFormDirty(true); }} />
+                  <Input className="h-7 text-xs flex-1" value={form.customer_phone || ''} onChange={(e) => { setForm(prev => ({ ...prev, customer_phone: e.target.value })); setIsFormDirty(true); }} />
                 ) : (
                   <span className="text-xs text-[#111827]">{form.customer_phone || '-'}</span>
                 )}
               </div>
+
+              {/* 客户订单 */}
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500 whitespace-nowrap w-16">客户订单</label>
                 {editMode ? (
-                  <Input className="h-7 text-xs flex-1" value={form.customer_order || ''} onChange={(e) => { setForm((prev) => ({ ...prev, customer_order: e.target.value })); setIsFormDirty(true); }} />
+                  <Input className="h-7 text-xs flex-1" value={form.customer_order || ''} onChange={(e) => { setForm(prev => ({ ...prev, customer_order: e.target.value })); setIsFormDirty(true); }} />
                 ) : (
                   <span className="text-xs text-[#111827]">{form.customer_order || '-'}</span>
                 )}
               </div>
+
+              {/* 出货日期 */}
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500 whitespace-nowrap w-16">出货日期</label>
                 {editMode ? (
-                  <Input type="date" className="h-7 text-xs flex-1" value={formatDate(form.delivery_date)} onChange={(e) => { setForm((prev) => ({ ...prev, delivery_date: e.target.value })); setIsFormDirty(true); }} />
+                  <Input type="date" className="h-7 text-xs flex-1" value={formatDate(form.delivery_date)} onChange={(e) => { setForm(prev => ({ ...prev, delivery_date: e.target.value })); setIsFormDirty(true); }} />
                 ) : (
                   <span className="text-xs text-[#111827]">{formatDate(form.delivery_date)}</span>
                 )}
               </div>
+
+              {/* 送货类目 */}
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500 whitespace-nowrap w-16">送货类目</label>
                 {editMode ? (
                   <div className="flex gap-1.5 flex-wrap items-center">
-                    {categoryGroups.map((group) => {
-                      const isSelected = (form.delivery_category || '').split(',').some(c => group.categories.split(',').includes(c));
+                    {categoryGroups.map(group => {
+                      const isSelected = selectedCategories.some(c => parseCategories(group.categories).includes(c));
                       return (
                         <button
                           key={group.group_no}
                           type="button"
                           onClick={() => {
-                            const groupCats = group.categories.split(',');
-                            const current = (form.delivery_category || '').split(',').filter(Boolean);
-                            // 如果已选中该分组，取消该分组所有类目；否则添加该分组所有类目
+                            const groupCats = parseCategories(group.categories);
                             const next = isSelected
-                              ? current.filter((c) => !groupCats.includes(c))
-                              : [...new Set([...current, ...groupCats])];
-                            setForm((prev) => ({ ...prev, delivery_category: next.join(',') }));
+                              ? selectedCategories.filter(c => !groupCats.includes(c))
+                              : [...new Set([...selectedCategories, ...groupCats])];
+                            setForm(prev => ({ ...prev, delivery_category: next.join(',') }));
                             setIsFormDirty(true);
                           }}
                           className={`h-7 px-2.5 rounded text-xs font-medium border transition-colors ${
-                            isSelected
-                              ? 'bg-[#1E40AF] text-white border-[#1E40AF]'
-                              : 'bg-white text-gray-600 border-gray-300 hover:border-[#1E40AF] hover:text-[#1E40AF]'
+                            isSelected ? 'bg-[#1E40AF] text-white border-[#1E40AF]' : 'bg-white text-gray-600 border-gray-300 hover:border-[#1E40AF] hover:text-[#1E40AF]'
                           }`}
                           title={`包含类目：${group.categories}`}
                         >
@@ -1102,23 +774,18 @@ export default function DeliveryPage() {
                     })}
                     <button
                       type="button"
-                      onClick={() => {
-                        setEditingGroups(categoryGroups.map(g => ({ ...g })));
-                        setGroupManageOpen(true);
-                      }}
+                      onClick={() => setGroupManageOpen(true)}
                       className="h-7 px-2 rounded text-xs text-gray-500 border border-dashed border-gray-300 hover:border-[#1E40AF] hover:text-[#1E40AF] transition-colors"
                     >
                       设置分组
                     </button>
-                    {categoryGroups.length === 0 && (
-                      <span className="text-xs text-gray-400">暂无分组，点击"设置分组"添加</span>
-                    )}
+                    {categoryGroups.length === 0 && <span className="text-xs text-gray-400">暂无分组，点击"设置分组"添加</span>}
                   </div>
                 ) : (
                   <span className="text-xs text-[#111827]">
                     {form.delivery_category
                       ? categoryGroups
-                          .filter(g => (form.delivery_category || '').split(',').some(c => g.categories.split(',').includes(c)))
+                          .filter(g => selectedCategories.some(c => parseCategories(g.categories).includes(c)))
                           .map(g => `${g.group_no}.${g.group_name}`)
                           .join('、') || form.delivery_category
                       : '-'}
@@ -1128,7 +795,7 @@ export default function DeliveryPage() {
             </div>
           </div>
 
-          {/* Tabs area */}
+          {/* Tabs */}
           <div className="px-5">
             <div className="flex gap-0 border-b border-[#E5E7EB]">
               <button className="px-4 py-1.5 text-xs font-medium bg-[#1E40AF] text-white rounded-t">单据明细</button>
@@ -1169,14 +836,11 @@ export default function DeliveryPage() {
                           <Input
                             className="h-6 text-xs font-mono"
                             placeholder="搜索编号/名称"
-                            value={item.product_id
-                              ? (item.product?.code || '')
-                              : (itemSearches[idx] || '')
-                            }
+                            value={item.product_id ? (item.product?.code || '') : (itemSearches[idx] || '')}
                             onChange={(e) => {
-                              setItemSearches((prev) => ({ ...prev, [idx]: e.target.value }));
+                              setItemSearches(prev => ({ ...prev, [idx]: e.target.value }));
                               if (item.product_id) {
-                                setForm((prev) => {
+                                setForm(prev => {
                                   const items = [...prev.delivery_note_items];
                                   items[idx] = { ...items[idx], product_id: '', product: undefined };
                                   return { ...prev, delivery_note_items: items };
@@ -1186,46 +850,18 @@ export default function DeliveryPage() {
                             }}
                             onFocus={() => {
                               if (item.product_id) {
-                                setForm((prev) => {
+                                setForm(prev => {
                                   const items = [...prev.delivery_note_items];
                                   items[idx] = { ...items[idx], product_id: '', product: undefined };
                                   return { ...prev, delivery_note_items: items };
                                 });
-                                setItemSearches((prev) => ({ ...prev, [idx]: '' }));
+                                setItemSearches(prev => ({ ...prev, [idx]: '' }));
                                 setIsFormDirty(true);
                               }
                             }}
-                            onBlur={() => {
-                              setTimeout(() => {
-                                setItemSearches((prev) => {
-                                  const next = { ...prev };
-                                  delete next[idx];
-                                  return next;
-                                });
-                              }, 200);
-                            }}
+                            onBlur={() => setTimeout(() => { setItemSearches(prev => { const next = { ...prev }; delete next[idx]; return next; }); }, 200)}
                           />
-                          {itemSearches[idx] && !item.product_id && (
-                            <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto">
-                              {searchDeliveryProducts(itemSearches[idx]).length === 0 ? (
-                                <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
-                              ) : (
-                                searchDeliveryProducts(itemSearches[idx]).map((p) => (
-                                  <button
-                                    key={p.id}
-                                    className="w-full text-left px-2 py-1.5 text-xs hover:bg-blue-50 flex items-center justify-between"
-                                    onClick={() => selectProductForItem(idx, p)}
-                                  >
-                                    <span>
-                                      <span className="font-mono">{p.code}</span>
-                                      <span className="ml-1 text-gray-500">{p.name}</span>
-                                      {p.spec && <span className="ml-1 text-gray-400">{p.spec}</span>}
-                                    </span>
-                                  </button>
-                                ))
-                              )}
-                            </div>
-                          )}
+                          {itemSearches[idx] && !item.product_id && <ProductSearchDropdown query={itemSearches[idx]} onSelect={(p) => selectProductForItem(idx, p)} />}
                         </div>
                       ) : (
                         <span className="font-mono text-[#111827]">{item.product?.code || '-'}</span>
@@ -1236,16 +872,12 @@ export default function DeliveryPage() {
                     <td className="py-2 px-2 text-right font-mono">
                       {editMode ? (
                         <Input type="number" className="h-6 text-xs text-right w-20 ml-auto" value={item.quantity} onChange={(e) => updateItem(idx, 'quantity', Number(e.target.value))} />
-                      ) : (
-                        item.quantity.toFixed(2)
-                      )}
+                      ) : item.quantity.toFixed(2)}
                     </td>
                     <td className="py-2 px-2 text-right font-mono">
                       {editMode ? (
                         <Input type="number" className="h-6 text-xs text-right w-20 ml-auto" value={item.per_box_qty} onChange={(e) => updateItem(idx, 'per_box_qty', Number(e.target.value))} />
-                      ) : (
-                        item.per_box_qty
-                      )}
+                      ) : item.per_box_qty}
                     </td>
                     <td className="py-2 px-2">
                       {editMode ? (
@@ -1257,7 +889,7 @@ export default function DeliveryPage() {
                     {editMode && (
                       <td className="py-2 px-2 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openLabelDialog()} title="标签打印">
+                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setLabelOpen(true)} title="标签打印">
                             <Tag className="h-3 w-3 text-gray-500" />
                           </Button>
                           <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => removeItem(idx)}>
@@ -1268,12 +900,12 @@ export default function DeliveryPage() {
                     )}
                   </tr>
                 ))}
-                {/* Auto new-row for continuous input */}
+                {/* Auto new-row */}
                 {editMode && (
-                  <tr key="new-row" className="border-b border-[#E5E7EB] h-8">
+                  <tr className="border-b border-[#E5E7EB] h-8">
                     <td className="py-1 px-2 text-gray-300">{form.delivery_note_items.length + 1}</td>
                     <td className="py-2 px-2">
-                      <Input className="h-6 text-xs" placeholder="输入订单号" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEmptyItem(); } }} />
+                      <Input className="h-6 text-xs" placeholder="输入订单号" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setForm(prev => ({ ...prev, delivery_note_items: [...prev.delivery_note_items, { product_id: '', quantity: 0, unit_price: 0, per_box_qty: 0, remark: '' }] })); } }} />
                     </td>
                     <td className="py-2 px-2">
                       <div className="relative">
@@ -1281,56 +913,16 @@ export default function DeliveryPage() {
                           className="h-6 text-xs font-mono"
                           placeholder="搜索编号/名称"
                           value={itemSearches[-1] || ''}
-                          onChange={(e) => setItemSearches((prev) => ({ ...prev, [-1]: e.target.value }))}
-                          onBlur={() => {
-                            setTimeout(() => {
-                              setItemSearches((prev) => {
-                                const next = { ...prev };
-                                delete next[-1];
-                                return next;
-                              });
-                            }, 200);
-                          }}
-                          onKeyDown={(e) => { if (e.key === 'Enter' && !itemSearches[-1]) { e.preventDefault(); addEmptyItem(); } }}
+                          onChange={(e) => setItemSearches(prev => ({ ...prev, [-1]: e.target.value }))}
+                          onBlur={() => setTimeout(() => { setItemSearches(prev => { const next = { ...prev }; delete next[-1]; return next; }); }, 200)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !itemSearches[-1]) { e.preventDefault(); setForm(prev => ({ ...prev, delivery_note_items: [...prev.delivery_note_items, { product_id: '', quantity: 0, unit_price: 0, per_box_qty: 0, remark: '' }] })); } }}
                         />
                         {itemSearches[-1] && (
-                          <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto">
-                            {searchDeliveryProducts(itemSearches[-1]).length === 0 ? (
-                              <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
-                            ) : (
-                              searchDeliveryProducts(itemSearches[-1]).map((p) => (
-                                <button
-                                  key={p.id}
-                                  className="w-full text-left px-2 py-1.5 text-xs hover:bg-blue-50 flex items-center justify-between"
-                                  onClick={() => {
-                                    setForm((prev) => ({
-                                      ...prev,
-                                      delivery_note_items: [...prev.delivery_note_items, {
-                                        product_id: p.id,
-                                        product: p,
-                                        quantity: 0,
-                                        unit_price: 0,
-                                        per_box_qty: 0,
-                                        remark: '',
-                                      }],
-                                    }));
-                                    setItemSearches((prev) => {
-                                      const next = { ...prev };
-                                      delete next[-1];
-                                      return next;
-                                    });
-                                    setIsFormDirty(true);
-                                  }}
-                                >
-                                  <span>
-                                    <span className="font-mono">{p.code}</span>
-                                    <span className="ml-1 text-gray-500">{p.name}</span>
-                                    {p.spec && <span className="ml-1 text-gray-400">{p.spec}</span>}
-                                  </span>
-                                </button>
-                              ))
-                            )}
-                          </div>
+                          <ProductSearchDropdown query={itemSearches[-1]} onSelect={(p) => {
+                            setForm(prev => ({ ...prev, delivery_note_items: [...prev.delivery_note_items, { product_id: p.id, product: p, quantity: 0, unit_price: 0, per_box_qty: 0, remark: '' }] }));
+                            setItemSearches(prev => { const next = { ...prev }; delete next[-1]; return next; });
+                            setIsFormDirty(true);
+                          }} />
                         )}
                       </div>
                     </td>
@@ -1339,13 +931,10 @@ export default function DeliveryPage() {
                   </tr>
                 )}
                 {!editMode && form.delivery_note_items.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="py-8 text-center text-gray-400">暂无明细</td>
-                  </tr>
+                  <tr><td colSpan={8} className="py-8 text-center text-gray-400">暂无明细</td></tr>
                 )}
               </tbody>
             </table>
-
           </div>
 
           {/* Footer / Remark */}
@@ -1353,7 +942,7 @@ export default function DeliveryPage() {
             <div className="flex items-center gap-2">
               <label className="text-xs text-gray-500">备注</label>
               {editMode ? (
-                <Input className="h-7 text-xs flex-1 min-w-[300px]" value={form.remark || ''} onChange={(e) => { setForm((prev) => ({ ...prev, remark: e.target.value })); setIsFormDirty(true); }} />
+                <Input className="h-7 text-xs flex-1 min-w-[300px]" value={form.remark || ''} onChange={(e) => { setForm(prev => ({ ...prev, remark: e.target.value })); setIsFormDirty(true); }} />
               ) : (
                 <span className="text-xs text-[#111827]">{form.remark || '-'}</span>
               )}
@@ -1370,9 +959,7 @@ export default function DeliveryPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除</AlertDialogTitle>
-            <AlertDialogDescription>
-              确定要删除送货单 {form.note_no} 吗？此操作不可撤销。
-            </AlertDialogDescription>
+            <AlertDialogDescription>确定要删除送货单 {form.note_no} 吗？此操作不可撤销。</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
@@ -1381,695 +968,85 @@ export default function DeliveryPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ─── Product Picker ─── */}
-      <Dialog open={productPickerOpen} onOpenChange={setProductPickerOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>选择商品</DialogTitle>
-          </DialogHeader>
-          <div className="max-h-80 overflow-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b">
-                  <th className="py-1 px-2 text-left">编号</th>
-                  <th className="py-1 px-2 text-left">名称</th>
-                  <th className="py-1 px-2 text-left">规格</th>
-                  <th className="py-1 px-2 text-left">单位</th>
-                  <th className="py-1 px-2 w-16"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((p) => (
-                  <tr key={p.id} className="border-b hover:bg-gray-50">
-                    <td className="py-1 px-2 font-mono">{p.code}</td>
-                    <td className="py-1 px-2">{p.name}</td>
-                    <td className="py-1 px-2">{p.spec || '-'}</td>
-                    <td className="py-1 px-2">{translateUnit(p.unit)}</td>
-                    <td className="py-1 px-2 text-center">
-                      <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => addItem(p)}>
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ─── Delivery Print Preview Dialog ─── */}
+      {/* ─── Print Preview Dialog ─── */}
       <Dialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen}>
         <DialogContent className="!max-w-none !p-0 !gap-0 flex flex-col" style={{ width: 'calc(241mm + 40px)', maxHeight: '92vh' }}>
           <DialogHeader className="px-5 pt-4 pb-2 no-print shrink-0 flex flex-row items-center justify-between">
             <DialogTitle>打印预览 - 送货单</DialogTitle>
           </DialogHeader>
           <div className="overflow-y-auto flex-1 min-h-0 flex justify-center" style={{ background: '#E5E7EB' }}>
-            {/* 打印区域 — 白纸效果，实际尺寸 241mm×139.5mm（三联二等分纸） */}
-            <div id="delivery-print-area" className="bg-white shrink-0 my-4" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '139.5mm', padding: '3mm 5mm', boxSizing: 'border-box', fontSize: '19px', lineHeight: '22px', boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
-              {/* 抬头区域 — 从系统设置读取公司信息 */}
-              <div style={{ textAlign: 'center', marginBottom: '1px' }}>
-                <div style={{ fontSize: '25px', fontWeight: 'bold', letterSpacing: '4px' }}>{companyInfo.name || '常州横林新顺电器配件厂'}</div>
-                <div style={{ fontSize: '12px', color: '#555', marginTop: '0' }}>
-                  {companyInfo.address && <span style={{ marginRight: '24px' }}>地址：{companyInfo.address}</span>}
-                  {companyInfo.phone && <span style={{ marginRight: '24px' }}>电话：{companyInfo.phone}</span>}
-                  {companyInfo.fax && <span>传真：{companyInfo.fax}</span>}
-                </div>
-              </div>
-              <div style={{ textAlign: 'center', fontSize: '22px', fontWeight: 'bold', margin: '1px 0 2px' }}>送 货 单</div>
-
-              {/* 客户信息 + 单号信息 */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', fontSize: '20px' }}>
-                <div>
-                  <div>客　户：{printData?.customer_name || ''}</div>
-                  <div>交货地点：{printData?.customer_address || ''}</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div>送货单号：{printData?.note_no || ''}</div>
-                  <div>单据日期：{printData?.delivery_date ? formatDate(printData.delivery_date) : ''}</div>
-                  {printData?.delivery_category && <div>类目：{printData.delivery_category.split(',').filter(Boolean).length > 0
-                    ? categoryGroups
-                        .filter(g => printData!.delivery_category!.split(',').some((c: string) => g.categories.split(',').includes(c)))
-                        .map(g => `${g.group_no}.${g.group_name}`)
-                        .join('、')
-                    : ''}</div>}
-                </div>
-              </div>
-
-              {/* 每页最多3行物料，适配139.5mm矮纸 */}
-              {(() => {
-                const allItems = printData?.delivery_note_items || [];
-                const MAX_ROWS = 10;
-                const pages: typeof allItems[] = [];
-                for (let i = 0; i < allItems.length; i += MAX_ROWS) {
-                  pages.push(allItems.slice(i, i + MAX_ROWS));
-                }
-                if (pages.length === 0) pages.push([]);
-                const deliveryOrderNo = (printData as DeliveryNote & { customer_orders?: { order_no?: string } | null })?.customer_orders?.order_no || '';
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const getProduct = (item: any) => item.products || item.product || {};
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const getItemOrderNo = (item: any) => {
-                  // 优先从 customer_order_items 关联获取
-                  const coi = item.customer_order_items;
-                  if (coi && typeof coi === 'object' && !Array.isArray(coi)) {
-                    const co = (coi as Record<string, unknown>).customer_orders;
-                    if (co && typeof co === 'object' && !Array.isArray(co)) {
-                      return (co as Record<string, unknown>).order_no as string || '';
-                    }
-                  }
-                  // 其次从 item 自身的 customer_order 字段（前端临时数据）
-                  if (item.customer_order) return item.customer_order as string;
-                  // 最后用送货单级的订单号
-                  return deliveryOrderNo;
-                };
-
-                return pages.map((pageItems, pageIdx) => {
-                  const isLastPage = pageIdx === pages.length - 1;
-                  const totalRows = MAX_ROWS;
-                  return (
-                    <div key={pageIdx} style={{ pageBreakAfter: isLastPage ? 'avoid' : 'always', pageBreakInside: 'avoid' }}>
-                      {/* 第2页起重复抬头 */}
-                      {pageIdx > 0 && (
-                        <>
-                          <div style={{ textAlign: 'center', marginBottom: '1px' }}>
-                            <div style={{ fontSize: '25px', fontWeight: 'bold', letterSpacing: '4px' }}>{companyInfo.name || '常州横林新顺电器配件厂'}</div>
-                            <div style={{ fontSize: '12px', color: '#555', marginTop: '0' }}>
-                              {companyInfo.address && <span style={{ marginRight: '24px' }}>地址：{companyInfo.address}</span>}
-                              {companyInfo.phone && <span style={{ marginRight: '24px' }}>电话：{companyInfo.phone}</span>}
-                              {companyInfo.fax && <span>传真：{companyInfo.fax}</span>}
-                            </div>
-                            <div style={{ fontSize: '22px', fontWeight: 'bold', marginTop: '1px', letterSpacing: '8px' }}>送 货 单</div>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', fontSize: '20px' }}>
-                            <div>
-                              <span style={{ marginRight: '16px' }}>客户：{printData?.customer_name || ''}</span>
-                              <span>交货地点：{printData?.customer_address || ''}</span>
-                            </div>
-                            <div>
-                              <span style={{ marginRight: '16px' }}>送货单号：{printData?.note_no || ''}</span>
-                              <span>日期：{printData?.delivery_date || ''}</span>
-                              {printData?.delivery_category && <span style={{ marginLeft: '16px' }}>类目：{printData.delivery_category.split(',').filter(Boolean).length > 0
-                                ? categoryGroups
-                                    .filter(g => printData!.delivery_category!.split(',').some((c: string) => g.categories.split(',').includes(c)))
-                                    .map(g => `${g.group_no}.${g.group_name}`)
-                                    .join('、')
-                                : ''}</span>}
-                            </div>
-                          </div>
-                        </>
-                      )}
-                      {/* 表格 8列（含联单列） */}
-                      <div style={{ position: 'relative' }}>
-                        <table style={{ width: '100%', tableLayout: 'auto', borderCollapse: 'collapse', border: '1px solid #000' }}>
-                          <tbody>
-                            <tr style={{ background: '#f0f0f0' }}>
-                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '19px', textAlign: 'center' }}>项次</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '19px', textAlign: 'center' }}>订单编号</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '19px', textAlign: 'center' }}>物料编号</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '19px', textAlign: 'center' }}>物料名称</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '19px', textAlign: 'center' }}>单位</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '19px', textAlign: 'center' }}>数量</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '19px', textAlign: 'center' }}>备注</th>
-                              <th rowSpan={totalRows + 1} style={{ border: '1px solid #000', padding: '4px 1px', fontSize: '10px', writingMode: 'vertical-rl', letterSpacing: '1px', lineHeight: '1.4', textAlign: 'center' }}>
-                                <span style={{ color: '#333' }}>(一)存根白</span>
-                                <span style={{ color: '#cc0000' }}>(二)客户红</span>
-                                <span style={{ color: '#cc8800' }}>(三)回单黄</span>
-                              </th>
-                            </tr>
-                            {pageItems.map((item, idx) => {
-                              const prod = getProduct(item);
-                              return (
-                                <tr key={`item-${pageIdx}-${idx}`}>
-                                  <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px' }}>{pageIdx * MAX_ROWS + idx + 1}</td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '19px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {getItemOrderNo(item)}
-                                  </td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '19px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {prod.code || ''}
-                                  </td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {prod.name || ''}{prod.spec ? `/${prod.spec}` : ''}
-                                  </td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px' }}>
-                                    {translateUnit(prod.unit || '')}
-                                  </td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '19px' }}>
-                                    {item.quantity}
-                                  </td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {item.remark || ''}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                            {/* 补空行至MAX_ROWS */}
-                            {Array.from({ length: Math.max(0, totalRows - pageItems.length) }).map((_, i) => (
-                              <tr key={`empty-${pageIdx}-${i}`}>
-                                <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', height: '22px', fontSize: '19px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px' }}>&nbsp;</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {/* 底部备注 + 签署（仅最后一页） */}
-                      {isLastPage && (
-                        <>
-                          <div style={{ marginTop: '2px', fontSize: '20px' }}>
-                            <div>备注：{printData?.remark || ''}</div>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '20px' }}>
-                            <div>收货单位及经手人：________________</div>
-                            <div>送货单位及经手人：{companyInfo.short_name || '新　顺'}________________</div>
-                          </div>
-                        </>
-                      )}
-                      {/* 非最后一页的分页标记 */}
-                      {!isLastPage && <div style={{ fontSize: '12px', color: '#999', textAlign: 'center', marginTop: '4px' }}>第 {pageIdx + 1} 页 / 共 {pages.length} 页（续下页）</div>}
-                    </div>
-                  );
-                });
-              })()}
-            </div>
+            {printData && <DeliveryPrintArea printData={printData} companyInfo={companyInfo} categoryGroups={categoryGroups} />}
           </div>
-            {/* 操作按钮 */}
-            <div className="flex justify-end gap-2 px-6 py-3 no-print shrink-0 border-t bg-white">
-              <Button variant="outline" onClick={() => setPrintPreviewOpen(false)}>关闭</Button>
-              <Button className="bg-[#1E40AF] hover:bg-[#1D4ED8] gap-1" onClick={doPrint}>
-                <Printer className="h-4 w-4" /> 打印
-              </Button>
-            </div>
-          </DialogContent>
+          <div className="flex justify-end gap-2 px-6 py-3 no-print shrink-0 border-t bg-white">
+            <Button variant="outline" onClick={() => setPrintPreviewOpen(false)}>关闭</Button>
+            <Button className="bg-[#1E40AF] hover:bg-[#1D4ED8] gap-1" onClick={() => window.print()}>
+              <Printer className="h-4 w-4" /> 打印
+            </Button>
+          </div>
+        </DialogContent>
       </Dialog>
 
       {/* ─── Label Print Dialog ─── */}
-      <Dialog open={labelOpen} onOpenChange={setLabelOpen}>
-        <DialogContent className="max-w-3xl max-h-[92vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{editMode ? '标签设置' : '标签打印'}</DialogTitle>
-          </DialogHeader>
-
-          {!labelPreview ? (
-            <div className="space-y-4 overflow-auto flex-1 pr-1">
-              {form.delivery_note_items.map((item, itemIdx) => {
-                const boxes = labelBoxes[itemIdx] || [];
-                const boxTotal = boxes.reduce((a, b) => a + b, 0);
-                const diff = boxTotal - item.quantity;
-                return (
-                  <div key={itemIdx} className="border rounded-lg">
-                    {/* Item header */}
-                    <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-semibold text-[#111827]">{item.product?.name || `物料${itemIdx + 1}`}</span>
-                        <span className="text-xs text-gray-400 font-mono">{item.product?.code || ''}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-gray-500">总数量:</span>
-                        <span className="font-mono font-semibold text-[#111827]">{item.quantity}</span>
-                        <span className="text-gray-400">{translateUnit(item.product?.unit || '个')}</span>
-                        {diff === 0 ? (
-                          <span className="text-green-600 ml-2">✓ 匹配</span>
-                        ) : diff > 0 ? (
-                          <span className="text-red-600 ml-2">多出 {diff}</span>
-                        ) : (
-                          <span className="text-red-600 ml-2">不足 {Math.abs(diff)}</span>
-                        )}
-                      </div>
-                    </div>
-                    {/* Box table */}
-                    <div className="px-3 py-2">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="py-1.5 px-2 text-left text-gray-500 font-normal">箱号</th>
-                            <th className="py-1.5 px-2 text-left text-gray-500 font-normal">每箱数量</th>
-                            <th className="py-1.5 px-2 w-12 text-gray-500 font-normal"></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {boxes.map((qty, bi) => (
-                            <tr key={bi} className="border-b last:border-0">
-                              <td className="py-1.5 px-2 font-mono text-gray-600">第 {bi + 1} 箱</td>
-                              <td className="py-1.5 px-2">
-                                <Input
-                                  type="number"
-                                  className="h-7 w-24 text-xs"
-                                  value={qty}
-                                  min={0}
-                                  onChange={(e) => updateBoxQty(itemIdx, bi, Number(e.target.value))}
-                                />
-                              </td>
-                              <td className="py-1.5 px-2 text-center">
-                                <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => removeBox(itemIdx, bi)} disabled={boxes.length <= 1}>
-                                  <Minus className="h-3 w-3" />
-                                </Button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-xs text-gray-500">箱数</span>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={999}
-                          className="h-7 w-16 text-xs text-center"
-                          value={labelBoxes[itemIdx]?.length || 1}
-                          onChange={(e) => {
-                            const n = parseInt(e.target.value);
-                            if (!isNaN(n) && n >= 1) setBoxCount(itemIdx, n);
-                          }}
-                        />
-                        <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setBoxCount(itemIdx, (labelBoxes[itemIdx]?.length || 1) + 1)}>
-                          <Plus className="h-3 w-3" /> 增加一箱
-                        </Button>
-                        <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => redistributeBoxes(itemIdx)}>
-                          自动均分
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* Summary */}
-              <div className="flex items-center justify-between px-1 text-xs">
-                <span className="text-gray-500">共 {form.delivery_note_items.length} 种物料，{labelBoxes.reduce((s, b) => s + b.length, 0)} 箱</span>
-                {allLabelsValid ? (
-                  <span className="text-green-600 font-semibold">所有物料分配匹配</span>
-                ) : (
-                  <span className="text-red-600 font-semibold">部分物料分配不匹配</span>
-                )}
-              </div>
-
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setLabelOpen(false)}>取消</Button>
-                {editMode ? (
-                  <Button className="bg-[#1E40AF] hover:bg-[#1D4ED8]" onClick={saveLabelSettings} disabled={!allLabelsValid}>
-                    保存设置
-                  </Button>
-                ) : (
-                  <Button className="bg-[#1E40AF] hover:bg-[#1D4ED8]" onClick={generateLabels} disabled={!allLabelsValid}>
-                    生成标签预览
-                  </Button>
-                )}
-              </DialogFooter>
-            </div>
-          ) : (
-            <div className="space-y-3 flex-1 overflow-auto">
-              <div ref={labelPrintRef} className="grid grid-cols-2 gap-3" />
-              <DialogFooter className="shrink-0">
-                <Button variant="outline" onClick={() => setLabelPreview(false)}>返回修改</Button>
-                <Button className="bg-[#1E40AF] hover:bg-[#1D4ED8] gap-1" onClick={handlePrintLabels}>
-                  <Printer className="h-4 w-4" /> 打印全部标签
-                </Button>
-              </DialogFooter>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <LabelPrintDialog
+        open={labelOpen}
+        onOpenChange={setLabelOpen}
+        items={form.delivery_note_items}
+        editMode={editMode}
+        noteNo={form.note_no}
+        customerName={form.customer_name}
+        onSave={(updatedItems) => { setForm(prev => ({ ...prev, delivery_note_items: updatedItems })); }}
+      />
 
       {/* ─── Ship Dialog ─── */}
-      <Dialog open={shipDialogOpen} onOpenChange={setShipDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>确认出货</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-gray-600">
-            出货后将扣减对应仓库库存，并更新客户订单已交量。此操作不可撤销。
-          </p>
-          <div className="mt-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">出库仓库 *</label>
-            <Select value={shipWarehouseId} onValueChange={setShipWarehouseId}>
-              <SelectTrigger>
-                <SelectValue placeholder="选择仓库" />
-              </SelectTrigger>
-              <SelectContent>
-                {warehouses.map((w) => (
-                  <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShipDialogOpen(false)}>取消</Button>
-            <Button className="bg-green-600 hover:bg-green-700" onClick={handleShip} disabled={!shipWarehouseId}>
-              确认出货
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ShipDialog
+        open={shipDialogOpen}
+        onOpenChange={setShipDialogOpen}
+        warehouses={warehouses}
+        onShip={handleShip}
+      />
 
-      {/* ─── Category Group Management Dialog ─── */}
-      <Dialog open={groupManageOpen} onOpenChange={setGroupManageOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>类目分组设置</DialogTitle>
-          </DialogHeader>
-          <div className="text-xs text-gray-500 mb-3">将产品类目编组，开送货单时按组勾选，同组类目开在一张单上</div>
-          <div className="space-y-2 max-h-96 overflow-y-auto">
-            {editingGroups.map((group, idx) => (
-              <div key={idx} className="flex items-center gap-2 p-2 border rounded bg-white">
-                <span className="text-xs font-medium text-gray-500 w-8 shrink-0">组{group.group_no}</span>
-                <Input
-                  value={group.group_name}
-                  onChange={(e) => {
-                    const next = [...editingGroups];
-                    next[idx] = { ...next[idx], group_name: e.target.value };
-                    setEditingGroups(next);
-                  }}
-                  placeholder="分组名称，如：支架/卡箍"
-                  className="h-8 text-xs w-36"
-                />
-                <div className="flex-1 flex flex-wrap gap-1">
-                  {availableCategories
-                    .filter((cat) => {
-                      // 当前组已选的类目始终显示，其他组已选的类目不再显示
-                      if (group.categories.split(',').includes(cat)) return true;
-                      return !editingGroups.some((g, gi) => gi !== idx && g.categories.split(',').includes(cat));
-                    })
-                    .map((cat) => {
-                      const isGroupCat = group.categories.split(',').includes(cat);
-                      const catProducts = products.filter((p) => p.category === cat);
-                      const shortName = catProducts.length > 0 ? catProducts[0].name.split('/')[0] : '';
-                      const catLabel = cat && cat !== '0' ? `${cat}-${shortName}` : (shortName || `类目${cat}`);
-                      return (
-                        <button
-                          key={cat}
-                          type="button"
-                          onClick={() => {
-                            const next = [...editingGroups];
-                            const cats = next[idx].categories.split(',').filter(Boolean);
-                            const newCats = isGroupCat
-                              ? cats.filter((c) => c !== cat)
-                              : [...cats, cat];
-                            next[idx] = { ...next[idx], categories: newCats.join(',') };
-                            setEditingGroups(next);
-                          }}
-                          className={`h-6 px-1.5 rounded text-[10px] border transition-colors ${
-                            isGroupCat
-                              ? 'bg-[#1E40AF] text-white border-[#1E40AF]'
-                              : 'bg-white text-gray-500 border-gray-200 hover:border-[#1E40AF]'
-                          }`}
-                          title={`类目${cat}`}
-                        >
-                          {catLabel}
-                        </button>
-                      );
-                    })}
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0 text-red-500 hover:text-red-700 shrink-0"
-                  onClick={() => {
-                    setEditingGroups(editingGroups.filter((_, i) => i !== idx));
-                  }}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-2 mt-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const maxNo = editingGroups.length > 0 ? Math.max(...editingGroups.map(g => g.group_no)) : 0;
-                setEditingGroups([...editingGroups, { group_no: maxNo + 1, group_name: '', categories: '' }]);
-              }}
-            >
-              <Plus className="h-3.5 w-3.5 mr-1" /> 添加分组
-            </Button>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setGroupManageOpen(false)}>取消</Button>
-            <Button
-              onClick={async () => {
-                // 过滤掉空名称的分组
-                const validGroups = editingGroups.filter(g => g.group_name.trim());
-                // 重新编号
-                const renumbered = validGroups.map((g, i) => ({
-                  group_no: i + 1,
-                  group_name: g.group_name,
-                  categories: g.categories,
-                }));
-                const res = await fetch('/api/delivery/category-groups', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ groups: renumbered }),
-                });
-                if (res.ok) {
-                  const data = await res.json();
-                  setCategoryGroups(data);
-                  setGroupManageOpen(false);
-                } else {
-                  let errMsg = res.statusText;
-                  try { const t = await res.text(); errMsg = t; } catch {}
-                  console.error('保存分组失败:', res.status, errMsg);
-                  alert('保存失败: ' + errMsg);
-                }
-              }}
-            >
-              保存
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* ─── Category Group Dialog ─── */}
+      <CategoryGroupDialog
+        open={groupManageOpen}
+        onOpenChange={setGroupManageOpen}
+        groups={categoryGroups}
+        availableCategories={availableCategories}
+        products={products}
+        onSave={(groups) => setCategoryGroups(groups)}
+      />
 
       {/* ─── Order Picker Dialog ─── */}
-      <Dialog open={orderPickerOpen} onOpenChange={setOrderPickerOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>从客户订单导入</DialogTitle>
-          </DialogHeader>
-          <div className="text-xs text-gray-500 mb-2">仅导入有库存的物料，已预扣的库存可用于送货出库</div>
-          {/* 类目筛选 */}
-          {form.delivery_category && (
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs text-gray-500">按类目筛选：</span>
-              <div className="flex gap-1">
-                {categoryGroups
-                  .filter(g => (form.delivery_category || '').split(',').some(c => g.categories.split(',').includes(c)))
-                  .map((g) => (
-                    <span key={g.group_no} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-medium">
-                      {g.group_no}.{g.group_name}
-                    </span>
-                  ))}
-              </div>
-              <span className="text-xs text-gray-400 ml-1">仅显示选中类目的物料</span>
-            </div>
-          )}
-          <div className="max-h-96 overflow-auto">
-            {customerOrders.length === 0 ? (
-              <p className="text-sm text-gray-400 py-8 text-center">暂无可导入的客户订单，请先在客户订单中下推</p>
-            ) : (
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="py-2 px-2 text-left">订单号</th>
-                    <th className="py-2 px-2 text-left">客户</th>
-                    <th className="py-2 px-2 text-left">物料</th>
-                    <th className="py-2 px-2 text-left">类目</th>
-                    <th className="py-2 px-2 text-right">未交数量</th>
-                    <th className="py-2 px-2 text-right">库存量</th>
-                    <th className="py-2 px-2 text-center">状态</th>
-                    <th className="py-2 px-2 w-20"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {customerOrders.map((order) => {
-                    const orderItems = (order.customer_order_items || []).filter(i => Number(i.quantity) - Number(i.delivered_qty) > 0);
-                    if (orderItems.length === 0) return null;
-                    // 按类目筛选
-                    const selectedCategories = (form.delivery_category || '').split(',').filter(Boolean);
-                    const filteredOrderItems = selectedCategories.length > 0
-                      ? orderItems.filter((item) => {
-                          const rawProd = item.products;
-                          const prod = Array.isArray(rawProd) ? rawProd[0] as Product : rawProd as Product;
-                          return prod?.category && selectedCategories.includes(prod.category);
-                        })
-                      : orderItems;
-                    if (filteredOrderItems.length === 0) return null;
-                    return filteredOrderItems.map((item, idx) => {
-                      const undelivered = Number(item.quantity) - Number(item.delivered_qty);
-                      const totalStock = (() => {
-                        const inv = orderInventoryMap[item.product_id];
-                        return inv ? inv.quantity : 0;
-                      })();
-                      const prodName = (() => {
-                        const rawProd = item.products;
-                        if (Array.isArray(rawProd)) return (rawProd[0] as Product)?.name || '-';
-                        return (rawProd as Product)?.name || '-';
-                      })();
-                      const prodCode = (() => {
-                        const rawProd = item.products;
-                        if (Array.isArray(rawProd)) return (rawProd[0] as Product)?.code || '';
-                        return (rawProd as Product)?.code || '';
-                      })();
-                      const prodCategory = (() => {
-                        const rawProd = item.products;
-                        if (Array.isArray(rawProd)) return (rawProd[0] as Product)?.category || '';
-                        return (rawProd as Product)?.category || '';
-                      })();
-                      return (
-                        <tr key={`${order.id}-${idx}`} className="border-b hover:bg-gray-50">
-                          {idx === 0 ? (
-                            <>
-                              <td className="py-2 px-2 font-mono" rowSpan={filteredOrderItems.length}>{order.order_no}</td>
-                              <td className="py-2 px-2" rowSpan={filteredOrderItems.length}>
-                                {customers.find(c => c.id === order.customer_id)?.name || '-'}
-                              </td>
-                            </>
-                          ) : null}
-                          <td className="py-2 px-2">{prodName} <span className="text-gray-400">{prodCode}</span></td>
-                          <td className="py-2 px-2">
-                            {prodCategory ? (
-                              <span className="inline-block px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
-                                {categoryGroups.find(g => g.categories.split(',').includes(prodCategory))
-                                  ? `${categoryGroups.find(g => g.categories.split(',').includes(prodCategory))!.group_no}.${categoryGroups.find(g => g.categories.split(',').includes(prodCategory))!.group_name}`
-                                  : prodCategory}
-                              </span>
-                            ) : (
-                              <span className="text-gray-300">-</span>
-                            )}
-                          </td>
-                          <td className="py-2 px-2 text-right font-mono">{undelivered}</td>
-                          <td className="py-2 px-2 text-right font-mono">{totalStock > 0 ? <span className="text-green-600">{totalStock}</span> : <span className="text-red-500">0</span>}</td>
-                          <td className="py-2 px-2 text-center">
-                            <span className="text-xs text-gray-400">导入时检查</span>
-                          </td>
-                          {idx === 0 ? (
-                            <td className="py-2 px-2 text-center" rowSpan={filteredOrderItems.length}>
-                              <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => void importFromOrder(order)}>
-                                导入
-                              </Button>
-                            </td>
-                          ) : null}
-                        </tr>
-                      );
-                    });
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <OrderPickerDialog
+        open={orderPickerOpen}
+        onOpenChange={setOrderPickerOpen}
+        orders={customerOrders}
+        customers={customers}
+        categoryGroups={categoryGroups}
+        selectedCategories={selectedCategories}
+        orderInventoryMap={orderInventoryMap}
+        onImport={importFromOrder}
+      />
 
-      {/* ─── Label Print Styles ─── */}
+      {/* ─── Print & Label Styles ─── */}
       <style jsx global>{`
-        .label-card {
-          border: 1px solid #333;
-          padding: 8px 10px;
-          font-size: 11px;
-          font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
-          page-break-inside: avoid;
-        }
-        .label-customer {
-          font-weight: 600;
-          font-size: 12px;
-          margin-bottom: 4px;
-        }
-        .label-divider {
-          border-top: 1px dashed #999;
-          margin: 4px 0;
-        }
-        .label-product {
-          font-weight: 600;
-          font-size: 13px;
-          margin-bottom: 2px;
-        }
-        .label-spec {
-          color: #666;
-          margin-bottom: 4px;
-        }
-        .label-row {
-          display: flex;
-          justify-content: space-between;
-          margin-bottom: 2px;
-        }
-        .label-barcode {
-          width: 100%;
-          margin: 4px 0 2px;
-        }
-        .label-note {
-          text-align: center;
-          font-size: 9px;
-          color: #999;
-        }
+        .label-card { border: 1px solid #333; padding: 8px 10px; font-size: 11px; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; page-break-inside: avoid; }
+        .label-customer { font-weight: 600; font-size: 12px; margin-bottom: 4px; }
+        .label-divider { border-top: 1px dashed #999; margin: 4px 0; }
+        .label-product { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+        .label-spec { color: #666; margin-bottom: 4px; }
+        .label-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+        .label-barcode { width: 100%; margin: 4px 0 2px; }
+        .label-note { text-align: center; font-size: 9px; color: #999; }
         @media print {
-          @page {
-            size: 241mm 139.5mm portrait;
-            margin: 0;
-          }
+          @page { size: 241mm 139.5mm portrait; margin: 0; }
           html, body { margin: 0; padding: 0; background: white; }
           body * { visibility: hidden; }
           #delivery-print-area, #delivery-print-area * { visibility: visible; }
           #delivery-print-area {
-            position: fixed;
-            left: 0;
-            top: 0;
-            width: 241mm !important;
-            min-height: 0 !important;
-            max-height: none !important;
-            height: auto !important;
-            padding: 4mm 6mm !important;
-            border: none;
-            box-shadow: none;
-            box-sizing: border-box;
-            font-size: 19px !important;
-            line-height: 22px !important;
-            overflow: visible;
+            position: fixed; left: 0; top: 0; width: 241mm !important;
+            min-height: 0 !important; max-height: none !important; height: auto !important;
+            padding: 4mm 6mm !important; border: none; box-shadow: none; box-sizing: border-box;
+            font-size: 19px !important; line-height: 22px !important; overflow: visible;
           }
           .label-card, .label-card * { visibility: visible; }
           .label-card { position: relative; }
