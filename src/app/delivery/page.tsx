@@ -1327,11 +1327,11 @@ export default function DeliveryPage() {
 
       {/* ─── Delivery Print Preview Dialog ─── */}
       <Dialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen}>
-        <DialogContent className="w-auto max-w-none p-0 flex flex-col" style={{ width: 'fit-content', maxWidth: '98vw' }}>
+        <DialogContent className="w-auto max-w-none p-0 flex flex-col max-h-[92vh]" style={{ width: 'fit-content', maxWidth: '98vw' }}>
           <DialogHeader className="px-6 pt-4 pb-2 no-print shrink-0">
             <DialogTitle>打印预览 - 送货单</DialogTitle>
           </DialogHeader>
-          <div className="flex justify-center py-4" style={{ background: '#E5E7EB' }}>
+          <div className="flex justify-center py-4 overflow-y-auto flex-1 min-h-0" style={{ background: '#E5E7EB' }}>
             {/* 打印区域 — 白纸效果，实际尺寸 241mm×140mm */}
             <div id="delivery-print-area" className="bg-white" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '279mm', padding: '6mm 8mm', boxSizing: 'border-box', fontSize: '11px', lineHeight: '17px', boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
               {/* 抬头区域 — 从系统设置读取公司信息 */}
