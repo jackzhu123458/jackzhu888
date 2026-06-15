@@ -90,15 +90,6 @@ export default function ProductionPage() {
   const [formMaterials, setFormMaterials] = useState<Array<{ product_id: string; required_qty: string }>>([]);
   const [saving, setSaving] = useState(false);
 
-  // 产品模糊搜索
-  const [productSearch, setProductSearch] = useState('');
-  // 用料模糊搜索
-  const [materialSearchMap, setMaterialSearchMap] = useState<Record<number, string>>({});
-  const [showMaterialDropdownMap, setShowMaterialDropdownMap] = useState<Record<number, boolean>>({});
-  const [showProductDropdown, setShowProductDropdown] = useState(false);
-  const [materialSearchIdx, setMaterialSearchIdx] = useState<number | null>(null);
-  const [materialSearchText, setMaterialSearchText] = useState('');
-
   // 删除
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -621,65 +612,14 @@ export default function ProductionPage() {
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700 mb-1.5 block">生产产品 *</label>
-            <div className="relative">
-              <Input
-                placeholder="输入产品编码或名称搜索..."
-                value={formProductId
-                  ? (() => {
-                      const p = products.find(pr => pr.id === formProductId);
-                      return p ? `${p.code} - ${p.name}` : productSearch;
-                    })()
-                  : productSearch}
-                onChange={(e) => {
-                  setProductSearch(e.target.value);
-                  setFormProductId('');
-                  setFormMaterials([]);
-                  setShowProductDropdown(true);
-                }}
-                onFocus={() => {
-                  if (!formProductId) setShowProductDropdown(true);
-                }}
-                onBlur={() => setTimeout(() => setShowProductDropdown(false), 200)}
-              />
-              {showProductDropdown && productSearch && !formProductId && (
-                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                  {products
-                    .filter(p => {
-                      const q = productSearch.toLowerCase();
-                      return p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q) || (p.spec || '').toLowerCase().includes(q);
-                    })
-                    .slice(0, 20)
-                    .map(p => (
-                      <button
-                        key={p.id}
-                        className="w-full px-3 py-2 text-left hover:bg-blue-50 text-sm flex items-center gap-2 border-b border-gray-50 last:border-0"
-                        onMouseDown={() => {
-                          setFormProductId(p.id);
-                          setProductSearch('');
-                          setShowProductDropdown(false);
-                          handleSelectProduct(p.id);
-                        }}
-                      >
-                        <span className="font-mono text-xs text-gray-500">{p.code}</span>
-                        <span className="truncate">{p.name}</span>
-                        {p.spec && <span className="text-gray-400 text-xs truncate">({p.spec})</span>}
-                      </button>
-                    ))}
-                  {products.filter(p => {
-                    const q = productSearch.toLowerCase();
-                    return p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q);
-                  }).length === 0 && (
-                    <div className="px-3 py-4 text-center text-sm text-gray-400">无匹配产品</div>
-                  )}
-                </div>
-              )}
-              {formProductId && (
-                <button
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  onClick={() => { setFormProductId(''); setProductSearch(''); setFormMaterials([]); }}
-                >×</button>
-              )}
-            </div>
+            <Select value={formProductId} onValueChange={handleSelectProduct}>
+              <SelectTrigger><SelectValue placeholder="选择成品" /></SelectTrigger>
+              <SelectContent>
+                {finishedProducts.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -714,58 +654,14 @@ export default function ProductionPage() {
             <div className="space-y-2 max-h-[240px] overflow-y-auto">
               {formMaterials.map((m, idx) => (
                 <div key={idx} className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <Input
-                      className="h-9 text-xs"
-                      placeholder="输入编码或名称搜索物料..."
-                      value={m.product_id
-                        ? (() => {
-                            const p = products.find(pr => pr.id === m.product_id);
-                            return p ? `${p.code} - ${p.name}` : (materialSearchMap[idx] || '');
-                          })()
-                        : (materialSearchMap[idx] || '')}
-                      onChange={(e) => {
-                        setMaterialSearchMap(prev => ({ ...prev, [idx]: e.target.value }));
-                        updateMaterialRow(idx, 'product_id', '');
-                        setShowMaterialDropdownMap(prev => ({ ...prev, [idx]: true }));
-                      }}
-                      onFocus={() => {
-                        if (!m.product_id) setShowMaterialDropdownMap(prev => ({ ...prev, [idx]: true }));
-                      }}
-                      onBlur={() => setTimeout(() => setShowMaterialDropdownMap(prev => ({ ...prev, [idx]: false })), 200)}
-                    />
-                    {showMaterialDropdownMap[idx] && (materialSearchMap[idx] || '') && !m.product_id && (
-                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                        {products
-                          .filter(p => p.id !== formProductId)
-                          .filter(p => {
-                            const q = (materialSearchMap[idx] || '').toLowerCase();
-                            return p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q) || (p.spec || '').toLowerCase().includes(q);
-                          })
-                          .slice(0, 15)
-                          .map(p => (
-                            <button
-                              key={p.id}
-                              className="w-full px-2 py-1.5 text-left hover:bg-blue-50 text-xs flex items-center gap-1.5 border-b border-gray-50 last:border-0"
-                              onMouseDown={() => {
-                                updateMaterialRow(idx, 'product_id', p.id);
-                                setMaterialSearchMap(prev => ({ ...prev, [idx]: '' }));
-                                setShowMaterialDropdownMap(prev => ({ ...prev, [idx]: false }));
-                              }}
-                            >
-                              <span className="font-mono text-gray-500">{p.code}</span>
-                              <span className="truncate">{p.name}</span>
-                            </button>
-                          ))}
-                      </div>
-                    )}
-                    {m.product_id && (
-                      <button
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
-                        onClick={() => { updateMaterialRow(idx, 'product_id', ''); setMaterialSearchMap(prev => ({ ...prev, [idx]: '' })); }}
-                      >×</button>
-                    )}
-                  </div>
+                  <Select value={m.product_id} onValueChange={(v) => updateMaterialRow(idx, 'product_id', v)}>
+                    <SelectTrigger className="flex-1 h-9 text-xs"><SelectValue placeholder="选择物料" /></SelectTrigger>
+                    <SelectContent>
+                      {products.filter((p) => p.id !== formProductId).map((p) => (
+                        <SelectItem key={p.id} value={p.id} className="text-xs">{p.code} - {p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Input value={m.required_qty} onChange={(e) => updateMaterialRow(idx, 'required_qty', e.target.value)} placeholder="用量" type="number" step="0.01" className="w-24 h-9 text-xs" />
                   <button onClick={() => removeMaterialRow(idx)} className="text-red-400 hover:text-red-600 text-sm">x</button>
                 </div>
