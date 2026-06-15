@@ -188,6 +188,17 @@ export default function DeliveryPage() {
   const [orderInventoryMap, setOrderInventoryMap] = useState<Record<string, { quantity: number; reserved_qty: number }>>({});
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
 
+  // 类目分组
+  interface CategoryGroup {
+    id?: number;
+    group_no: number;
+    group_name: string;
+    categories: string; // 逗号分隔
+  }
+  const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
+  const [groupManageOpen, setGroupManageOpen] = useState(false);
+  const [editingGroups, setEditingGroups] = useState<CategoryGroup[]>([]);
+
   const printRef = useRef<HTMLDivElement>(null);
   const labelPrintRef = useRef<HTMLDivElement>(null);
 
@@ -226,6 +237,11 @@ export default function DeliveryPage() {
     });
     setAvailableCategories(Array.from(cats).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })));
     if (sData?.company_info) setCompanyInfo(sData.company_info);
+
+    // 获取类目分组
+    const gRes = await fetch('/api/delivery/category-groups');
+    const gData = await gRes.json();
+    if (Array.isArray(gData)) setCategoryGroups(gData);
   }, []);
 
   useEffect(() => { fetchNotes(); fetchMeta(); }, [fetchNotes, fetchMeta]);
@@ -1056,20 +1072,20 @@ export default function DeliveryPage() {
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500 whitespace-nowrap w-16">送货类目</label>
                 {editMode ? (
-                  <div className="flex gap-1.5 flex-wrap">
-                    {availableCategories.map((cat) => {
-                      const isSelected = (form.delivery_category || '').split(',').includes(cat);
-                      const catProductNames = products.filter((p) => p.category === cat).slice(0, 2).map((p) => p.name);
-                      const catLabel = catProductNames.length > 0 ? catProductNames.join('/') : cat;
+                  <div className="flex gap-1.5 flex-wrap items-center">
+                    {categoryGroups.map((group) => {
+                      const isSelected = (form.delivery_category || '').split(',').some(c => group.categories.split(',').includes(c));
                       return (
                         <button
-                          key={cat}
+                          key={group.group_no}
                           type="button"
                           onClick={() => {
+                            const groupCats = group.categories.split(',');
                             const current = (form.delivery_category || '').split(',').filter(Boolean);
+                            // 如果已选中该分组，取消该分组所有类目；否则添加该分组所有类目
                             const next = isSelected
-                              ? current.filter((c) => c !== cat)
-                              : [...current, cat];
+                              ? current.filter((c) => !groupCats.includes(c))
+                              : [...new Set([...current, ...groupCats])];
                             setForm((prev) => ({ ...prev, delivery_category: next.join(',') }));
                             setIsFormDirty(true);
                           }}
@@ -1078,23 +1094,33 @@ export default function DeliveryPage() {
                               ? 'bg-[#1E40AF] text-white border-[#1E40AF]'
                               : 'bg-white text-gray-600 border-gray-300 hover:border-[#1E40AF] hover:text-[#1E40AF]'
                           }`}
-                          title={catProductNames.length > 0 ? `类目${cat}：${catProductNames.join('、')}` : `类目${cat}`}
+                          title={`包含类目：${group.categories}`}
                         >
-                          {catLabel}
+                          {group.group_no}. {group.group_name}
                         </button>
                       );
                     })}
-                    {availableCategories.length === 0 && (
-                      <span className="text-xs text-gray-400">暂无产品类目</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingGroups(categoryGroups.map(g => ({ ...g })));
+                        setGroupManageOpen(true);
+                      }}
+                      className="h-7 px-2 rounded text-xs text-gray-500 border border-dashed border-gray-300 hover:border-[#1E40AF] hover:text-[#1E40AF] transition-colors"
+                    >
+                      设置分组
+                    </button>
+                    {categoryGroups.length === 0 && (
+                      <span className="text-xs text-gray-400">暂无分组，点击"设置分组"添加</span>
                     )}
                   </div>
                 ) : (
                   <span className="text-xs text-[#111827]">
                     {form.delivery_category
-                      ? form.delivery_category.split(',').map((c) => {
-                          const catProductNames = products.filter((p) => p.category === c).slice(0, 2).map((p) => p.name);
-                          return catProductNames.length > 0 ? catProductNames.join('/') : `类目${c}`;
-                        }).join('、')
+                      ? categoryGroups
+                          .filter(g => (form.delivery_category || '').split(',').some(c => g.categories.split(',').includes(c)))
+                          .map(g => `${g.group_no}.${g.group_name}`)
+                          .join('、') || form.delivery_category
                       : '-'}
                   </span>
                 )}
@@ -1421,10 +1447,12 @@ export default function DeliveryPage() {
                 <div style={{ textAlign: 'right' }}>
                   <div>送货单号：{printData?.note_no || ''}</div>
                   <div>单据日期：{printData?.delivery_date ? formatDate(printData.delivery_date) : ''}</div>
-                  {printData?.delivery_category && <div>类目：{printData.delivery_category.split(',').map((c: string) => {
-                    const catProducts = products.filter((p) => p.category === c);
-                    return catProducts.slice(0, 2).map((p) => p.name).join('/') || `类目${c}`;
-                  }).join('、')}</div>}
+                  {printData?.delivery_category && <div>类目：{printData.delivery_category.split(',').filter(Boolean).length > 0
+                    ? categoryGroups
+                        .filter(g => printData!.delivery_category!.split(',').some((c: string) => g.categories.split(',').includes(c)))
+                        .map(g => `${g.group_no}.${g.group_name}`)
+                        .join('、')
+                    : ''}</div>}
                 </div>
               </div>
 
@@ -1481,10 +1509,12 @@ export default function DeliveryPage() {
                             <div>
                               <span style={{ marginRight: '16px' }}>送货单号：{printData?.note_no || ''}</span>
                               <span>日期：{printData?.delivery_date || ''}</span>
-                              {printData?.delivery_category && <span style={{ marginLeft: '16px' }}>类目：{printData.delivery_category.split(',').map((c: string) => {
-                                const catProducts = products.filter((p) => p.category === c);
-                                return catProducts.slice(0, 2).map((p) => p.name).join('/') || `类目${c}`;
-                              }).join('、')}</span>}
+                              {printData?.delivery_category && <span style={{ marginLeft: '16px' }}>类目：{printData.delivery_category.split(',').filter(Boolean).length > 0
+                                ? categoryGroups
+                                    .filter(g => printData!.delivery_category!.split(',').some((c: string) => g.categories.split(',').includes(c)))
+                                    .map(g => `${g.group_no}.${g.group_name}`)
+                                    .join('、')
+                                : ''}</span>}
                             </div>
                           </div>
                         </>
@@ -1738,6 +1768,112 @@ export default function DeliveryPage() {
         </DialogContent>
       </Dialog>
 
+      {/* ─── Category Group Management Dialog ─── */}
+      <Dialog open={groupManageOpen} onOpenChange={setGroupManageOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>类目分组设置</DialogTitle>
+          </DialogHeader>
+          <div className="text-xs text-gray-500 mb-3">将产品类目编组，开送货单时按组勾选，同组类目开在一张单上</div>
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {editingGroups.map((group, idx) => (
+              <div key={idx} className="flex items-center gap-2 p-2 border rounded bg-white">
+                <span className="text-xs font-medium text-gray-500 w-8 shrink-0">组{group.group_no}</span>
+                <Input
+                  value={group.group_name}
+                  onChange={(e) => {
+                    const next = [...editingGroups];
+                    next[idx] = { ...next[idx], group_name: e.target.value };
+                    setEditingGroups(next);
+                  }}
+                  placeholder="分组名称，如：支架/卡箍"
+                  className="h-8 text-xs w-36"
+                />
+                <div className="flex-1 flex flex-wrap gap-1">
+                  {availableCategories.map((cat) => {
+                    const isGroupCat = group.categories.split(',').includes(cat);
+                    const catLabel = products.filter((p) => p.category === cat).slice(0, 1).map((p) => p.name)[0] || `类目${cat}`;
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => {
+                          const next = [...editingGroups];
+                          const cats = next[idx].categories.split(',').filter(Boolean);
+                          const newCats = isGroupCat
+                            ? cats.filter((c) => c !== cat)
+                            : [...cats, cat];
+                          next[idx] = { ...next[idx], categories: newCats.join(',') };
+                          setEditingGroups(next);
+                        }}
+                        className={`h-6 px-1.5 rounded text-[10px] border transition-colors ${
+                          isGroupCat
+                            ? 'bg-[#1E40AF] text-white border-[#1E40AF]'
+                            : 'bg-white text-gray-500 border-gray-200 hover:border-[#1E40AF]'
+                        }`}
+                        title={`类目${cat}`}
+                      >
+                        {catLabel}
+                      </button>
+                    );
+                  })}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-red-500 hover:text-red-700 shrink-0"
+                  onClick={() => {
+                    setEditingGroups(editingGroups.filter((_, i) => i !== idx));
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const maxNo = editingGroups.length > 0 ? Math.max(...editingGroups.map(g => g.group_no)) : 0;
+                setEditingGroups([...editingGroups, { group_no: maxNo + 1, group_name: '', categories: '' }]);
+              }}
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" /> 添加分组
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGroupManageOpen(false)}>取消</Button>
+            <Button
+              onClick={async () => {
+                // 过滤掉空名称的分组
+                const validGroups = editingGroups.filter(g => g.group_name.trim());
+                // 重新编号
+                const renumbered = validGroups.map((g, i) => ({
+                  ...g,
+                  group_no: i + 1,
+                }));
+                const res = await fetch('/api/delivery/category-groups', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(renumbered),
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  setCategoryGroups(data);
+                  setGroupManageOpen(false);
+                } else {
+                  alert('保存失败');
+                }
+              }}
+            >
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ─── Order Picker Dialog ─── */}
       <Dialog open={orderPickerOpen} onOpenChange={setOrderPickerOpen}>
         <DialogContent className="max-w-3xl">
@@ -1750,16 +1886,13 @@ export default function DeliveryPage() {
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs text-gray-500">按类目筛选：</span>
               <div className="flex gap-1">
-                {form.delivery_category.split(',').filter(Boolean).map((cat) => {
-                  const catProducts = products.filter((p) => p.category === cat);
-                  const catLabel = catProducts.slice(0, 2).map((p) => p.name).join('/') || cat;
-                  return (
-                    <span key={cat} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-medium">
-                      {catLabel}
-                      <span className="text-blue-400">({catProducts.length}种)</span>
+                {categoryGroups
+                  .filter(g => (form.delivery_category || '').split(',').some(c => g.categories.split(',').includes(c)))
+                  .map((g) => (
+                    <span key={g.group_no} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-medium">
+                      {g.group_no}.{g.group_name}
                     </span>
-                  );
-                })}
+                  ))}
               </div>
               <span className="text-xs text-gray-400 ml-1">仅显示选中类目的物料</span>
             </div>
@@ -1830,7 +1963,9 @@ export default function DeliveryPage() {
                           <td className="py-2 px-2">
                             {prodCategory ? (
                               <span className="inline-block px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
-                                {products.filter((p) => p.category === prodCategory).slice(0, 2).map((p) => p.name).join('/') || prodCategory}
+                                {categoryGroups.find(g => g.categories.split(',').includes(prodCategory))
+                                  ? `${categoryGroups.find(g => g.categories.split(',').includes(prodCategory))!.group_no}.${categoryGroups.find(g => g.categories.split(',').includes(prodCategory))!.group_name}`
+                                  : prodCategory}
                               </span>
                             ) : (
                               <span className="text-gray-300">-</span>

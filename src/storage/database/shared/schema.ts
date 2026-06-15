@@ -378,6 +378,18 @@ export const permissions = pgTable(
   ]
 );
 
+// 送货单类目分组配置
+export const deliveryCategoryGroups = pgTable(
+  "delivery_category_groups",
+  {
+    id: serial("id").primaryKey(),
+    groupNo: integer("group_no").notNull(),
+    groupName: text("group_name").notNull(),
+    categories: text("categories").notNull(), // 逗号分隔的产品类目编号，如 "002,003"
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  }
+);
+
 // 用户-角色关联表
 export const userRoles = pgTable(
   "user_roles",
