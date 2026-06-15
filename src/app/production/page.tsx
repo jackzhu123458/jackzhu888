@@ -334,7 +334,6 @@ export default function ProductionPage() {
           >
             <div className="flex items-center justify-between mb-1">
               <div className="text-sm font-medium text-gray-900 truncate" title={prod?.name}>
-                {prod?.code && <span className="font-mono text-gray-500 mr-1">{prod.code}</span>}
                 {prod?.name || '未知物料'}
               </div>
               <div className="flex items-center gap-2 shrink-0 ml-2">
@@ -711,7 +710,7 @@ export default function ProductionPage() {
           return (
             <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <div className="text-sm font-medium text-gray-800">
-                产品：{order.products?.code} {order.products?.name}
+                产品：{order.products?.name}
               </div>
               <div className="text-sm text-gray-600 mt-1">
                 数量：{Number(order.quantity).toLocaleString()} {order.products?.unit || '个'}
