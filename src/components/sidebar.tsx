@@ -22,6 +22,7 @@ const navItems: NavItem[] = [
     children: [
       { href: '/customers', label: '客户管理', icon: '◉', permission: 'customers' },
       { href: '/bom', label: '商品资料', icon: '☰', permission: 'products' },
+      { href: '/drawings', label: '图纸管理', icon: '⊞', permission: 'drawings' },
     ],
   },
   { href: '/orders', label: '客户订单', icon: '▤', permission: 'orders' },
@@ -29,10 +30,12 @@ const navItems: NavItem[] = [
   { href: '/inbound', label: '入库单', icon: '↓', permission: 'inbound' },
   { href: '/delivery', label: '送货单', icon: '→', permission: 'delivery' },
   { href: '/inventory', label: '库存管理', icon: '▦', permission: 'inventory' },
+  { href: '/reconciliation', label: '对账管理', icon: '▦', permission: 'reconciliation' },
   {
     label: '系统管理',
     icon: '▦',
     children: [
+      { href: '/settings', label: '系统设置', icon: '◈', permission: 'settings' },
       { href: '/system/users', label: '用户管理', icon: '◈', permission: 'system:users' },
       { href: '/system/roles', label: '角色管理', icon: '◇', permission: 'system:roles' },
     ],
