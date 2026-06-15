@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth-context';
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -16,6 +18,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(username, password);
+      router.push('/');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '登录失败');
     } finally {
