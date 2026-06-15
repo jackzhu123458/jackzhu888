@@ -1792,7 +1792,9 @@ export default function DeliveryPage() {
                 <div className="flex-1 flex flex-wrap gap-1">
                   {availableCategories.map((cat) => {
                     const isGroupCat = group.categories.split(',').includes(cat);
-                    const catLabel = products.filter((p) => p.category === cat).slice(0, 1).map((p) => p.name)[0] || `类目${cat}`;
+                    const catProducts = products.filter((p) => p.category === cat);
+                    const shortName = catProducts.length > 0 ? catProducts[0].name.split('/')[0] : '';
+                    const catLabel = cat && cat !== '0' ? `${cat}-${shortName}` : (shortName || `类目${cat}`);
                     return (
                       <button
                         key={cat}
