@@ -72,6 +72,18 @@ interface DashboardData {
     created_at: string;
     customers: { name: string } | { name: string }[];
   }>;
+  ganttOrders: Array<{
+    id: string;
+    order_no: string;
+    status: string;
+    quantity: number;
+    due_date: string | null;
+    created_at: string;
+    product_code: string;
+    product_name: string;
+    customer_id: string;
+    customer_name: string;
+  }>;
 }
 
 const orderStatusMap: Record<string, { label: string; color: string }> = {
@@ -193,40 +205,15 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* 中间区域：库存分布 + 生产状态 */}
+      {/* 中间区域：生产计划甘特图 + 生产状态 */}
       <div className="grid grid-cols-3 gap-6">
-        {/* 库存分布（按仓库） */}
+        {/* 生产计划甘特图 */}
         <div className="col-span-2 bg-white border border-gray-200 rounded-lg">
           <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-            <h2 className="font-medium text-gray-900">库存分布（按仓库）</h2>
-            <span className="text-xs text-gray-500">共 {data.inventoryByWarehouse.length} 个仓库</span>
+            <h2 className="font-medium text-gray-900">生产计划甘特图</h2>
+            <span className="text-xs text-gray-500">{data.ganttOrders.length} 笔活跃订单</span>
           </div>
-          {data.inventoryByWarehouse.length === 0 ? (
-            <div className="p-8 text-center text-sm text-gray-400">暂无库存数据</div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 text-gray-500">
-                  <th className="px-4 py-2 text-left font-medium">仓库名称</th>
-                  <th className="px-4 py-2 text-right font-medium">库存量(件)</th>
-                  <th className="px-4 py-2 text-right font-medium">预留量(件)</th>
-                  <th className="px-4 py-2 text-right font-medium">可用量(件)</th>
-                  <th className="px-4 py-2 text-right font-medium">物料数</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.inventoryByWarehouse.map(wh => (
-                  <tr key={wh.warehouse_id} className="border-t border-gray-100 hover:bg-gray-50">
-                    <td className="px-4 py-2.5 font-medium text-gray-900">{wh.warehouse_name}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-gray-900">{formatNumber(wh.quantity)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-orange-600">{formatNumber(wh.reserved)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-green-600">{formatNumber(wh.available)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-gray-600">{wh.item_count}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <GanttChart orders={data.ganttOrders} />
         </div>
 
         {/* 生产状态概览 */}
@@ -309,28 +296,22 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* 库存动态 */}
+        {/* 库存分布（按仓库） */}
         <div className="bg-white border border-gray-200 rounded-lg">
           <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-            <h2 className="font-medium text-gray-900">库存动态</h2>
-            <Clock className="h-4 w-4 text-gray-400" />
+            <h2 className="font-medium text-gray-900">库存分布</h2>
+            <span className="text-xs text-gray-500">{data.inventoryByWarehouse.length} 仓</span>
           </div>
-          {data.recentActivities.length === 0 ? (
-            <div className="p-8 text-center text-sm text-gray-400">暂无动态</div>
+          {data.inventoryByWarehouse.length === 0 ? (
+            <div className="p-8 text-center text-sm text-gray-400">暂无数据</div>
           ) : (
-            <div className="divide-y divide-gray-50">
-              {data.recentActivities.slice(0, 8).map(act => (
-                <div key={act.id + act.type} className="px-4 py-2.5 flex items-start gap-3">
-                  <div className={`mt-0.5 w-6 h-6 rounded flex items-center justify-center flex-shrink-0 ${act.type === 'inbound' ? 'bg-green-50' : 'bg-red-50'}`}>
-                    {act.type === 'inbound' ? (
-                      <ArrowDownRight className="h-3.5 w-3.5 text-green-600" />
-                    ) : (
-                      <ArrowUpRight className="h-3.5 w-3.5 text-red-600" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm text-gray-900 truncate">{act.detail}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">{formatTime(act.time, now)}</div>
+            <div className="p-3 space-y-2">
+              {data.inventoryByWarehouse.map(wh => (
+                <div key={wh.warehouse_id} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-700 truncate">{wh.warehouse_name}</span>
+                  <div className="flex items-center gap-3 ml-2">
+                    <span className="font-mono text-gray-900">{formatNumber(wh.quantity)}</span>
+                    <span className="font-mono text-green-600 text-xs">{formatNumber(wh.available)}可</span>
                   </div>
                 </div>
               ))}
@@ -436,6 +417,155 @@ function StatusLine({ label, count, color }: { label: string; count: number; col
         <span className="text-xs text-gray-600">{label}</span>
       </div>
       <span className="text-xs font-mono font-medium text-gray-900">{count}</span>
+    </div>
+  );
+}
+
+function GanttChart({ orders }: { orders: DashboardData['ganttOrders'] }) {
+  if (orders.length === 0) {
+    return <div className="p-8 text-center text-sm text-gray-400">暂无活跃生产订单</div>;
+  }
+
+  // Group by customer
+  const customerGroups = new Map<string, typeof orders>();
+  for (const o of orders) {
+    const key = o.customer_name || '未分配';
+    if (!customerGroups.has(key)) customerGroups.set(key, []);
+    customerGroups.get(key)!.push(o);
+  }
+
+  // Calculate date range: from earliest created_at to latest due_date, with padding
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const allDates: number[] = [today.getTime()];
+  for (const o of orders) {
+    if (o.created_at) allDates.push(new Date(o.created_at).getTime());
+    if (o.due_date) allDates.push(new Date(o.due_date).getTime());
+  }
+  const minDate = new Date(Math.min(...allDates));
+  const maxDate = new Date(Math.max(...allDates));
+  // Add padding: 3 days before min, 3 days after max
+  const rangeStart = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate() - 3);
+  const rangeEnd = new Date(maxDate.getFullYear(), maxDate.getMonth(), maxDate.getDate() + 4);
+  const totalDays = Math.ceil((rangeEnd.getTime() - rangeStart.getTime()) / 86400000);
+  const dayWidth = 28; // px per day
+  const leftColWidth = 180; // customer + product name width
+
+  const todayOffset = Math.floor((today.getTime() - rangeStart.getTime()) / 86400000);
+
+  // Date header: show day markers
+  const headerDays: { label: string; offset: number; isToday: boolean; isWeekend: boolean }[] = [];
+  for (let i = 0; i < totalDays; i++) {
+    const d = new Date(rangeStart.getTime() + i * 86400000);
+    const isToday = d.getTime() === today.getTime();
+    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+    if (i % 3 === 0 || isToday) {
+      headerDays.push({
+        label: `${d.getMonth() + 1}/${d.getDate()}`,
+        offset: i,
+        isToday,
+        isWeekend,
+      });
+    }
+  }
+
+  function getBarStyle(order: (typeof orders)[0]) {
+    const startDate = order.created_at ? new Date(order.created_at) : today;
+    const endDate = order.due_date ? new Date(order.due_date) : new Date(today.getTime() + 7 * 86400000);
+    const startOffset = Math.max(0, Math.floor((startDate.getTime() - rangeStart.getTime()) / 86400000));
+    const endOffset = Math.min(totalDays, Math.ceil((endDate.getTime() - rangeStart.getTime()) / 86400000));
+    const barDays = Math.max(1, endOffset - startOffset);
+    const isUrgent = order.due_date && new Date(order.due_date).getTime() - now.getTime() < 3 * 86400000;
+    const isOverdue = order.due_date && new Date(order.due_date).getTime() < now.getTime();
+    const barColor = isOverdue ? 'bg-red-400' : isUrgent ? 'bg-orange-400' : order.status === 'in_progress' ? 'bg-blue-500' : 'bg-yellow-400';
+    const barBorder = isOverdue ? 'border-red-500' : isUrgent ? 'border-orange-500' : order.status === 'in_progress' ? 'border-blue-600' : 'border-yellow-500';
+    return { left: startOffset * dayWidth, width: barDays * dayWidth - 2, barColor, barBorder, isOverdue, isUrgent };
+  }
+
+  const statusLabel: Record<string, string> = { pending: '待生产', in_progress: '生产中' };
+
+  return (
+    <div className="overflow-x-auto">
+      <div style={{ minWidth: leftColWidth + totalDays * dayWidth + 20 }}>
+        {/* Date header */}
+        <div className="flex border-b border-gray-200 bg-gray-50">
+          <div className="flex-shrink-0 border-r border-gray-200" style={{ width: leftColWidth }} />
+          <div className="relative" style={{ width: totalDays * dayWidth }}>
+            {headerDays.map(hd => (
+              <div
+                key={hd.offset}
+                className={`absolute text-xs ${hd.isToday ? 'text-blue-600 font-bold' : hd.isWeekend ? 'text-gray-400' : 'text-gray-500'}`}
+                style={{ left: hd.offset * dayWidth, top: 6 }}
+              >
+                {hd.label}
+              </div>
+            ))}
+            <div className="h-6" />
+          </div>
+        </div>
+
+        {/* Gantt rows */}
+        {Array.from(customerGroups.entries()).map(([customer, customerOrders]) => (
+          <div key={customer}>
+            {/* Customer group header */}
+            <div className="flex bg-gray-50/80 border-b border-gray-100">
+              <div className="flex-shrink-0 border-r border-gray-200 px-3 py-1.5" style={{ width: leftColWidth }}>
+                <span className="text-xs font-medium text-gray-700 truncate block">{customer}</span>
+              </div>
+              <div className="relative" style={{ width: totalDays * dayWidth }}>
+                <div className="h-6" />
+              </div>
+            </div>
+            {/* Orders in this customer group */}
+            {customerOrders.map(order => {
+              const bar = getBarStyle(order);
+              return (
+                <div key={order.id} className="flex border-b border-gray-50 hover:bg-gray-50/50">
+                  <div className="flex-shrink-0 border-r border-gray-200 px-3 py-1.5" style={{ width: leftColWidth }}>
+                    <div className="text-xs text-gray-900 truncate" title={order.product_name}>
+                      {order.product_name || order.order_no}
+                    </div>
+                    <div className="text-xs text-gray-400 font-mono">
+                      {order.quantity}个 · {statusLabel[order.status] || order.status}
+                    </div>
+                  </div>
+                  <div className="relative" style={{ width: totalDays * dayWidth }}>
+                    <div className="h-9" />
+                    {/* Weekend backgrounds */}
+                    {Array.from({ length: totalDays }, (_, i) => {
+                      const d = new Date(rangeStart.getTime() + i * 86400000);
+                      const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                      if (!isWeekend) return null;
+                      return <div key={i} className="absolute top-0 bottom-0 bg-gray-50/60" style={{ left: i * dayWidth, width: dayWidth }} />;
+                    })}
+                    {/* Today line */}
+                    {todayOffset >= 0 && todayOffset < totalDays && (
+                      <div className="absolute top-0 bottom-0 w-0.5 bg-blue-400 z-10" style={{ left: todayOffset * dayWidth + dayWidth / 2 }}>
+                        <div className="absolute -top-0.5 -left-1 w-2.5 h-2.5 rounded-full bg-blue-500" />
+                      </div>
+                    )}
+                    {/* Bar */}
+                    <div
+                      className={`absolute top-1.5 h-6 rounded-sm ${bar.barColor} border ${bar.barBorder} opacity-90 hover:opacity-100 transition-opacity cursor-pointer flex items-center px-1.5 z-20`}
+                      style={{ left: bar.left, width: Math.max(bar.width, 20) }}
+                      title={`${order.product_name} | ${statusLabel[order.status]} | 数量: ${order.quantity}${order.due_date ? ' | 交期: ' + order.due_date.substring(0, 10) : ''}`}
+                    >
+                      {bar.width > 60 && (
+                        <span className="text-xs text-white font-medium truncate">
+                          {order.product_name}
+                        </span>
+                      )}
+                      {bar.isOverdue && (
+                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-600 animate-pulse" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
