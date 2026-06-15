@@ -1333,7 +1333,7 @@ export default function DeliveryPage() {
           </DialogHeader>
           <div className="flex justify-center py-4" style={{ background: '#E5E7EB' }}>
             {/* 打印区域 — 白纸效果，实际尺寸 241mm×140mm */}
-            <div id="delivery-print-area" className="bg-white" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '140mm', padding: '6mm 8mm', boxSizing: 'border-box', fontSize: '11px', lineHeight: '17px', boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
+            <div id="delivery-print-area" className="bg-white" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '279mm', padding: '6mm 8mm', boxSizing: 'border-box', fontSize: '11px', lineHeight: '17px', boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
               {/* 抬头区域 — 从系统设置读取公司信息 */}
               <div style={{ textAlign: 'center', marginBottom: '2px' }}>
                 <div style={{ fontSize: '16px', fontWeight: 'bold', letterSpacing: '4px' }}>{companyInfo.name || '常州横林新顺电器配件厂'}</div>
@@ -1779,7 +1779,7 @@ export default function DeliveryPage() {
         }
         @media print {
           @page {
-            size: 241mm 140mm;
+            size: 241mm 279mm;
             margin: 0;
           }
           html, body { margin: 0; padding: 0; }
@@ -1790,7 +1790,7 @@ export default function DeliveryPage() {
             left: 0;
             top: 0;
             width: 241mm !important;
-            min-height: 140mm !important;
+            min-height: 279mm !important;
             padding: 6mm 8mm !important;
             border: none;
             box-shadow: none;
