@@ -1873,8 +1873,10 @@ export default function DeliveryPage() {
                   setCategoryGroups(data);
                   setGroupManageOpen(false);
                 } else {
-                  const err = await res.json().catch(() => ({}));
-                  alert('保存失败: ' + (err.error || res.statusText));
+                  let errMsg = res.statusText;
+                  try { const t = await res.text(); errMsg = t; } catch {}
+                  console.error('保存分组失败:', res.status, errMsg);
+                  alert('保存失败: ' + errMsg);
                 }
               }}
             >
