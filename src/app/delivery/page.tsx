@@ -1327,8 +1327,8 @@ export default function DeliveryPage() {
 
       {/* ─── Delivery Print Preview Dialog ─── */}
       <Dialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen}>
-        <DialogContent className="w-full max-w-none p-0 flex flex-col max-h-[92vh]" style={{ maxWidth: '100vw' }}>
-          <DialogHeader className="px-6 pt-4 pb-2 no-print shrink-0">
+        <DialogContent className="fixed inset-0 w-screen h-screen max-w-none translate-x-0 translate-y-0 rounded-none border-0 p-0 gap-0 flex flex-col" style={{ top: 0, left: 0 }}>
+          <DialogHeader className="px-6 pt-4 pb-2 no-print shrink-0 flex flex-row items-center justify-between">
             <DialogTitle>打印预览 - 送货单</DialogTitle>
           </DialogHeader>
           <div className="flex justify-center py-4 overflow-y-auto flex-1 min-h-0" style={{ background: '#E5E7EB' }}>
