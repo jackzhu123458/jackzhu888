@@ -2,15 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { S3Storage } from 'coze-coding-dev-sdk';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
 
-const supabase = getSupabaseClient();
+function getSupabase() {
+  return getSupabaseClient();
+}
 
-const storage = new S3Storage({
-  endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
-  accessKey: '',
-  secretKey: '',
-  bucketName: process.env.COZE_BUCKET_NAME,
-  region: 'cn-beijing',
-});
+let cachedStorage: S3Storage | null = null;
+function getStorage() {
+  if (!cachedStorage) {
+    cachedStorage = new S3Storage({
+      endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
+      accessKey: '',
+      secretKey: '',
+      bucketName: process.env.COZE_BUCKET_NAME,
+      region: 'cn-beijing',
+    });
+  }
+  return cachedStorage;
+}
 
 // GET /api/drawings?product_id=xxx — 获取产品的图纸列表
 // GET /api/drawings?file_key=xxx — 获取单个图纸的签名URL（用于预览/打印）
@@ -23,14 +31,14 @@ export async function GET(request: NextRequest) {
 
     // 单独获取签名URL（预览/打印用）
     if (fileKey) {
-      const url = await storage.generatePresignedUrl({
+      const url = await getStorage().generatePresignedUrl({
         key: fileKey,
         expireTime: 3600,
       });
       return NextResponse.json({ url });
     }
 
-    let query = supabase
+    let query = getSupabase()
       .from('product_drawings')
       .select('*, products!product_drawings_product_id_products_id_fk(id, code, name, spec)')
       .order('created_at', { ascending: false });
@@ -41,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     if (keyword) {
       // 搜索产品编码/名称包含关键字的图纸
-      const { data: matchedProducts } = await supabase
+      const { data: matchedProducts } = await getSupabase()
         .from('products')
         .select('id')
         .or(`code.ilike.%${keyword}%,name.ilike.%${keyword}%,spec.ilike.%${keyword}%`);
@@ -64,7 +72,7 @@ export async function GET(request: NextRequest) {
     const drawingsWithUrl = await Promise.all(
       (data || []).map(async (d: Record<string, unknown>) => {
         try {
-          const url = await storage.generatePresignedUrl({
+          const url = await getStorage().generatePresignedUrl({
             key: d.file_key as string,
             expireTime: 3600,
           });
@@ -97,14 +105,14 @@ export async function POST(request: NextRequest) {
     // 上传文件到对象存储
     const buffer = Buffer.from(await file.arrayBuffer());
     const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const fileKey = await storage.uploadFile({
+    const fileKey = await getStorage().uploadFile({
       fileContent: buffer,
       fileName: `drawings/${productId}/${sanitizedFileName}`,
       contentType: file.type || 'application/octet-stream',
     });
 
     // 保存图纸记录到数据库
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from('product_drawings')
       .insert({
         product_id: productId,
@@ -119,12 +127,12 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       // 删除已上传的文件
-      await storage.deleteFile({ fileKey });
+      await getStorage().deleteFile({ fileKey });
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     // 生成签名URL
-    const url = await storage.generatePresignedUrl({
+    const url = await getStorage().generatePresignedUrl({
       key: fileKey,
       expireTime: 3600,
     });
@@ -147,7 +155,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 先获取图纸记录
-    const { data: drawing, error: fetchError } = await supabase
+    const { data: drawing, error: fetchError } = await getSupabase()
       .from('product_drawings')
       .select('file_key')
       .eq('id', id)
@@ -158,10 +166,10 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 删除对象存储中的文件
-    await storage.deleteFile({ fileKey: (drawing as Record<string, unknown>).file_key as string });
+    await getStorage().deleteFile({ fileKey: (drawing as Record<string, unknown>).file_key as string });
 
     // 删除数据库记录
-    const { error } = await supabase.from('product_drawings').delete().eq('id', id);
+    const { error } = await getSupabase().from('product_drawings').delete().eq('id', id);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

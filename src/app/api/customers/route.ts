@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
 
-const supabase = getSupabaseClient();
+function getSupabase() {
+  return getSupabaseClient();
+}
 
 // GET /api/customers
 export async function GET() {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('customers')
     .select('*')
     .eq('is_active', true)
@@ -26,7 +28,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '客户名称不能为空' }, { status: 400 });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('customers')
     .insert({ name, code, contact, phone, address, remark })
     .select()
@@ -47,7 +49,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: '缺少客户 ID' }, { status: 400 });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('customers')
     .update({ name, code, contact, phone, address, remark, updated_at: new Date().toISOString() })
     .eq('id', id)
@@ -67,7 +69,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: '缺少客户 ID' }, { status: 400 });
   }
 
-  const { error } = await supabase
+  const { error } = await getSupabase()
     .from('customers')
     .update({ is_active: false, updated_at: new Date().toISOString() })
     .eq('id', id);
