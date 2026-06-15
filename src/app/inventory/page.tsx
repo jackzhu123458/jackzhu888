@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { translateUnit } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ArrowDownCircle, ArrowUpCircle, MapPin, Info } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, MapPin, Info, Pencil } from 'lucide-react';
 
 // 库位号颜色配置 - A~F 各区域独立配色
 const LOCATION_COLORS: Record<string, { bg: string; text: string; border: string; light: string; desc: string }> = {
@@ -148,6 +148,11 @@ export default function InventoryPage() {
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [editingLocationValue, setEditingLocationValue] = useState('');
 
+  // 数量编辑状态
+  const [editingQtyId, setEditingQtyId] = useState<string | null>(null);
+  const [editingQtyField, setEditingQtyField] = useState<'quantity' | 'reserved_qty'>('quantity');
+  const [editingQtyValue, setEditingQtyValue] = useState('');
+
   // 库位号导入状态
   const [importLoading, setImportLoading] = useState(false);
   const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -211,6 +216,31 @@ export default function InventoryPage() {
       // 失败时静默回退
     }
     setEditingLocationId(null);
+  }, []);
+
+  // 保存数量修改
+  const saveQty = useCallback(async (inventoryId: string, field: 'quantity' | 'reserved_qty', value: string) => {
+    const numValue = parseFloat(value);
+    if (isNaN(numValue) || numValue < 0) {
+      setEditingQtyId(null);
+      return;
+    }
+    try {
+      const res = await fetch('/api/inventory', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: inventoryId, [field]: numValue }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setInventory(prev => prev.map(item =>
+          item.id === inventoryId ? { ...item, [field]: String(numValue) } : item
+        ));
+      }
+    } catch {
+      // 失败时静默回退
+    }
+    setEditingQtyId(null);
   }, []);
 
   // 开始编辑库位号
@@ -514,8 +544,8 @@ export default function InventoryPage() {
                 <tr className="border-b border-gray-200 bg-gray-50/50">
                   <th className="text-left px-5 py-3 font-medium text-gray-500">物料编码</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">物料名称</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">总库存</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">预留量</th>
+                  <th className="text-right px-5 py-3 font-medium text-gray-500">总库存 <span className="text-blue-400 font-normal text-xs">[可编辑]</span></th>
+                  <th className="text-right px-5 py-3 font-medium text-gray-500">预留量 <span className="text-blue-400 font-normal text-xs">[可编辑]</span></th>
                   <th className="text-right px-5 py-3 font-medium text-gray-500">可用量</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">单位</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">库位号</th>
@@ -544,8 +574,72 @@ export default function InventoryPage() {
                           </button>
                         </td>
                         <td className="px-5 py-3 text-gray-900">{summary.product.name}</td>
-                        <td className="px-5 py-3 text-right font-mono font-medium text-gray-900">{summary.totalQty.toFixed(2)}</td>
-                        <td className="px-5 py-3 text-right font-mono text-amber-600">{summary.totalReserved.toFixed(2)}</td>
+                        <td className="px-5 py-3 text-right">
+                          {editingQtyId === summary.warehouses[0]?.inventoryId && editingQtyField === 'quantity' && summary.warehouses.length === 1 ? (
+                            <Input
+                              autoFocus
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={editingQtyValue}
+                              onChange={(e) => setEditingQtyValue(e.target.value)}
+                              onBlur={() => saveQty(summary.warehouses[0].inventoryId, 'quantity', editingQtyValue)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') saveQty(summary.warehouses[0].inventoryId, 'quantity', editingQtyValue);
+                                if (e.key === 'Escape') setEditingQtyId(null);
+                              }}
+                              className="h-7 w-24 text-right font-mono text-sm"
+                            />
+                          ) : (
+                            <button
+                              className="font-mono font-medium text-gray-900 hover:text-blue-600 hover:underline cursor-pointer group"
+                              onClick={() => {
+                                if (summary.warehouses.length === 1) {
+                                  setEditingQtyId(summary.warehouses[0].inventoryId);
+                                  setEditingQtyField('quantity');
+                                  setEditingQtyValue(summary.totalQty.toFixed(2));
+                                }
+                              }}
+                              title={summary.warehouses.length === 1 ? '点击修改库存数量' : '请在仓库明细中修改'}
+                            >
+                              {summary.totalQty.toFixed(2)}
+                              <Pencil className="inline w-3 h-3 ml-1 opacity-0 group-hover:opacity-50 transition-opacity" />
+                            </button>
+                          )}
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          {editingQtyId === summary.warehouses[0]?.inventoryId && editingQtyField === 'reserved_qty' && summary.warehouses.length === 1 ? (
+                            <Input
+                              autoFocus
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={editingQtyValue}
+                              onChange={(e) => setEditingQtyValue(e.target.value)}
+                              onBlur={() => saveQty(summary.warehouses[0].inventoryId, 'reserved_qty', editingQtyValue)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') saveQty(summary.warehouses[0].inventoryId, 'reserved_qty', editingQtyValue);
+                                if (e.key === 'Escape') setEditingQtyId(null);
+                              }}
+                              className="h-7 w-24 text-right font-mono text-sm"
+                            />
+                          ) : (
+                            <button
+                              className="font-mono text-amber-600 hover:text-blue-600 hover:underline cursor-pointer group"
+                              onClick={() => {
+                                if (summary.warehouses.length === 1) {
+                                  setEditingQtyId(summary.warehouses[0].inventoryId);
+                                  setEditingQtyField('reserved_qty');
+                                  setEditingQtyValue(summary.totalReserved.toFixed(2));
+                                }
+                              }}
+                              title={summary.warehouses.length === 1 ? '点击修改预留数量' : '请在仓库明细中修改'}
+                            >
+                              {summary.totalReserved.toFixed(2)}
+                              <Pencil className="inline w-3 h-3 ml-1 opacity-0 group-hover:opacity-50 transition-opacity" />
+                            </button>
+                          )}
+                        </td>
                         <td className="px-5 py-3 text-right font-mono font-medium text-green-700">{(summary.totalQty - summary.totalReserved).toFixed(2)}</td>
                         <td className="px-5 py-3 text-gray-600">{translateUnit(summary.product.unit)}</td>
                         <td className="px-5 py-3">
@@ -669,7 +763,71 @@ export default function InventoryPage() {
                           )}
                         </td>
                         <td className="px-5 py-3 text-gray-600 text-xs">
-                          {summary.warehouses.map((w) => `${w.name}: ${w.qty}(预留${w.reserved})`).join(' | ')}
+                          <div className="space-y-1">
+                            {summary.warehouses.map((w) => (
+                              <div key={w.inventoryId} className="flex items-center gap-1.5">
+                                <span className="text-gray-500">{w.name}:</span>
+                                {editingQtyId === w.inventoryId && editingQtyField === 'quantity' ? (
+                                  <Input
+                                    autoFocus
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={editingQtyValue}
+                                    onChange={(e) => setEditingQtyValue(e.target.value)}
+                                    onBlur={() => saveQty(w.inventoryId, 'quantity', editingQtyValue)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') saveQty(w.inventoryId, 'quantity', editingQtyValue);
+                                      if (e.key === 'Escape') setEditingQtyId(null);
+                                    }}
+                                    className="h-6 w-20 text-right font-mono text-xs"
+                                  />
+                                ) : (
+                                  <button
+                                    className="font-mono text-gray-700 hover:text-blue-600 hover:underline cursor-pointer"
+                                    onClick={() => {
+                                      setEditingQtyId(w.inventoryId);
+                                      setEditingQtyField('quantity');
+                                      setEditingQtyValue(w.qty);
+                                    }}
+                                    title="点击修改库存数量"
+                                  >
+                                    {w.qty}
+                                  </button>
+                                )}
+                                <span className="text-gray-400">(预留</span>
+                                {editingQtyId === w.inventoryId && editingQtyField === 'reserved_qty' ? (
+                                  <Input
+                                    autoFocus
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={editingQtyValue}
+                                    onChange={(e) => setEditingQtyValue(e.target.value)}
+                                    onBlur={() => saveQty(w.inventoryId, 'reserved_qty', editingQtyValue)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') saveQty(w.inventoryId, 'reserved_qty', editingQtyValue);
+                                      if (e.key === 'Escape') setEditingQtyId(null);
+                                    }}
+                                    className="h-6 w-20 text-right font-mono text-xs"
+                                  />
+                                ) : (
+                                  <button
+                                    className="font-mono text-amber-600 hover:text-blue-600 hover:underline cursor-pointer"
+                                    onClick={() => {
+                                      setEditingQtyId(w.inventoryId);
+                                      setEditingQtyField('reserved_qty');
+                                      setEditingQtyValue(w.reserved);
+                                    }}
+                                    title="点击修改预留数量"
+                                  >
+                                    {w.reserved}
+                                  </button>
+                                )}
+                                <span className="text-gray-400">)</span>
+                              </div>
+                            ))}
+                          </div>
                         </td>
                       </tr>
                     );

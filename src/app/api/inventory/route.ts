@@ -19,5 +19,6 @@ export async function PUT(request: NextRequest) {
   if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 });
   const { data, error } = await client.from('inventory').update(updates).eq('id', id).select();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data?.[0]);
+  if (!data || data.length === 0) return NextResponse.json({ error: '库存记录不存在' }, { status: 404 });
+  return NextResponse.json(data[0]);
 }
