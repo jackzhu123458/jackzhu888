@@ -98,6 +98,7 @@ export default function UsersPage() {
         is_active: formActive,
         role_ids: formRoleIds,
       };
+      if (editId) body.id = editId;
       if (formPassword.trim()) body.password = formPassword.trim();
 
       const url = editId ? `/api/system/users?id=${editId}` : '/api/system/users';
