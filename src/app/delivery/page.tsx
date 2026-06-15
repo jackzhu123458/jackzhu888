@@ -1790,38 +1790,41 @@ export default function DeliveryPage() {
                   className="h-8 text-xs w-36"
                 />
                 <div className="flex-1 flex flex-wrap gap-1">
-                  {availableCategories.map((cat) => {
-                    const isGroupCat = group.categories.split(',').includes(cat);
-                    const isOtherGroupCat = editingGroups.some((g, gi) => gi !== idx && g.categories.split(',').includes(cat));
-                    const catProducts = products.filter((p) => p.category === cat);
-                    const shortName = catProducts.length > 0 ? catProducts[0].name.split('/')[0] : '';
-                    const catLabel = cat && cat !== '0' ? `${cat}-${shortName}` : (shortName || `类目${cat}`);
-                    return (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => {
-                          const next = [...editingGroups];
-                          const cats = next[idx].categories.split(',').filter(Boolean);
-                          const newCats = isGroupCat
-                            ? cats.filter((c) => c !== cat)
-                            : [...cats, cat];
-                          next[idx] = { ...next[idx], categories: newCats.join(',') };
-                          setEditingGroups(next);
-                        }}
-                        className={`h-6 px-1.5 rounded text-[10px] border transition-colors ${
-                          isGroupCat
-                            ? 'bg-[#1E40AF] text-white border-[#1E40AF]'
-                            : isOtherGroupCat
-                              ? 'bg-blue-50 text-blue-600 border-blue-300 hover:border-[#1E40AF]'
+                  {availableCategories
+                    .filter((cat) => {
+                      // 当前组已选的类目始终显示，其他组已选的类目不再显示
+                      if (group.categories.split(',').includes(cat)) return true;
+                      return !editingGroups.some((g, gi) => gi !== idx && g.categories.split(',').includes(cat));
+                    })
+                    .map((cat) => {
+                      const isGroupCat = group.categories.split(',').includes(cat);
+                      const catProducts = products.filter((p) => p.category === cat);
+                      const shortName = catProducts.length > 0 ? catProducts[0].name.split('/')[0] : '';
+                      const catLabel = cat && cat !== '0' ? `${cat}-${shortName}` : (shortName || `类目${cat}`);
+                      return (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => {
+                            const next = [...editingGroups];
+                            const cats = next[idx].categories.split(',').filter(Boolean);
+                            const newCats = isGroupCat
+                              ? cats.filter((c) => c !== cat)
+                              : [...cats, cat];
+                            next[idx] = { ...next[idx], categories: newCats.join(',') };
+                            setEditingGroups(next);
+                          }}
+                          className={`h-6 px-1.5 rounded text-[10px] border transition-colors ${
+                            isGroupCat
+                              ? 'bg-[#1E40AF] text-white border-[#1E40AF]'
                               : 'bg-white text-gray-500 border-gray-200 hover:border-[#1E40AF]'
-                        }`}
-                        title={isOtherGroupCat && !isGroupCat ? `已被其他组选中，点击也选入本组` : `类目${cat}`}
-                      >
-                        {catLabel}
-                      </button>
-                    );
-                  })}
+                          }`}
+                          title={`类目${cat}`}
+                        >
+                          {catLabel}
+                        </button>
+                      );
+                    })}
                 </div>
                 <Button
                   variant="ghost"
