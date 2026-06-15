@@ -1401,17 +1401,7 @@ export default function DeliveryPage() {
                       )}
                       {/* 表格 8列（含联单列） */}
                       <div style={{ position: 'relative' }}>
-                        <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', border: '1px solid #000' }}>
-                          <colgroup>
-                            <col style={{ width: '5%' }} />
-                            <col style={{ width: '14%' }} />
-                            <col style={{ width: '13%' }} />
-                            <col style={{ width: '30%' }} />
-                            <col style={{ width: '6%' }} />
-                            <col style={{ width: '9%' }} />
-                            <col style={{ width: '17%' }} />
-                            <col style={{ width: '6%' }} />
-                          </colgroup>
+                        <table style={{ width: '100%', tableLayout: 'auto', borderCollapse: 'collapse', border: '1px solid #000' }}>
                           <tbody>
                             <tr style={{ background: '#f0f0f0' }}>
                               <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '14px', textAlign: 'center' }}>项次</th>
