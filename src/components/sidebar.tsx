@@ -28,8 +28,8 @@ const navItems: NavItem[] = [
   { href: '/orders', label: '客户订单', icon: '▤', permission: 'orders' },
   { href: '/production', label: '生产订单', icon: '⚙', permission: 'production' },
   { href: '/inbound', label: '入库单', icon: '↓', permission: 'inbound' },
-  { href: '/delivery', label: '送货单', icon: '→', permission: 'delivery' },
   { href: '/inventory', label: '库存管理', icon: '▦', permission: 'inventory' },
+  { href: '/delivery', label: '送货单', icon: '→', permission: 'delivery' },
   { href: '/reconciliation', label: '对账管理', icon: '▦', permission: 'reconciliation' },
   {
     label: '系统管理',

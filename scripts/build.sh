@@ -11,6 +11,6 @@ echo "=== Build Step 2: Building Next.js project ==="
 pnpm next build 2>&1 || { echo "ERROR: next build failed"; exit 1; }
 
 echo "=== Build Step 3: Bundling server with tsup ==="
-npx tsup src/server.ts --format cjs --platform node --target node20 --outDir dist --no-splitting --no-minify 2>&1 || { echo "ERROR: tsup build failed"; exit 1; }
+pnpm tsup src/server.ts --format cjs --platform node --target node20 --outDir dist --no-splitting --no-minify 2>&1 || { echo "ERROR: tsup build failed"; exit 1; }
 
 echo "=== Build completed successfully ==="
