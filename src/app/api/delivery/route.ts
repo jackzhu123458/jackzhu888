@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const client = getSupabaseClient();
   const body = await request.json();
-  const { items, customer_order_id, warehouse_id, note_no: _incomingNoteNo, ...noteFields } = body;
+  const { items, customer_order_id, warehouse_id, note_no: _incomingNoteNo, customer_order: _co, customer_orders: _cos, delivery_note_items: _dnis, ...noteFields } = body;
 
   // 自动生成送货单号: XS + 月份(2位) + 序号(6位)，如 XS06000001
   const now = new Date();
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const client = getSupabaseClient();
   const body = await request.json();
-  const { id, items, warehouse_id, ...updates } = body;
+  const { id, items, warehouse_id, customer_order: _co2, customer_orders: _cos2, delivery_note_items: _dnis2, ...updates } = body;
   if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 });
 
   // 获取修改前的状态
