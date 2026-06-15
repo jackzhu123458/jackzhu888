@@ -1374,7 +1374,7 @@ export default function DeliveryPage() {
                   const isLastPage = pageIdx === pages.length - 1;
                   const totalRows = MAX_ROWS;
                   return (
-                    <div key={pageIdx} style={{ pageBreakAfter: isLastPage ? 'auto' : 'always' }}>
+                    <div key={pageIdx} style={{ pageBreakAfter: isLastPage ? 'avoid' : 'always', pageBreakInside: 'avoid' }}>
                       {/* 第2页起重复抬头 */}
                       {pageIdx > 0 && (
                         <>
@@ -1782,19 +1782,24 @@ export default function DeliveryPage() {
             size: 241mm 279mm portrait;
             margin: 0;
           }
-          html, body { margin: 0; padding: 0; }
+          html, body { margin: 0; padding: 0; background: white; }
           body * { visibility: hidden; }
           #delivery-print-area, #delivery-print-area * { visibility: visible; }
           #delivery-print-area {
-            position: static;
-            width: 100% !important;
-            min-height: auto !important;
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 241mm !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            height: auto !important;
             padding: 8mm 10mm !important;
             border: none;
             box-shadow: none;
             box-sizing: border-box;
             font-size: 13px !important;
             line-height: 20px !important;
+            overflow: visible;
           }
           .label-card, .label-card * { visibility: visible; }
           .label-card { position: relative; }
