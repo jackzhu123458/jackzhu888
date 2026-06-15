@@ -1333,20 +1333,20 @@ export default function DeliveryPage() {
           </DialogHeader>
           <div className="overflow-y-auto flex-1 min-h-0 flex justify-center" style={{ background: '#E5E7EB' }}>
             {/* 打印区域 — 白纸效果，实际尺寸 241mm×139.5mm（三联二等分纸） */}
-            <div id="delivery-print-area" className="bg-white shrink-0 my-4" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '139.5mm', padding: '5mm 8mm', boxSizing: 'border-box', fontSize: '22px', lineHeight: '32px', boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
+            <div id="delivery-print-area" className="bg-white shrink-0 my-4" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '139.5mm', padding: '5mm 8mm', boxSizing: 'border-box', fontSize: '11px', lineHeight: '16px', boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
               {/* 抬头区域 — 从系统设置读取公司信息 */}
-              <div style={{ textAlign: 'center', marginBottom: '2px' }}>
-                <div style={{ fontSize: '28px', fontWeight: 'bold', letterSpacing: '4px' }}>{companyInfo.name || '常州横林新顺电器配件厂'}</div>
-                <div style={{ fontSize: '18px', color: '#555', marginTop: '0' }}>
+              <div style={{ textAlign: 'center', marginBottom: '1px' }}>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', letterSpacing: '4px' }}>{companyInfo.name || '常州横林新顺电器配件厂'}</div>
+                <div style={{ fontSize: '9px', color: '#555', marginTop: '0' }}>
                   {companyInfo.address && <span style={{ marginRight: '24px' }}>地址：{companyInfo.address}</span>}
                   {companyInfo.phone && <span style={{ marginRight: '24px' }}>电话：{companyInfo.phone}</span>}
                   {companyInfo.fax && <span>传真：{companyInfo.fax}</span>}
                 </div>
               </div>
-              <div style={{ textAlign: 'center', fontSize: '26px', fontWeight: 'bold', margin: '2px 0 4px' }}>送 货 单</div>
+              <div style={{ textAlign: 'center', fontSize: '13px', fontWeight: 'bold', margin: '1px 0 2px' }}>送 货 单</div>
 
               {/* 客户信息 + 单号信息 */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '22px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', fontSize: '11px' }}>
                 <div>
                   <div>客　户：{printData?.customer_name || ''}</div>
                   <div>交货地点：{printData?.customer_address || ''}</div>
@@ -1357,10 +1357,10 @@ export default function DeliveryPage() {
                 </div>
               </div>
 
-              {/* 每页最多3行物料，适配139.5mm矮纸 */}
+              {/* 每页最多5行物料，适配139.5mm矮纸 */}
               {(() => {
                 const allItems = printData?.delivery_note_items || [];
-                const MAX_ROWS = 3;
+                const MAX_ROWS = 5;
                 const pages: typeof allItems[] = [];
                 for (let i = 0; i < allItems.length; i += MAX_ROWS) {
                   pages.push(allItems.slice(i, i + MAX_ROWS));
@@ -1378,16 +1378,16 @@ export default function DeliveryPage() {
                       {/* 第2页起重复抬头 */}
                       {pageIdx > 0 && (
                         <>
-                          <div style={{ textAlign: 'center', marginBottom: '2px' }}>
-                            <div style={{ fontSize: '28px', fontWeight: 'bold', letterSpacing: '4px' }}>{companyInfo.name || '常州横林新顺电器配件厂'}</div>
-                            <div style={{ fontSize: '18px', color: '#555', marginTop: '0' }}>
+                          <div style={{ textAlign: 'center', marginBottom: '1px' }}>
+                            <div style={{ fontSize: '14px', fontWeight: 'bold', letterSpacing: '4px' }}>{companyInfo.name || '常州横林新顺电器配件厂'}</div>
+                            <div style={{ fontSize: '9px', color: '#555', marginTop: '0' }}>
                               {companyInfo.address && <span style={{ marginRight: '24px' }}>地址：{companyInfo.address}</span>}
                               {companyInfo.phone && <span style={{ marginRight: '24px' }}>电话：{companyInfo.phone}</span>}
                               {companyInfo.fax && <span>传真：{companyInfo.fax}</span>}
                             </div>
-                            <div style={{ fontSize: '26px', fontWeight: 'bold', marginTop: '2px', letterSpacing: '8px' }}>送 货 单</div>
+                            <div style={{ fontSize: '13px', fontWeight: 'bold', marginTop: '1px', letterSpacing: '8px' }}>送 货 单</div>
                           </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '20px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', fontSize: '10px' }}>
                             <div>
                               <span style={{ marginRight: '16px' }}>客户：{printData?.customer_name || ''}</span>
                               <span>交货地点：{printData?.customer_address || ''}</span>
@@ -1414,14 +1414,14 @@ export default function DeliveryPage() {
                           </colgroup>
                           <tbody>
                             <tr style={{ background: '#f0f0f0' }}>
-                              <th style={{ border: '1px solid #000', padding: '2px 6px', fontWeight: 'bold', fontSize: '20px', textAlign: 'center' }}>项次</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 6px', fontWeight: 'bold', fontSize: '20px', textAlign: 'center' }}>订单编号</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 6px', fontWeight: 'bold', fontSize: '20px', textAlign: 'center' }}>物料编号</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 6px', fontWeight: 'bold', fontSize: '20px', textAlign: 'center' }}>物料名称</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 6px', fontWeight: 'bold', fontSize: '20px', textAlign: 'center' }}>单位</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 6px', fontWeight: 'bold', fontSize: '20px', textAlign: 'center' }}>数量</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 6px', fontWeight: 'bold', fontSize: '20px', textAlign: 'center' }}>备注</th>
-                              <th rowSpan={totalRows + 1} style={{ border: '1px solid #000', padding: '8px 2px', fontSize: '18px', writingMode: 'vertical-rl', letterSpacing: '1px', lineHeight: '1.4', textAlign: 'center' }}>
+                              <th style={{ border: '1px solid #000', padding: '1px 3px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>项次</th>
+                              <th style={{ border: '1px solid #000', padding: '1px 3px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>订单编号</th>
+                              <th style={{ border: '1px solid #000', padding: '1px 3px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>物料编号</th>
+                              <th style={{ border: '1px solid #000', padding: '1px 3px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>物料名称</th>
+                              <th style={{ border: '1px solid #000', padding: '1px 3px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>单位</th>
+                              <th style={{ border: '1px solid #000', padding: '1px 3px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>数量</th>
+                              <th style={{ border: '1px solid #000', padding: '1px 3px', fontWeight: 'bold', fontSize: '10px', textAlign: 'center' }}>备注</th>
+                              <th rowSpan={totalRows + 1} style={{ border: '1px solid #000', padding: '4px 1px', fontSize: '9px', writingMode: 'vertical-rl', letterSpacing: '1px', lineHeight: '1.4', textAlign: 'center' }}>
                                 <span style={{ color: '#333' }}>(一)存根白</span>
                                 <span style={{ color: '#cc0000' }}>(二)客户红</span>
                                 <span style={{ color: '#cc8800' }}>(三)回单黄</span>
@@ -1431,23 +1431,23 @@ export default function DeliveryPage() {
                               const prod = getProduct(item);
                               return (
                                 <tr key={`item-${pageIdx}-${idx}`}>
-                                  <td style={{ border: '1px solid #000', padding: '2px 6px', textAlign: 'center', fontSize: '20px' }}>{pageIdx * MAX_ROWS + idx + 1}</td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 6px', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <td style={{ border: '1px solid #000', padding: '1px 3px', textAlign: 'center', fontSize: '10px' }}>{pageIdx * MAX_ROWS + idx + 1}</td>
+                                  <td style={{ border: '1px solid #000', padding: '1px 3px', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {orderNo}
                                   </td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 6px', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <td style={{ border: '1px solid #000', padding: '1px 3px', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {prod.code || ''}
                                   </td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 6px', fontSize: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <td style={{ border: '1px solid #000', padding: '1px 3px', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {prod.name || ''}{prod.spec ? `/${prod.spec}` : ''}
                                   </td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 6px', textAlign: 'center', fontSize: '20px' }}>
+                                  <td style={{ border: '1px solid #000', padding: '1px 3px', textAlign: 'center', fontSize: '10px' }}>
                                     {translateUnit(prod.unit || '')}
                                   </td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 6px', textAlign: 'right', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '20px' }}>
+                                  <td style={{ border: '1px solid #000', padding: '1px 3px', textAlign: 'right', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '10px' }}>
                                     {item.quantity}
                                   </td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 6px', fontSize: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <td style={{ border: '1px solid #000', padding: '1px 3px', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {item.remark || ''}
                                   </td>
                                 </tr>
@@ -1456,13 +1456,13 @@ export default function DeliveryPage() {
                             {/* 补空行至MAX_ROWS */}
                             {Array.from({ length: Math.max(0, totalRows - pageItems.length) }).map((_, i) => (
                               <tr key={`empty-${pageIdx}-${i}`}>
-                                <td style={{ border: '1px solid #000', padding: '2px 6px', textAlign: 'center', height: '28px', fontSize: '20px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 6px', fontSize: '20px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 6px', fontSize: '20px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 6px', fontSize: '20px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 6px', fontSize: '20px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 6px', fontSize: '20px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 6px', fontSize: '20px' }}>&nbsp;</td>
+                                <td style={{ border: '1px solid #000', padding: '1px 3px', textAlign: 'center', height: '14px', fontSize: '10px' }}>&nbsp;</td>
+                                <td style={{ border: '1px solid #000', padding: '1px 3px', fontSize: '10px' }}>&nbsp;</td>
+                                <td style={{ border: '1px solid #000', padding: '1px 3px', fontSize: '10px' }}>&nbsp;</td>
+                                <td style={{ border: '1px solid #000', padding: '1px 3px', fontSize: '10px' }}>&nbsp;</td>
+                                <td style={{ border: '1px solid #000', padding: '1px 3px', fontSize: '10px' }}>&nbsp;</td>
+                                <td style={{ border: '1px solid #000', padding: '1px 3px', fontSize: '10px' }}>&nbsp;</td>
+                                <td style={{ border: '1px solid #000', padding: '1px 3px', fontSize: '10px' }}>&nbsp;</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1472,17 +1472,17 @@ export default function DeliveryPage() {
                       {/* 底部备注 + 签署（仅最后一页） */}
                       {isLastPage && (
                         <>
-                          <div style={{ marginTop: '4px', fontSize: '22px' }}>
+                          <div style={{ marginTop: '2px', fontSize: '11px' }}>
                             <div>备注：{printData?.remark || ''}</div>
                           </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', fontSize: '22px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '11px' }}>
                             <div>收货单位及经手人：________________</div>
                             <div>送货单位及经手人：{companyInfo.short_name || '新　顺'}________________</div>
                           </div>
                         </>
                       )}
                       {/* 非最后一页的分页标记 */}
-                      {!isLastPage && <div style={{ fontSize: '18px', color: '#999', textAlign: 'center', marginTop: '8px' }}>第 {pageIdx + 1} 页 / 共 {pages.length} 页（续下页）</div>}
+                      {!isLastPage && <div style={{ fontSize: '9px', color: '#999', textAlign: 'center', marginTop: '4px' }}>第 {pageIdx + 1} 页 / 共 {pages.length} 页（续下页）</div>}
                     </div>
                   );
                 });
@@ -1797,8 +1797,8 @@ export default function DeliveryPage() {
             border: none;
             box-shadow: none;
             box-sizing: border-box;
-            font-size: 20px !important;
-            line-height: 28px !important;
+            font-size: 11px !important;
+            line-height: 16px !important;
             overflow: visible;
           }
           .label-card, .label-card * { visibility: visible; }
