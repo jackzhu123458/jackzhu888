@@ -623,7 +623,7 @@ export default function InventoryPage() {
                         </td>
                         <td className="px-5 py-3 text-gray-900">{summary.product.name}</td>
                         <td className="px-5 py-3 text-right">
-                          {editingQtyId === (summary.warehouses[0]?.inventoryId || productId) && editingQtyField === 'quantity' && summary.warehouses.length <= 1 ? (
+                          {editingQtyId === `qty-${productId}` && editingQtyField === 'quantity' ? (
                             <Input
                               autoFocus
                               type="number"
@@ -640,23 +640,21 @@ export default function InventoryPage() {
                             />
                           ) : (
                             <button
-                              className="font-mono font-medium text-gray-900 hover:text-blue-600 hover:underline cursor-pointer group"
+                              className="font-mono font-medium text-gray-900 hover:text-blue-600 cursor-pointer inline-flex items-center gap-1"
                               onClick={() => {
-                                if (summary.warehouses.length <= 1) {
-                                  setEditingQtyId(summary.warehouses[0]?.inventoryId || productId);
-                                  setEditingQtyField('quantity');
-                                  setEditingQtyValue(summary.totalQty.toFixed(2));
-                                }
+                                setEditingQtyId(`qty-${productId}`);
+                                setEditingQtyField('quantity');
+                                setEditingQtyValue(summary.totalQty.toFixed(2));
                               }}
-                              title={summary.warehouses.length <= 1 ? '点击修改库存数量' : '请在仓库明细中修改'}
+                              title="点击修改库存数量"
                             >
                               {summary.totalQty.toFixed(2)}
-                              <Pencil className="inline w-3 h-3 ml-1 opacity-0 group-hover:opacity-50 transition-opacity" />
+                              <Pencil className="w-3.5 h-3.5 text-gray-400 hover:text-blue-500" />
                             </button>
                           )}
                         </td>
                         <td className="px-5 py-3 text-right">
-                          {editingQtyId === (summary.warehouses[0]?.inventoryId || productId) && editingQtyField === 'reserved_qty' && summary.warehouses.length <= 1 ? (
+                          {editingQtyId === `res-${productId}` && editingQtyField === 'reserved_qty' ? (
                             <Input
                               autoFocus
                               type="number"
@@ -673,142 +671,77 @@ export default function InventoryPage() {
                             />
                           ) : (
                             <button
-                              className="font-mono text-amber-600 hover:text-blue-600 hover:underline cursor-pointer group"
+                              className="font-mono text-amber-600 hover:text-blue-600 cursor-pointer inline-flex items-center gap-1"
                               onClick={() => {
-                                if (summary.warehouses.length <= 1) {
-                                  setEditingQtyId(summary.warehouses[0]?.inventoryId || productId);
-                                  setEditingQtyField('reserved_qty');
-                                  setEditingQtyValue(summary.totalReserved.toFixed(2));
-                                }
+                                setEditingQtyId(`res-${productId}`);
+                                setEditingQtyField('reserved_qty');
+                                setEditingQtyValue(summary.totalReserved.toFixed(2));
                               }}
-                              title={summary.warehouses.length <= 1 ? '点击修改预留数量' : '请在仓库明细中修改'}
+                              title="点击修改预留数量"
                             >
                               {summary.totalReserved.toFixed(2)}
-                              <Pencil className="inline w-3 h-3 ml-1 opacity-0 group-hover:opacity-50 transition-opacity" />
+                              <Pencil className="w-3.5 h-3.5 text-gray-400 hover:text-blue-500" />
                             </button>
                           )}
                         </td>
                         <td className="px-5 py-3 text-right font-mono font-medium text-green-700">{(summary.totalQty - summary.totalReserved).toFixed(2)}</td>
                         <td className="px-5 py-3 text-gray-600">{translateUnit(summary.product.unit)}</td>
                         <td className="px-5 py-3">
-                          {summary.warehouses.length === 1 ? (
-                            editingLocationId === summary.warehouses[0].inventoryId ? (
-                              <div className="flex flex-col gap-1">
-                                <Input
-                                  autoFocus
-                                  value={editingLocationValue}
-                                  onChange={(e) => setEditingLocationValue(e.target.value)}
-                                  onBlur={() => setTimeout(() => saveLocationNo(summary.product.id, editingLocationValue), 150)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') saveLocationNo(summary.product.id, editingLocationValue);
-                                    if (e.key === 'Escape') setEditingLocationId(null);
-                                  }}
-                                  className="h-7 w-28 text-xs font-mono"
-                                  placeholder="输入库位号"
-                                />
-                                <div className="flex gap-1 flex-wrap">
-                                  {['A','B','C','D','E','F'].map(loc => {
-                                    const color = getLocationColor(loc);
-                                    const selected = editingLocationValue === loc;
-                                    return (
-                                      <button
-                                        key={loc}
-                                        className={`inline-flex items-center justify-center w-9 h-9 rounded-lg text-lg font-black border-2 cursor-pointer transition-all ${
-                                          selected
-                                            ? `${color?.bg || 'bg-blue-600'} ${color?.text || 'text-white'} ${color?.border || 'border-blue-600'} shadow-md scale-110`
-                                            : `${color?.light || 'bg-gray-50 text-gray-600 border-gray-200'} hover:scale-105`
-                                        }`}
-                                        onMouseDown={(e) => { e.preventDefault(); setEditingLocationValue(loc); }}
-                                      >{loc}</button>
-                                    );
-                                  })}
-                                </div>
+                          {editingLocationId === summary.product.id ? (
+                            <div className="flex flex-col gap-1">
+                              <Input
+                                autoFocus
+                                value={editingLocationValue}
+                                onChange={(e) => setEditingLocationValue(e.target.value)}
+                                onBlur={() => setTimeout(() => saveLocationNo(summary.product.id, editingLocationValue), 150)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveLocationNo(summary.product.id, editingLocationValue);
+                                  if (e.key === 'Escape') setEditingLocationId(null);
+                                }}
+                                className="h-7 w-28 text-xs font-mono"
+                                placeholder="输入库位号"
+                              />
+                              <div className="flex gap-1 flex-wrap">
+                                {['A','B','C','D','E','F'].map(loc => {
+                                  const color = getLocationColor(loc);
+                                  const selected = editingLocationValue === loc;
+                                  return (
+                                    <button
+                                      key={loc}
+                                      className={`inline-flex items-center justify-center w-9 h-9 rounded-lg text-lg font-black border-2 cursor-pointer transition-all ${
+                                        selected
+                                          ? `${color?.bg || 'bg-blue-600'} ${color?.text || 'text-white'} ${color?.border || 'border-blue-600'} shadow-md scale-110`
+                                          : `${color?.light || 'bg-gray-50 text-gray-600 border-gray-200'} hover:scale-105`
+                                      }`}
+                                      onMouseDown={(e) => { e.preventDefault(); setEditingLocationValue(loc); }}
+                                    >{loc}</button>
+                                  );
+                                })}
                               </div>
-                            ) : (
-                              <button
-                                className="flex items-center gap-1 cursor-pointer group"
-                                onClick={() => { setEditingLocationId(summary.product.id); setEditingLocationValue(summary.warehouses[0]?.locationNo || ''); }}
-                                title="点击编辑库位号"
-                              >
-                                {(() => {
-                                  const loc = summary.product_location_no || summary.warehouses[0]?.locationNo || '';
-                                  const color = loc ? getLocationColor(loc) : null;
-                                  return color ? (
-                                    <span className={`inline-flex items-center justify-center w-10 h-10 rounded-lg text-xl font-black ${color.bg} ${color.text} shadow-sm group-hover:shadow-md transition-all`}>
-                                      {loc}
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1 text-xs text-gray-300 group-hover:text-blue-400">
-                                      <MapPin className="w-3 h-3" />
-                                      未设置
+                            </div>
+                          ) : (
+                            <button
+                              className="flex items-center gap-1 cursor-pointer group"
+                              onClick={() => { setEditingLocationId(summary.product.id); setEditingLocationValue(summary.product_location_no || ''); }}
+                              title="点击编辑库位号"
+                            >
+                              {(() => {
+                                const loc = summary.product_location_no || '';
+                                const color = loc ? getLocationColor(loc) : null;
+                                return color ? (
+                                  <span className={`inline-flex items-center justify-center w-10 h-10 rounded-lg text-xl font-black ${color.bg} ${color.text} shadow-sm group-hover:shadow-md transition-all`}>
+                                    {loc}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-xs text-gray-300 group-hover:text-blue-400">
+                                    <MapPin className="w-3 h-3" />
+                                    未设置
                                     </span>
                                   );
                                 })()}
                               </button>
                             )
-                          ) : (
-                            <div className="space-y-0.5">
-                              {summary.warehouses.map((w) => (
-                                editingLocationId === w.inventoryId ? (
-                                  <div key={w.inventoryId} className="flex flex-col gap-1">
-                                    <Input
-                                      autoFocus
-                                      value={editingLocationValue}
-                                      onChange={(e) => setEditingLocationValue(e.target.value)}
-                                      onBlur={() => setTimeout(() => saveLocationNo(summary.product.id, editingLocationValue), 150)}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') saveLocationNo(summary.product.id, editingLocationValue);
-                                        if (e.key === 'Escape') setEditingLocationId(null);
-                                      }}
-                                      className="h-7 w-28 text-xs font-mono"
-                                      placeholder="输入库位号"
-                                    />
-                                    <div className="flex gap-1 flex-wrap">
-                                      {['A','B','C','D','E','F'].map(loc => {
-                                        const color = getLocationColor(loc);
-                                        const selected = editingLocationValue === loc;
-                                        return (
-                                          <button
-                                            key={loc}
-                                            className={`inline-flex items-center justify-center w-9 h-9 rounded-lg text-lg font-black border-2 cursor-pointer transition-all ${
-                                              selected
-                                                ? `${color?.bg || 'bg-blue-600'} ${color?.text || 'text-white'} ${color?.border || 'border-blue-600'} shadow-md scale-110`
-                                                : `${color?.light || 'bg-gray-50 text-gray-600 border-gray-200'} hover:scale-105`
-                                            }`}
-                                            onMouseDown={(e) => { e.preventDefault(); setEditingLocationValue(loc); }}
-                                          >{loc}</button>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <button
-                                    key={w.inventoryId}
-                                    className="flex items-center gap-1 cursor-pointer group"
-                                    onClick={() => {
-                                      setEditingLocationId(summary.product.id);
-                                      setEditingLocationValue(w.locationNo || '');
-                                    }}
-                                    title={`${w.name} - 点击编辑库位号`}
-                                  >
-                                    {(() => {
-                                      const color = w.locationNo ? getLocationColor(w.locationNo) : null;
-                                      return color ? (
-                                        <span className={`inline-flex items-center justify-center w-10 h-10 rounded-lg text-xl font-black ${color.bg} ${color.text} shadow-sm group-hover:shadow-md transition-all`}>
-                                          {w.locationNo}
-                                        </span>
-                                      ) : (
-                                        <span className="inline-flex items-center gap-1 text-xs text-gray-300 group-hover:text-blue-400">
-                                          <MapPin className="w-3 h-3" />
-                                          {w.name}: 未设置
-                                        </span>
-                                      );
-                                    })()}
-                                  </button>
-                                )
-                              ))}
-                            </div>
-                          )}
+                            }
                         </td>
                         <td className="px-5 py-3 text-gray-600 text-xs">
                           <div className="space-y-1">
