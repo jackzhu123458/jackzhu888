@@ -355,7 +355,7 @@ export default function DeliveryPage() {
       })),
     };
     // Only keep fields that belong to delivery_notes table + items
-    const { id, delivery_note_items, customer_order, customer_orders, ...noteFields } = payload as typeof payload & { id?: string; customer_order?: unknown; customer_orders?: unknown };
+    const { id, delivery_note_items, customer_order, customer_orders, items, ...noteFields } = payload as typeof payload & { id?: string; customer_order?: unknown; customer_orders?: unknown };
 
     try {
       if (id) {
@@ -371,7 +371,7 @@ export default function DeliveryPage() {
         const res = await fetch('/api/delivery', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(noteFields),
+          body: JSON.stringify({ ...noteFields, items: payload.items }),
         });
         const created = await res.json();
         if (created.error) { alert('保存失败: ' + created.error); return; }
