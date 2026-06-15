@@ -1360,7 +1360,7 @@ export default function DeliveryPage() {
               {/* 每页最多3行物料，适配139.5mm矮纸 */}
               {(() => {
                 const allItems = printData?.delivery_note_items || [];
-                const MAX_ROWS = 3;
+                const MAX_ROWS = 8;
                 const pages: typeof allItems[] = [];
                 for (let i = 0; i < allItems.length; i += MAX_ROWS) {
                   pages.push(allItems.slice(i, i + MAX_ROWS));
