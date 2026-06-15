@@ -48,6 +48,7 @@ interface Product {
   cost_price: number;
   remark: string | null;
   is_active: boolean;
+  location_no: string | null;
 }
 
 interface BomItem {
@@ -444,9 +445,7 @@ export default function BomPage() {
     setChildType('raw_material');
     setQuantity('');
     setRemark('');
-    // 加载库位号（从BOM记录中获取）
-    const existingBom = bomList.find(b => b.parent_product_id === product.id);
-    setLocationNo(existingBom?.location_no || '');
+    setLocationNo(product.location_no || '');
     setSheetOpen(true);
   };
 
@@ -469,21 +468,11 @@ export default function BomPage() {
             type: newType,
             price: newSellPrice ? parseFloat(newSellPrice) : 0,
             cost_price: newCostPrice ? parseFloat(newCostPrice) : 0,
+            location_no: locationNo.trim() || null,
             remark: newRemark.trim() || null,
           }),
         });
         if (res.ok) {
-          // 保存库位号到BOM记录
-          if (locationNo.trim()) {
-            const existingBom = bomList.find(b => b.parent_product_id === editProduct.id);
-            if (existingBom) {
-              await fetch('/api/bom', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: existingBom.id, location_no: locationNo.trim() }),
-              });
-            }
-          }
           setSheetOpen(false);
           loadData();
         } else {
@@ -513,6 +502,7 @@ export default function BomPage() {
             type: newType,
             price: newSellPrice ? parseFloat(newSellPrice) : 0,
             cost_price: newCostPrice ? parseFloat(newCostPrice) : 0,
+            location_no: locationNo.trim() || null,
             remark: newRemark.trim() || null,
           }),
         });
@@ -551,7 +541,6 @@ export default function BomPage() {
                 parent_product_id: parentId,
                 child_product_id: childProd.id,
                 quantity,
-                location_no: locationNo.trim() || null,
                 remark: remark || null,
               }),
             });
@@ -834,7 +823,7 @@ export default function BomPage() {
           {/* 右侧数据表格 */}
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
             {/* 表头 */}
-            <div className="grid grid-cols-[50px_80px_120px_1fr_50px_90px_90px_90px_1fr_70px_60px_50px] bg-[#E8EBF0] border-b border-gray-300 shrink-0">
+            <div className="grid grid-cols-[50px_80px_120px_1fr_50px_80px_80px_80px_1fr_80px_60px_50px] bg-[#E8EBF0] border-b border-gray-300 shrink-0">
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">序号</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品类别</div>
               <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品编号</div>
@@ -861,12 +850,12 @@ export default function BomPage() {
                 filteredProducts.map((product, idx) => {
                   const isSelected = selectedProductId === product.id;
                   const bomCount = getBomChildCount(product.id);
-                  // 查找该产品的BOM库位号（从BOM记录中获取）
-                  const productLocationNo = bomList.find(b => b.parent_product_id === product.id)?.location_no || '';
+                  // 产品自身的库位号
+                  const productLocationNo = product.location_no || '';
                   return (
                     <div
                       key={product.id}
-                      className={`grid grid-cols-[50px_80px_120px_1fr_50px_90px_90px_90px_1fr_70px_60px_50px] items-center border-b border-gray-200 cursor-pointer transition-colors ${
+                      className={`grid grid-cols-[50px_80px_120px_1fr_50px_80px_80px_80px_1fr_80px_60px_50px] items-center border-b border-gray-200 cursor-pointer transition-colors ${
                         isSelected
                           ? 'bg-[#1E40AF]/10 border-l-2 border-l-[#1E40AF]'
                           : idx % 2 === 0
@@ -1229,10 +1218,6 @@ export default function BomPage() {
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1.5 block">用量</label>
                       <Input value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="如: 2" type="number" step="0.0001" />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-700 mb-1.5 block">库位号</label>
-                      <Input value={locationNo} onChange={(e) => setLocationNo(e.target.value)} placeholder="如: A" />
                     </div>
                   </div>
 

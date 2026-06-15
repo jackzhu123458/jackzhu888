@@ -25,36 +25,36 @@ export async function POST(req: NextRequest) {
       await supabase.from('production_orders').update({ status: 'completed' }).eq('id', production_order_id);
     });
 
-    // 3. 根据BOM库位号自动匹配入库仓库
-    // 查找该产品的BOM记录，获取库位号
-    const { data: bomRecords } = await supabase
-      .from('bom')
+    // 3. 根据产品库位号自动匹配入库仓库
+    // 查找产品的库位号
+    const { data: productInfo } = await supabase
+      .from('products')
       .select('location_no')
-      .eq('parent_product_id', prodOrder.product_id)
-      .limit(1);
+      .eq('id', prodOrder.product_id)
+      .single();
 
-    const bomLocationNo = bomRecords?.[0]?.location_no || '';
+    const productLocationNo = productInfo?.location_no || '';
 
     let warehouseId: string;
     let locationNo = '';
 
-    if (bomLocationNo) {
+    if (productLocationNo) {
       // 有库位号：查找该库位号对应的仓库
       const { data: invWithLocation } = await supabase
         .from('inventory')
         .select('warehouse_id, location_no')
-        .eq('location_no', bomLocationNo)
+        .eq('location_no', productLocationNo)
         .limit(1);
 
       if (invWithLocation && invWithLocation.length > 0) {
         // 已有该库位号的库存记录，使用相同仓库
         warehouseId = invWithLocation[0].warehouse_id;
-        locationNo = bomLocationNo;
+        locationNo = productLocationNo;
       } else {
         // 库位号存在但尚未有库存记录，入到产品仓库
         const { data: productWarehouses } = await supabase.from('warehouses').select('id').eq('type', 'product').limit(1);
         warehouseId = productWarehouses?.[0]?.id || (await supabase.from('warehouses').select('id').eq('type', 'product').limit(1)).data?.[0]?.id || '';
-        locationNo = bomLocationNo;
+        locationNo = productLocationNo;
       }
     } else {
       // 无库位号：默认入待发货仓（虚拟仓库）
