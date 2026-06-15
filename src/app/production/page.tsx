@@ -1,158 +1,124 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import {
-  Plus,
-  Pencil,
-  Trash2,
-  Save,
-  X,
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-  CheckCircle2,
-  Play,
-  Clock,
-  Package,
-} from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
+import { ChevronDown, ChevronRight, Plus, Play, CheckCircle2, XCircle, Eye, Search } from 'lucide-react';
+import { translateUnit } from '@/lib/utils';
 
-/* ─── Types ─── */
-interface Product {
-  id: string;
-  code: string;
-  name: string;
-  spec: string | null;
-  unit: string;
-  type: string;
-  location_no?: string;
-}
-interface Customer {
-  id: string;
-  name: string;
-  code: string;
-}
-interface MaterialItem {
-  id?: string;
-  product_id: string;
-  required_qty: number;
-  prepared_qty: number;
-  products?: unknown;
-}
+/* ---------- 类型 ---------- */
 interface Order {
   id: string;
   order_no: string;
   customer_id: string | null;
-  customer_order_id: string | null;
   product_id: string;
   quantity: number;
   status: string;
-  start_date: string | null;
   due_date: string | null;
+  start_date: string | null;
   remark: string | null;
-  created_at: string;
-  products?: unknown;
-  customers?: unknown;
-  customer_orders?: unknown;
-  production_order_materials?: MaterialItem[];
+  customer_order_id: string | null;
   delivered?: boolean;
+  created_at?: string;
+  customers?: { id: string; name: string } | null;
+  customer_order?: { id: string; order_no: string } | null;
+  products?: { id: string; code: string; name: string; unit?: string; spec?: string } | null;
+  production_order_materials?: Array<{
+    id?: string;
+    product_id: string;
+    required_qty: number;
+    prepared_qty: number;
+    products?: { id: string; code: string; name: string; unit?: string } | null;
+  }>;
 }
-interface BomItem {
+
+interface Product {
   id: string;
-  parent_product_id: string;
-  child_product_id: string;
-  quantity: number;
-  child_product?: unknown;
+  code: string;
+  name: string;
+  spec?: string;
+  unit?: string;
+  type?: string;
+  category?: string;
+  price?: number;
 }
 
+interface Customer { id: string; name: string; code?: string }
+interface Warehouse { id: string; name: string }
+
+/* ---------- 状态配色 ---------- */
 const statusMap: Record<string, { label: string; color: string; bg: string }> = {
-  pending:     { label: '待生产', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' },
-  in_progress: { label: '生产中', color: 'text-blue-700',  bg: 'bg-blue-50 border-blue-200' },
-  completed:   { label: '已完成', color: 'text-green-700', bg: 'bg-green-50 border-green-200' },
-  cancelled:   { label: '已取消', color: 'text-red-700',   bg: 'bg-red-50 border-red-200' },
+  pending:     { label: '待生产', color: 'text-amber-700 border-amber-300', bg: 'bg-amber-50' },
+  in_progress: { label: '生产中', color: 'text-blue-700 border-blue-300',   bg: 'bg-blue-50' },
+  completed:   { label: '已完成', color: 'text-green-700 border-green-300', bg: 'bg-green-50' },
+  confirmed:   { label: '已确认', color: 'text-indigo-700 border-indigo-300', bg: 'bg-indigo-50' },
+  cancelled:   { label: '已取消', color: 'text-red-600 border-red-300',     bg: 'bg-red-50' },
 };
 
-/* ─── Helper ─── */
-const fmtDate = (d: string | null | undefined) => d ? d.slice(0, 10) : '-';
-const getProduct = (o: Order): { code: string; name: string; unit: string } => {
-  const p = o.products as Record<string, unknown> | Record<string, unknown>[] | null;
-  const obj = Array.isArray(p) ? p[0] : p;
-  return { code: String(obj?.code ?? ''), name: String(obj?.name ?? ''), unit: String(obj?.unit ?? '') };
-};
-const getCustomer = (o: Order): string => {
-  const c = o.customers as Record<string, unknown> | Record<string, unknown>[] | null;
-  const obj = Array.isArray(c) ? c[0] : c;
-  return String(obj?.name ?? '');
-};
+/* ---------- 看板列定义 ---------- */
+const columns = [
+  { key: 'pending',     label: '待生产', headerBg: 'bg-amber-500',  headerText: 'text-white' },
+  { key: 'in_progress', label: '生产中', headerBg: 'bg-blue-500',   headerText: 'text-white' },
+  { key: 'completed',   label: '已完成', headerBg: 'bg-green-600',  headerText: 'text-white' },
+] as const;
 
 export default function ProductionPage() {
-  /* ─── Data ─── */
+  /* ---------- state ---------- */
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);
-
-  /* ─── List state ─── */
+  const [filterProductId, setFilterProductId] = useState('all');
+  const [hideDelivered, setHideDelivered] = useState(true);
   const [searchText, setSearchText] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
 
-  /* ─── Form state ─── */
+  // 新增/编辑
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [editOrder, setEditOrder] = useState<Order | null>(null);
   const [formCustomerId, setFormCustomerId] = useState('');
   const [formProductId, setFormProductId] = useState('');
   const [formQuantity, setFormQuantity] = useState('');
   const [formStartDate, setFormStartDate] = useState('');
   const [formDueDate, setFormDueDate] = useState('');
   const [formRemark, setFormRemark] = useState('');
-  const [formStatus, setFormStatus] = useState('pending');
-  const [formMaterials, setFormMaterials] = useState<Array<{ product_id: string; required_qty: string; prepared_qty: string }>>([]);
+  const [formMaterials, setFormMaterials] = useState<Array<{ product_id: string; required_qty: string }>>([]);
   const [saving, setSaving] = useState(false);
 
-  /* ─── Product search ─── */
-  const [productSearch, setProductSearch] = useState('');
-  const [productSearchResults, setProductSearchResults] = useState<Product[]>([]);
-  const [showProductDropdown, setShowProductDropdown] = useState(false);
-  const productSearchRef = useRef<HTMLDivElement>(null);
-
-  /* ─── Material search ─── */
-  const [materialSearchIdx, setMaterialSearchIdx] = useState<number | null>(null);
-  const [materialSearchText, setMaterialSearchText] = useState('');
-  const [materialSearchResults, setMaterialSearchResults] = useState<Product[]>([]);
-  const materialSearchRef = useRef<HTMLDivElement>(null);
-
-  /* ─── Delete ─── */
+  // 删除
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  /* ─── Complete inbound ─── */
+  // 完成入库
   const [completeOrderId, setCompleteOrderId] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
-  const completeDialogRef = useRef<HTMLDivElement>(null);
+  const completeDialogRef = React.useRef<HTMLDivElement>(null);
 
-  /* ─── Fetch ─── */
+  // 详情
+  const [detailOrder, setDetailOrder] = useState<Order | null>(null);
+  // 合并卡片展开状态
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  // 今天的时间戳，用于计算紧急度
+  // 初始为0，客户端挂载后再设置，避免 SSR/客户端 hydration 不一致
+  const [todayMs, setTodayMs] = useState(0);
+  useEffect(() => {
+    setTodayMs(Date.now());
+  }, []);
+
+  /* ---------- fetch ---------- */
   const fetchOrders = useCallback(async () => {
     const res = await fetch('/api/production');
     const data = await res.json();
@@ -164,140 +130,76 @@ export default function ProductionPage() {
     fetchOrders().catch(() => setLoading(false));
     fetch('/api/products').then(r => r.json()).then(d => setProducts(Array.isArray(d) ? d : d.products || [])).catch(() => {});
     fetch('/api/customers').then(r => r.json()).then(d => setCustomers(Array.isArray(d) ? d : d.customers || [])).catch(() => {});
+    fetch('/api/warehouses').then(r => r.json()).then(d => setWarehouses(Array.isArray(d) ? d : d.warehouses || [])).catch(() => {});
   }, [fetchOrders]);
 
-  /* ─── Click outside to close dropdown ─── */
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (productSearchRef.current && !productSearchRef.current.contains(e.target as Node)) {
-        setShowProductDropdown(false);
-      }
-      if (materialSearchRef.current && !materialSearchRef.current.contains(e.target as Node)) {
-        setMaterialSearchIdx(null);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  /* ─── Derived ─── */
-  const filteredOrders = orders.filter(o => {
-    if (filterStatus !== 'all' && o.status !== filterStatus) return false;
+  /* ---------- helpers ---------- */
+  const filteredOrders = orders.filter((o) => {
+    if (filterProductId !== 'all' && o.product_id !== filterProductId) return false;
+    if (hideDelivered && o.delivered) return false;
     if (searchText.trim()) {
       const q = searchText.trim().toLowerCase();
-      const prod = getProduct(o);
-      const cust = getCustomer(o);
-      const fields = [o.order_no, prod.code, prod.name, cust].map(f => f.toLowerCase());
+      const prod = o.products as unknown as Record<string, unknown>;
+      const cust = o.customers as unknown as Record<string, unknown>;
+      const fields = [
+        o.order_no,
+        String(prod?.code ?? ''),
+        String(prod?.name ?? ''),
+        String(cust?.name ?? ''),
+      ].map(f => f.toLowerCase());
       if (!fields.some(f => f.includes(q))) return false;
     }
     return true;
   });
 
-  const selectedOrder = orders.find(o => o.id === selectedId) ?? null;
+  const ordersByStatus = (status: string) => filteredOrders.filter((o) => o.status === status);
 
-  /* ─── Product search ─── */
-  const searchProducts = (text: string) => {
-    setProductSearch(text);
-    if (!text.trim()) { setProductSearchResults([]); setShowProductDropdown(false); return; }
-    const q = text.toLowerCase();
-    const results = products.filter(p =>
-      p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q) || (p.spec ?? '').toLowerCase().includes(q)
-    ).slice(0, 20);
-    setProductSearchResults(results);
-    setShowProductDropdown(true);
-  };
+  // 物料下拉列表
+  const productMap = new Map<string, { id: string; code: string; name: string }>();
+  orders.forEach((o) => {
+    if (o.product_id && o.products && !productMap.has(o.product_id)) {
+      const p = o.products as unknown as { id: string; code: string; name: string };
+      productMap.set(o.product_id, { id: p.id, code: p.code, name: p.name });
+    }
+  });
+  const productList = Array.from(productMap.values());
+  const finishedProducts = products.filter((p) => p.type === 'finished_product' || p.type === 'semi_finished');
 
-  const selectProduct = (p: Product) => {
-    setFormProductId(p.id);
-    setProductSearch(`${p.code} ${p.name}`);
-    setShowProductDropdown(false);
-    // Auto-load BOM materials
-    fetch(`/api/bom?parent_id=${p.id}`).then(r => r.json()).then(data => {
-      const bomList = Array.isArray(data) ? data : data.bom || [];
-      if (bomList.length > 0) {
-        setFormMaterials(bomList.map((b: BomItem) => ({
-          product_id: b.child_product_id,
-          required_qty: String(b.quantity),
-          prepared_qty: '0',
-        })));
-      } else {
-        setFormMaterials([]);
-      }
-    }).catch(() => {});
-  };
-
-  /* ─── Material search ─── */
-  const searchMaterial = (idx: number, text: string) => {
-    setMaterialSearchIdx(idx);
-    setMaterialSearchText(text);
-    if (!text.trim()) { setMaterialSearchResults([]); return; }
-    const q = text.toLowerCase();
-    const results = products.filter(p =>
-      (p.type === 'raw_material' || p.type === 'semi_finished') &&
-      (p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
-    ).slice(0, 15);
-    setMaterialSearchResults(results);
-  };
-
-  const selectMaterial = (idx: number, p: Product) => {
-    const updated = [...formMaterials];
-    updated[idx] = { ...updated[idx], product_id: p.id };
-    setFormMaterials(updated);
-    setMaterialSearchIdx(null);
-  };
-
-  /* ─── Navigation ─── */
-  const currentIdx = filteredOrders.findIndex(o => o.id === selectedId);
-  const goFirst = () => { if (filteredOrders.length) setSelectedId(filteredOrders[0].id); };
-  const goPrev  = () => { if (currentIdx > 0) setSelectedId(filteredOrders[currentIdx - 1].id); };
-  const goNext  = () => { if (currentIdx < filteredOrders.length - 1) setSelectedId(filteredOrders[currentIdx + 1].id); };
-  const goLast  = () => { if (filteredOrders.length) setSelectedId(filteredOrders[filteredOrders.length - 1].id); };
-
-  /* ─── Actions ─── */
-  const handleNew = () => {
-    setIsCreating(true);
-    setIsEditing(true);
-    setSelectedId(null);
+  /* ---------- handlers ---------- */
+  const handleAdd = () => {
+    setEditOrder(null);
     setFormCustomerId(''); setFormProductId(''); setFormQuantity('');
     setFormStartDate(''); setFormDueDate(''); setFormRemark('');
-    setFormStatus('pending'); setFormMaterials([]);
-    setProductSearch('');
+    setFormMaterials([]);
+    setSheetOpen(true);
   };
 
-  const handleEdit = () => {
-    if (!selectedOrder) return;
-    setIsEditing(true);
-    const prod = getProduct(selectedOrder);
-    setFormCustomerId(selectedOrder.customer_id ?? '');
-    setFormProductId(selectedOrder.product_id);
-    setFormQuantity(String(selectedOrder.quantity));
-    setFormStartDate(selectedOrder.start_date ? selectedOrder.start_date.slice(0, 10) : '');
-    setFormDueDate(selectedOrder.due_date ? selectedOrder.due_date.slice(0, 10) : '');
-    setFormRemark(selectedOrder.remark ?? '');
-    setFormStatus(selectedOrder.status);
-    setProductSearch(`${prod.code} ${prod.name}`);
-    // Load materials
-    const mats = selectedOrder.production_order_materials ?? [];
-    setFormMaterials(mats.map(m => ({
-      product_id: m.product_id,
-      required_qty: String(m.required_qty),
-      prepared_qty: String(m.prepared_qty),
-    })));
-  };
-
-  const handleCancel = () => {
-    setIsEditing(false);
-    setIsCreating(false);
-    if (selectedOrder) {
-      const prod = getProduct(selectedOrder);
-      setProductSearch(`${prod.code} ${prod.name}`);
-    } else {
-      setProductSearch('');
+  const handleSelectProduct = (pid: string) => {
+    setFormProductId(pid);
+    // 自动从 BOM 加载子料
+    const prod = products.find((p) => p.id === pid);
+    if (prod) {
+      fetch(`/api/bom?parent_id=${pid}`).then(r => r.json()).then(data => {
+        const bomList = Array.isArray(data) ? data : data.bom || [];
+        if (bomList.length > 0) {
+          setFormMaterials(bomList.map((b: { child_product_id: string; quantity: number }) => ({
+            product_id: b.child_product_id,
+            required_qty: String(b.quantity),
+          })));
+        }
+      }).catch(() => {});
     }
   };
 
+  const addMaterialRow = () => setFormMaterials([...formMaterials, { product_id: '', required_qty: '' }]);
+  const removeMaterialRow = (idx: number) => setFormMaterials(formMaterials.filter((_, i) => i !== idx));
+  const updateMaterialRow = (idx: number, field: string, value: string) => {
+    const updated = [...formMaterials];
+    updated[idx] = { ...updated[idx], [field]: value };
+    setFormMaterials(updated);
+  };
+
   const handleSave = async () => {
-    if (!formProductId || !formQuantity) return;
     setSaving(true);
     const body = {
       customer_id: formCustomerId || null,
@@ -306,38 +208,32 @@ export default function ProductionPage() {
       start_date: formStartDate || null,
       due_date: formDueDate || null,
       remark: formRemark || null,
-      status: formStatus,
-      materials: formMaterials.filter(m => m.product_id && m.required_qty).map(m => ({
+      materials: formMaterials.filter((m) => m.product_id && m.required_qty).map((m) => ({
         product_id: m.product_id,
         required_qty: Number(m.required_qty),
-        prepared_qty: Number(m.prepared_qty || 0),
       })),
     };
     try {
-      if (isCreating) {
-        const res = await fetch('/api/production', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        const data = await res.json();
-        if (data.id) setSelectedId(data.id);
-      } else if (selectedOrder) {
-        await fetch('/api/production', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: selectedOrder.id, ...body }) });
+      if (editOrder) {
+        await fetch('/api/production', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editOrder.id, ...body }) });
+      } else {
+        await fetch('/api/production', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       }
-      setIsEditing(false);
-      setIsCreating(false);
+      setSheetOpen(false);
       fetchOrders();
     } catch { /* ignore */ }
     setSaving(false);
   };
 
-  const handleDelete = async () => {
-    if (!deleteId) return;
-    await fetch(`/api/production?id=${deleteId}`, { method: 'DELETE' });
-    if (selectedId === deleteId) setSelectedId(null);
-    setDeleteId(null);
+  const handleStatusChange = async (id: string, status: string) => {
+    await fetch('/api/production', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status }) });
     fetchOrders();
   };
 
-  const handleStatusChange = async (id: string, status: string) => {
-    await fetch('/api/production', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status }) });
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    await fetch(`/api/production?id=${deleteId}`, { method: 'DELETE' });
+    setDeleteId(null);
     fetchOrders();
   };
 
@@ -359,406 +255,478 @@ export default function ProductionPage() {
     setCompleting(false);
   };
 
-  /* ─── Status badge ─── */
-  const StatusBadge = ({ status }: { status: string }) => {
-    const s = statusMap[status] ?? { label: status, color: 'text-gray-700', bg: 'bg-gray-50 border-gray-200' };
-    return <Badge variant="outline" className={`${s.bg} ${s.color} border text-xs font-medium`}>{s.label}</Badge>;
+  /* ---------- 日期格式化 ---------- */
+  const fmtDate = (d: string | null | undefined) => d ? d.slice(0, 10) : '-';
+  const isOverdue = (d: string | null | undefined) => todayMs > 0 && !!d && new Date(d).getTime() < todayMs;
+  const getUrgency = (dueDate: string | null | undefined, status: string) => {
+    if (!dueDate || status === 'completed' || status === 'cancelled' || todayMs === 0) return 'normal';
+    const now = new Date(todayMs); now.setHours(0,0,0,0);
+    const due = new Date(dueDate); due.setHours(0,0,0,0);
+    const diff = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    if (diff < 0) return 'overdue';      // 已逾期
+    if (diff <= 3) return 'urgent';      // 3天内紧急
+    return 'normal';
+  };
+  const urgencyConfig: Record<string, { label: string; color: string; bg: string; border: string; pulse: string }> = {
+    overdue: { label: '已逾期', color: 'text-red-700', bg: 'bg-red-100', border: 'border-red-400', pulse: '' },
+    urgent:  { label: '紧急', color: 'text-orange-700', bg: 'bg-orange-100', border: 'border-orange-400', pulse: 'animate-pulse' },
+    normal:  { label: '', color: '', bg: '', border: '', pulse: '' },
+  };
+  const getRequiredCompleteDate = (dueDate: string | null | undefined) => {
+    if (!dueDate) return null;
+    const due = new Date(dueDate);
+    due.setDate(due.getDate() - 3);
+    return due.toISOString().slice(0, 10);
   };
 
-  /* ─── Stats ─── */
-  const stats = {
-    pending: orders.filter(o => o.status === 'pending').length,
-    in_progress: orders.filter(o => o.status === 'in_progress').length,
-    completed: orders.filter(o => o.status === 'completed').length,
+  /* ---------- 按物料分组的渲染 ---------- */
+
+  /** 按product_id分组，返回 { productId: Order[] } */
+  const groupByProduct = (orders: Order[]): Map<string, Order[]> => {
+    const map = new Map<string, Order[]>();
+    for (const o of orders) {
+      const pid = o.product_id || '__none__';
+      if (!map.has(pid)) map.set(pid, []);
+      map.get(pid)!.push(o);
+    }
+    return map;
   };
 
-  /* ─── Render ─── */
-  if (loading) {
-    return <div className="flex items-center justify-center h-screen text-gray-400">加载中...</div>;
-  }
+  /** 渲染分组卡片 */
+  const renderGroupedCards = (orders: Order[]) => {
+    const groups = groupByProduct(orders);
+    const result: React.ReactNode[] = [];
+    for (const [productId, groupOrders] of groups) {
+      const prod = groupOrders[0].products;
+      const totalQty = groupOrders.reduce((s, o) => s + (o.quantity || 0), 0);
+      // 最紧急的交期
+      const earliestOrder = groupOrders.reduce((a, b) => (!a.due_date || (b.due_date && a.due_date > b.due_date)) ? b : a);
+      const urgency = getUrgency(earliestOrder.due_date, earliestOrder.status);
+      const uc = urgencyConfig[urgency];
+      const daysDiff = earliestOrder.due_date
+        ? Math.ceil((new Date(earliestOrder.due_date).getTime() - todayMs) / 86400000)
+        : 0;
+      const reqDate = getRequiredCompleteDate(earliestOrder.due_date);
+      const isReqOverdue = reqDate && new Date(reqDate).getTime() < todayMs;
+      const groupKey = `${productId}_${earliestOrder.status}`;
+      const isExpanded = expandedGroups.has(groupKey);
 
-  return (
-    <div className="h-[calc(100vh-64px)] flex flex-col bg-[#F8F9FA]">
-      {/* ─── Top bar ─── */}
-      <div className="shrink-0 flex items-center justify-between px-6 py-3 border-b border-[#E5E7EB] bg-white">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-semibold text-[#111827]">生产订单</h1>
-          <div className="flex items-center gap-1.5 text-xs text-gray-500">
-            <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-amber-500" />待生产 {stats.pending}</span>
-            <span className="text-gray-300">|</span>
-            <span className="flex items-center gap-1"><Play className="w-3 h-3 text-blue-500" />生产中 {stats.in_progress}</span>
-            <span className="text-gray-300">|</span>
-            <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-500" />已完成 {stats.completed}</span>
-          </div>
+      result.push(
+        <div key={productId} className={`bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow ${groupOrders.some(o => o.delivered) && !hideDelivered ? 'opacity-60 border-gray-300' : ''} ${urgency === 'overdue' ? 'border-red-400' : urgency === 'urgent' ? 'border-orange-300' : 'border-gray-200'}`}>
+          {/* 已送货标记 */}
+          {groupOrders.some(o => o.delivered) && !hideDelivered && (
+            <div className="px-4 py-1 text-xs font-medium text-gray-500 bg-gray-100 rounded-t-lg flex items-center gap-1.5">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-400" />
+              已送货
+            </div>
+          )}
+          {/* 紧急提示条 */}
+          {urgency !== 'normal' && (
+            <div className={`px-4 py-1.5 text-xs font-medium ${uc.color} ${uc.bg} rounded-t-lg flex items-center gap-1.5 ${uc.pulse}`}>
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
+              {urgency === 'overdue' ? `已逾期 ${Math.abs(daysDiff)} 天` : `距交期仅 ${daysDiff} 天`}
+            </div>
+          )}
+          {/* 卡片头部 - 可点击展开 */}
+          <button
+            onClick={() => toggleGroup(groupKey)}
+            className={`w-full text-left px-4 py-3 ${urgency !== 'normal' ? 'pt-2' : ''} hover:bg-gray-50/50 transition-colors`}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-sm font-medium text-gray-900 truncate" title={prod?.name}>
+                {prod?.code && <span className="font-mono text-gray-500 mr-1">{prod.code}</span>}
+                {prod?.name || '未知物料'}
+              </div>
+              <div className="flex items-center gap-2 shrink-0 ml-2">
+                <span className="text-xs text-gray-400">{groupOrders.length}单</span>
+                <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-xs text-gray-500">
+              <span>合计: <span className="font-mono font-semibold text-gray-800">{totalQty}</span> {translateUnit(prod?.unit || '')}</span>
+              <span>交期: <span className={urgency !== 'normal' ? 'text-red-600 font-medium' : ''}>{fmtDate(earliestOrder.due_date)}</span></span>
+            </div>
+            {reqDate && (
+              <div className="text-xs text-gray-400 mt-0.5">
+                要求完成: <span className={`font-medium ${isReqOverdue && earliestOrder.status !== 'completed' && earliestOrder.status !== 'cancelled' ? 'text-red-600' : 'text-orange-600'}`}>{reqDate}</span>
+              </div>
+            )}
+          </button>
+
+          {/* 展开的子订单列表 */}
+          {isExpanded && (
+            <div className="border-t border-gray-100">
+              {groupOrders.map((order) => {
+                const cust = order.customers;
+                const st = statusMap[order.status] || { label: order.status, color: '', bg: '' };
+                const oUrgency = getUrgency(order.due_date, order.status);
+                const oDaysDiff = order.due_date
+                  ? Math.ceil((new Date(order.due_date).getTime() - todayMs) / 86400000)
+                  : 0;
+                return (
+                  <div key={order.id} className={`px-4 py-2.5 border-b border-gray-50 last:border-b-0 ${order.delivered && !hideDelivered ? 'bg-gray-100/50' : 'bg-gray-50/30'}`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-mono text-xs text-gray-500">{order.order_no}</span>
+                      <div className="flex items-center gap-1.5">
+                        {order.delivered && !hideDelivered && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-gray-500 border-gray-300 bg-gray-50">已送货</Badge>
+                        )}
+                        <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${st.color}`}>{st.label}</Badge>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-600">
+                        数量: <span className="font-mono font-medium">{order.quantity}</span> {translateUnit(prod?.unit || '')}
+                        {cust && <span className="text-gray-400 ml-2">{cust.name}</span>}
+                      </span>
+                      <span className="text-gray-400">
+                        {oUrgency === 'overdue' ? <span className="text-red-600 font-medium">逾期{oDaysDiff}天</span> :
+                         oUrgency === 'urgent' ? <span className="text-orange-600">剩{oDaysDiff}天</span> :
+                         fmtDate(order.due_date)}
+                      </span>
+                    </div>
+                    {order.customer_order && (
+                      <div className="text-[10px] text-gray-400 mt-0.5">客户单号: {order.customer_order.order_no}</div>
+                    )}
+                    {/* 子订单操作按钮 */}
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      {order.status === 'pending' && (
+                        <button onClick={() => handleStatusChange(order.id, 'in_progress')} className="text-[11px] px-2 py-0.5 rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors">
+                          开始生产
+                        </button>
+                      )}
+                      {order.status === 'in_progress' && (
+                        <button onClick={() => { setCompleteOrderId(order.id); }} className="text-[11px] px-2 py-0.5 rounded bg-green-600 text-white hover:bg-green-700 transition-colors">
+                          完成入库
+                        </button>
+                      )}
+                      {(order.status === 'pending' || order.status === 'in_progress') && (
+                        <button onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-[11px] px-2 py-0.5 rounded border border-red-300 text-red-500 hover:bg-red-50 transition-colors">
+                          取消
+                        </button>
+                      )}
+                      <button onClick={() => setDetailOrder(order)} className="text-[11px] px-2 py-0.5 rounded border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors ml-auto">
+                        详情
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-        <Button onClick={handleNew} className="bg-[#1E40AF] hover:bg-[#1D4ED8] gap-1">
-          <Plus className="w-4 h-4" /> 新增生产订单
-        </Button>
+      );
+    }
+    return result;
+  };
+
+  /* ---------- 渲染 ---------- */
+  return (
+    <>
+    <div className="p-8 h-full flex flex-col">
+      {/* 顶部 */}
+      <div className="flex items-center justify-between mb-4 shrink-0">
+        <h1 className="text-xl font-semibold text-gray-900">生产订单</h1>
+        <Button onClick={handleAdd}>新建订单</Button>
       </div>
 
-      {/* ─── Filter bar ─── */}
-      <div className="shrink-0 flex items-center gap-3 px-6 py-2 border-b border-[#E5E7EB] bg-white">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <Input
-            placeholder="搜索订单号、产品、客户..."
+      {/* 筛选栏 */}
+      <div className="flex items-center gap-4 mb-4 flex-wrap shrink-0">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="搜索订单号/物料/客户..."
             value={searchText}
-            onChange={e => setSearchText(e.target.value)}
-            className="pl-8 h-8 text-sm"
+            onChange={(e) => setSearchText(e.target.value)}
+            className="pl-8 pr-3 py-1.5 border border-gray-300 rounded-md text-sm w-56 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
-        <div className="flex items-center gap-1">
-          {['all', 'pending', 'in_progress', 'completed'].map(s => (
-            <Button
-              key={s}
-              variant={filterStatus === s ? 'default' : 'outline'}
-              size="sm"
-              className={`h-7 text-xs ${filterStatus === s ? 'bg-[#1E40AF]' : ''}`}
-              onClick={() => setFilterStatus(s)}
-            >
-              {s === 'all' ? '全部' : statusMap[s]?.label ?? s}
-            </Button>
-          ))}
-        </div>
-      </div>
-
-      {/* ─── Main content ─── */}
-      <div className="flex-1 flex min-h-0">
-        {/* ─── Left: Order list ─── */}
-        <div className="w-[280px] shrink-0 border-r border-[#E5E7EB] bg-white flex flex-col">
-          <div className="px-3 py-2 text-xs text-gray-500 border-b border-[#E5E7EB]">
-            共 {filteredOrders.length} 条
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            {filteredOrders.map(o => {
-              const prod = getProduct(o);
-              const cust = getCustomer(o);
-              const isActive = o.id === selectedId;
-              return (
-                <div
-                  key={o.id}
-                  onClick={() => { setSelectedId(o.id); setIsEditing(false); setIsCreating(false); }}
-                  className={`px-3 py-2.5 border-b border-[#F3F4F6] cursor-pointer transition-colors ${
-                    isActive ? 'bg-blue-50 border-l-2 border-l-[#1E40AF]' : 'hover:bg-gray-50 border-l-2 border-l-transparent'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-mono text-gray-500">{o.order_no}</span>
-                    <StatusBadge status={o.status} />
-                  </div>
-                  <div className="text-sm font-medium text-[#111827] truncate">{prod.name}</div>
-                  <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500">
-                    <span>{prod.code}</span>
-                    <span className="text-gray-300">|</span>
-                    <span>{o.quantity} {prod.unit}</span>
-                    {cust && <><span className="text-gray-300">|</span><span className="truncate">{cust}</span></>}
-                  </div>
-                  {o.due_date && (
-                    <div className="text-xs text-gray-400 mt-0.5">交期: {fmtDate(o.due_date)}</div>
-                  )}
-                </div>
-              );
-            })}
-            {filteredOrders.length === 0 && (
-              <div className="px-4 py-8 text-center text-sm text-gray-400">暂无生产订单</div>
-            )}
-          </div>
-          {/* Navigation */}
-          <div className="shrink-0 flex items-center justify-between px-3 py-2 border-t border-[#E5E7EB] text-xs text-gray-500">
-            <span>{currentIdx + 1} / {filteredOrders.length}</span>
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={goFirst} disabled={currentIdx <= 0}><ChevronsLeft className="w-3.5 h-3.5" /></Button>
-              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={goPrev} disabled={currentIdx <= 0}><ChevronLeft className="w-3.5 h-3.5" /></Button>
-              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={goNext} disabled={currentIdx >= filteredOrders.length - 1}><ChevronRight className="w-3.5 h-3.5" /></Button>
-              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={goLast} disabled={currentIdx >= filteredOrders.length - 1}><ChevronsRight className="w-3.5 h-3.5" /></Button>
-            </div>
-          </div>
-        </div>
-
-        {/* ─── Right: Detail ─── */}
-        <div className="flex-1 overflow-y-auto bg-[#F8F9FA]">
-          {(selectedOrder || isCreating) ? (
-            <div className="p-6">
-              {/* ─── Document header ─── */}
-              <div className="bg-white rounded-lg border border-[#E5E7EB] shadow-sm">
-                {/* Title bar */}
-                <div className="flex items-center justify-between px-6 py-3 border-b border-[#E5E7EB] bg-[#FAFBFC]">
-                  <div className="flex items-center gap-3">
-                    <Package className="w-5 h-5 text-[#1E40AF]" />
-                    <span className="text-lg font-semibold text-[#111827]">
-                      {isCreating ? '新增生产订单' : `生产订单 ${selectedOrder?.order_no ?? ''}`}
-                    </span>
-                    {!isCreating && selectedOrder && <StatusBadge status={selectedOrder.status} />}
-                  </div>
-                  {!isEditing && !isCreating && selectedOrder && (
-                    <div className="flex items-center gap-2">
-                      {selectedOrder.status === 'pending' && (
-                        <Button size="sm" className="bg-blue-600 hover:bg-blue-700 gap-1" onClick={() => handleStatusChange(selectedOrder.id, 'in_progress')}>
-                          <Play className="w-3.5 h-3.5" /> 开始生产
-                        </Button>
-                      )}
-                      {selectedOrder.status === 'in_progress' && (
-                        <Button size="sm" className="bg-green-600 hover:bg-green-700 gap-1" onClick={() => setCompleteOrderId(selectedOrder.id)}>
-                          <CheckCircle2 className="w-3.5 h-3.5" /> 完成入库
-                        </Button>
-                      )}
-                      <Button size="sm" variant="outline" className="gap-1" onClick={handleEdit}><Pencil className="w-3.5 h-3.5" /> 编辑</Button>
-                      <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700 gap-1" onClick={() => setDeleteId(selectedOrder.id)}>
-                        <Trash2 className="w-3.5 h-3.5" /> 删除
-                      </Button>
-                    </div>
-                  )}
-                  {(isEditing || isCreating) && (
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" className="bg-[#1E40AF] hover:bg-[#1D4ED8] gap-1" onClick={handleSave} disabled={saving || !formProductId || !formQuantity}>
-                        <Save className="w-3.5 h-3.5" /> {saving ? '保存中...' : '保存'}
-                      </Button>
-                      <Button size="sm" variant="outline" className="gap-1" onClick={handleCancel}><X className="w-3.5 h-3.5" /> 取消</Button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Form */}
-                <div className="px-6 py-4 space-y-4">
-                  {/* Row 1: Order info */}
-                  <div className="grid grid-cols-4 gap-4">
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">客户</label>
-                      {isEditing ? (
-                        <select className="w-full h-8 text-sm border border-[#E5E7EB] rounded px-2 bg-white" value={formCustomerId} onChange={e => setFormCustomerId(e.target.value)}>
-                          <option value="">选择客户</option>
-                          {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                      ) : (
-                        <div className="h-8 flex items-center text-sm text-[#111827]">{getCustomer(selectedOrder!) || '-'}</div>
-                      )}
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">状态</label>
-                      {isEditing ? (
-                        <select className="w-full h-8 text-sm border border-[#E5E7EB] rounded px-2 bg-white" value={formStatus} onChange={e => setFormStatus(e.target.value)}>
-                          {Object.entries(statusMap).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                        </select>
-                      ) : (
-                        <div className="h-8 flex items-center text-sm">{selectedOrder && <StatusBadge status={selectedOrder.status} />}</div>
-                      )}
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">开始日期</label>
-                      {isEditing ? (
-                        <Input type="date" className="h-8 text-sm" value={formStartDate} onChange={e => setFormStartDate(e.target.value)} />
-                      ) : (
-                        <div className="h-8 flex items-center text-sm text-[#111827]">{selectedOrder ? fmtDate(selectedOrder.start_date) : '-'}</div>
-                      )}
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">交期</label>
-                      {isEditing ? (
-                        <Input type="date" className="h-8 text-sm" value={formDueDate} onChange={e => setFormDueDate(e.target.value)} />
-                      ) : (
-                        <div className="h-8 flex items-center text-sm font-medium text-[#111827]">{selectedOrder ? fmtDate(selectedOrder.due_date) : '-'}</div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Row 2: Product + Quantity */}
-                  <div className="grid grid-cols-4 gap-4">
-                    <div className="col-span-2 relative" ref={productSearchRef}>
-                      <label className="text-xs text-gray-500 mb-1 block">产品 <span className="text-red-500">*</span></label>
-                      {isEditing ? (
-                        <>
-                          <Input
-                            className="h-8 text-sm"
-                            placeholder="输入产品编码或名称搜索..."
-                            value={productSearch}
-                            onChange={e => searchProducts(e.target.value)}
-                            onFocus={() => { if (productSearchResults.length > 0) setShowProductDropdown(true); }}
-                          />
-                          {formProductId && (
-                            <Badge variant="outline" className="ml-2 text-xs bg-blue-50 text-blue-700 border-blue-200">
-                              {products.find(p => p.id === formProductId)?.code}
-                            </Badge>
-                          )}
-                          {showProductDropdown && productSearchResults.length > 0 && (
-                            <div className="absolute z-[9999] top-full left-0 right-0 mt-1 bg-white border border-[#E5E7EB] rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                              {productSearchResults.map(p => (
-                                <div key={p.id} className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm" onClick={() => selectProduct(p)}>
-                                  <div className="font-medium">{p.code} <span className="text-gray-500">{p.name}</span></div>
-                                  <div className="text-xs text-gray-400">{p.spec} · {p.unit}</div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <div className="h-8 flex items-center text-sm font-medium text-[#111827]">
-                          {selectedOrder ? `${getProduct(selectedOrder).code} ${getProduct(selectedOrder).name}` : '-'}
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">数量 <span className="text-red-500">*</span></label>
-                      {isEditing ? (
-                        <Input type="number" className="h-8 text-sm" placeholder="0" value={formQuantity} onChange={e => setFormQuantity(e.target.value)} />
-                      ) : (
-                        <div className="h-8 flex items-center text-sm font-medium text-[#111827]">
-                          {selectedOrder ? `${selectedOrder.quantity} ${getProduct(selectedOrder).unit}` : '-'}
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">备注</label>
-                      {isEditing ? (
-                        <Input className="h-8 text-sm" placeholder="可选" value={formRemark} onChange={e => setFormRemark(e.target.value)} />
-                      ) : (
-                        <div className="h-8 flex items-center text-sm text-gray-500">{selectedOrder?.remark || '-'}</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* ─── Materials section ─── */}
-              <div className="mt-4 bg-white rounded-lg border border-[#E5E7EB] shadow-sm">
-                <div className="flex items-center justify-between px-6 py-3 border-b border-[#E5E7EB] bg-[#FAFBFC]">
-                  <span className="text-sm font-medium text-[#111827]">用料清单</span>
-                  {isEditing && (
-                    <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" onClick={() => setFormMaterials([...formMaterials, { product_id: '', required_qty: '', prepared_qty: '0' }])}>
-                      <Plus className="w-3 h-3" /> 添加行
-                    </Button>
-                  )}
-                </div>
-
-                {/* Table header */}
-                <div className="grid grid-cols-[40px_1fr_100px_100px_100px_40px] text-xs text-gray-500 px-6 py-2 border-b border-[#F3F4F6] bg-[#FAFBFC]">
-                  <span>序号</span>
-                  <span>物料编码/名称</span>
-                  <span className="text-right">需求数量</span>
-                  <span className="text-right">已备料</span>
-                  <span className="text-right">单位</span>
-                  <span></span>
-                </div>
-
-                {/* Table body */}
-                <div className="divide-y divide-[#F3F4F6]">
-                  {isEditing ? (
-                    formMaterials.length > 0 ? formMaterials.map((m, idx) => {
-                      const matProd = products.find(p => p.id === m.product_id);
-                      return (
-                        <div key={idx} className="grid grid-cols-[40px_1fr_100px_100px_100px_40px] items-center px-6 py-2 text-sm">
-                          <span className="text-gray-400">{idx + 1}</span>
-                          <div className="relative" ref={materialSearchIdx === idx ? materialSearchRef : null}>
-                            <Input
-                              className="h-7 text-sm"
-                              placeholder="输入编码/名称搜索..."
-                              value={materialSearchIdx === idx ? materialSearchText : (matProd ? `${matProd.code} ${matProd.name}` : '')}
-                              onChange={e => searchMaterial(idx, e.target.value)}
-                              onFocus={() => {
-                                setMaterialSearchIdx(idx);
-                                setMaterialSearchText(matProd ? `${matProd.code} ${matProd.name}` : '');
-                              }}
-                            />
-                            {materialSearchIdx === idx && materialSearchResults.length > 0 && (
-                              <div className="absolute z-[9999] top-full left-0 right-0 mt-1 bg-white border border-[#E5E7EB] rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                {materialSearchResults.map(p => (
-                                  <div key={p.id} className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm" onClick={() => selectMaterial(idx, p)}>
-                                    {p.code} <span className="text-gray-500">{p.name}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <Input type="number" className="h-7 text-sm text-right" value={m.required_qty} onChange={e => {
-                            const updated = [...formMaterials]; updated[idx] = { ...updated[idx], required_qty: e.target.value }; setFormMaterials(updated);
-                          }} />
-                          <Input type="number" className="h-7 text-sm text-right" value={m.prepared_qty} onChange={e => {
-                            const updated = [...formMaterials]; updated[idx] = { ...updated[idx], prepared_qty: e.target.value }; setFormMaterials(updated);
-                          }} />
-                          <span className="text-right text-xs text-gray-500">{matProd?.unit ?? '-'}</span>
-                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-gray-400 hover:text-red-500" onClick={() => setFormMaterials(formMaterials.filter((_, i) => i !== idx))}>
-                            <X className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      );
-                    }) : (
-                      <div className="px-6 py-6 text-center text-sm text-gray-400">暂无用料，选择产品后自动从BOM加载，或手动添加</div>
-                    )
-                  ) : (
-                    selectedOrder?.production_order_materials && selectedOrder.production_order_materials.length > 0 ?
-                      selectedOrder.production_order_materials.map((m, idx) => {
-                        const mp = m.products as Record<string, unknown> | Record<string, unknown>[] | null;
-                        const mObj = Array.isArray(mp) ? mp[0] : mp;
-                        return (
-                          <div key={m.id ?? idx} className="grid grid-cols-[40px_1fr_100px_100px_100px_40px] items-center px-6 py-2.5 text-sm">
-                            <span className="text-gray-400">{idx + 1}</span>
-                            <span className="text-[#111827]">{String(mObj?.code ?? '')} <span className="text-gray-500">{String(mObj?.name ?? '')}</span></span>
-                            <span className="text-right font-mono">{m.required_qty}</span>
-                            <span className="text-right font-mono text-blue-600">{m.prepared_qty}</span>
-                            <span className="text-right text-xs text-gray-500">{String(mObj?.unit ?? '')}</span>
-                            <span></span>
-                          </div>
-                        );
-                      })
-                    : (
-                      <div className="px-6 py-6 text-center text-sm text-gray-400">暂无用料信息</div>
-                    )
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-full text-gray-400">
-              <div className="text-center">
-                <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                <p>选择左侧生产订单查看详情</p>
-                <p className="text-xs mt-1">或点击右上角"新增生产订单"创建新订单</p>
-              </div>
-            </div>
+        <Select value={filterProductId} onValueChange={setFilterProductId}>
+          <SelectTrigger className="w-52">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部物料</SelectItem>
+            {productList.map((p) => (
+              <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={hideDelivered}
+            onChange={(e) => setHideDelivered(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          隐藏已送货
+        </label>
+        <div className="text-xs text-gray-400 ml-auto">
+          共 {filteredOrders.length} 条生产订单
+          {hideDelivered && orders.filter(o => o.delivered).length > 0 && (
+            <span className="text-gray-400 ml-1">
+              （已隐藏 {orders.filter(o => o.delivered).length} 条已送货）
+            </span>
           )}
         </div>
       </div>
 
-      {/* ─── Delete confirmation ─── */}
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>确认删除</AlertDialogTitle>
-            <AlertDialogDescription>确定要删除此生产订单吗？此操作不可撤销。</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={handleDelete}>删除</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* 看板矩阵 */}
+      {loading ? (
+        <div className="py-12 text-center text-gray-400">加载中...</div>
+      ) : filteredOrders.length === 0 ? (
+        <div className="py-12 text-center text-gray-400">暂无数据</div>
+      ) : (
+        <div className="grid grid-cols-3 gap-5 flex-1 min-h-0">
+          {columns.map((col) => {
+            const colOrders = ordersByStatus(col.key).sort((a, b) => {
+              // 紧急/逾期排前面
+              const ua = getUrgency(a.due_date, a.status);
+              const ub = getUrgency(b.due_date, b.status);
+              const priority: Record<string, number> = { overdue: 0, urgent: 1, normal: 2 };
+              const pa = priority[ua] ?? 2, pb = priority[ub] ?? 2;
+              if (pa !== pb) return pa - pb;
+              // 同紧急度按交期排序
+              return (a.due_date || '').localeCompare(b.due_date || '');
+            });
+            return (
+              <div key={col.key} className="flex flex-col min-h-0">
+                {/* 列标题 */}
+                <div className={`${col.headerBg} ${col.headerText} px-4 py-2.5 rounded-t-lg flex items-center justify-between`}>
+                  <span className="font-medium text-sm">{col.label}</span>
+                  <span className="text-xs opacity-80 bg-white/20 px-2 py-0.5 rounded-full">{colOrders.length}</span>
+                </div>
+                {/* 卡片列表 */}
+                <div className="flex-1 overflow-y-auto bg-gray-50/50 rounded-b-lg border border-t-0 border-gray-200 p-3 space-y-3">
+                  {colOrders.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-gray-300">暂无订单</div>
+                  ) : (
+                    renderGroupedCards(colOrders)
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-      {/* ─── Complete inbound dialog ─── */}
-      <Dialog open={!!completeOrderId} onOpenChange={() => setCompleteOrderId(null)}>
-        <DialogContent ref={completeDialogRef}>
-          <DialogHeader>
-            <DialogTitle>完成生产 - 自动入库</DialogTitle>
-            <DialogDescription>
-              完成生产后将自动创建入库单，成品入库到对应库位仓库（BOM库位号匹配），并扣减原材料库存。无库位号的产品将入待发货仓。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <div className="rounded-lg bg-green-50 border border-green-200 p-4 text-sm text-green-800">
-              <div className="font-medium mb-1">入库说明</div>
-              <ul className="list-disc pl-4 space-y-1 text-xs">
-                <li>系统根据BOM库位号自动匹配入库仓库</li>
-                <li>无库位号的产品默认入待发货仓</li>
-                <li>将同时扣减原材料库存</li>
-              </ul>
+      {/* 已取消订单折叠 */}
+      {ordersByStatus('cancelled').length > 0 && (
+        <details className="mt-4">
+          <summary className="text-sm text-gray-400 cursor-pointer hover:text-gray-600">
+            已取消订单 ({ordersByStatus('cancelled').length})
+          </summary>
+          <div className="mt-2 grid grid-cols-3 gap-3">
+            {renderGroupedCards(ordersByStatus('cancelled'))}
+          </div>
+        </details>
+      )}
+    </div>
+
+    {/* 订单详情 */}
+    <Sheet open={!!detailOrder} onOpenChange={() => setDetailOrder(null)}>
+      <SheetContent className="w-[600px]">
+        {detailOrder && (
+          <>
+            <SheetHeader>
+              <SheetTitle>订单详情 - {detailOrder.order_no}</SheetTitle>
+            </SheetHeader>
+            <div className="mt-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><span className="text-gray-500">客户：</span>{detailOrder.customers?.name || '未分配'}</div>
+                <div><span className="text-gray-500">产品：</span>{detailOrder.products?.name}</div>
+                <div><span className="text-gray-500">数量：</span><span className="font-mono">{detailOrder.quantity} {translateUnit(detailOrder.products?.unit || '')}</span></div>
+                <div><span className="text-gray-500">状态：</span>
+                  <Badge variant="outline" className={statusMap[detailOrder.status]?.color || ''}>
+                    {statusMap[detailOrder.status]?.label || detailOrder.status}
+                  </Badge>
+                </div>
+                <div><span className="text-gray-500">计划开始：</span>{fmtDate(detailOrder.start_date)}</div>
+                <div><span className="text-gray-500">计划完成：</span>{fmtDate(detailOrder.due_date)}</div>
+                <div className="col-span-2"><span className="text-gray-500">备注：</span>{detailOrder.remark || '-'}</div>
+              </div>
+
+              {detailOrder.status !== 'completed' && detailOrder.status !== 'cancelled' && (
+                <div className="flex gap-2 pt-2">
+                  {detailOrder.status === 'pending' && (
+                    <Button size="sm" onClick={() => handleStatusChange(detailOrder.id, 'in_progress')}>开始生产</Button>
+                  )}
+                  {detailOrder.status === 'in_progress' && (
+                    <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => { setCompleteOrderId(detailOrder.id); }}>
+                      完成入库
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" onClick={() => handleStatusChange(detailOrder.id, 'cancelled')}>取消订单</Button>
+                </div>
+              )}
+
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-2">用料清单</h3>
+                <table className="w-full text-sm border border-gray-200 rounded">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left px-3 py-2 font-medium text-gray-500">物料编码</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-500">物料名称</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-500">需求数量</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-500">已备料</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-500">单位</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(detailOrder.production_order_materials || []).map((m, i) => (
+                      <tr key={i} className="border-t border-gray-100">
+                        <td className="px-3 py-2 font-mono">{m.products?.code || '-'}</td>
+                        <td className="px-3 py-2">{m.products?.name || '-'}</td>
+                        <td className="px-3 py-2 text-right font-mono">{m.required_qty}</td>
+                        <td className="px-3 py-2 text-right font-mono">{m.prepared_qty}</td>
+                        <td className="px-3 py-2">{translateUnit(m.products?.unit || '-')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+
+    {/* 新增/编辑 */}
+    <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+      <SheetContent className="w-[560px]">
+        <SheetHeader>
+          <SheetTitle>{editOrder ? '编辑生产订单' : '新建生产订单'}</SheetTitle>
+        </SheetHeader>
+        <div className="mt-6 space-y-4 px-1">
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1.5 block">客户</label>
+            <Select value={formCustomerId} onValueChange={setFormCustomerId}>
+              <SelectTrigger><SelectValue placeholder="选择客户（可选）" /></SelectTrigger>
+              <SelectContent>
+                {customers.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}{c.code ? ` (${c.code})` : ''}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1.5 block">生产产品 *</label>
+            <Select value={formProductId} onValueChange={handleSelectProduct}>
+              <SelectTrigger><SelectValue placeholder="选择成品" /></SelectTrigger>
+              <SelectContent>
+                {finishedProducts.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">生产数量 *</label>
+              <Input value={formQuantity} onChange={(e) => setFormQuantity(e.target.value)} type="number" step="0.01" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">单位</label>
+              <Input value={translateUnit(products.find((p) => p.id === formProductId)?.unit || '')} disabled />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCompleteOrderId(null)}>取消</Button>
-            <Button className="bg-green-600 hover:bg-green-700 gap-1" onClick={handleCompleteInbound} disabled={completing}>
-              <CheckCircle2 className="w-4 h-4" /> {completing ? '处理中...' : '确认完成入库'}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">计划开始日期</label>
+              <Input value={formStartDate} onChange={(e) => setFormStartDate(e.target.value)} type="date" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">计划完成日期</label>
+              <Input value={formDueDate} onChange={(e) => setFormDueDate(e.target.value)} type="date" />
+            </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1.5 block">备注</label>
+            <Input value={formRemark} onChange={(e) => setFormRemark(e.target.value)} />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-gray-700">用料清单</label>
+              <Button variant="outline" size="sm" onClick={addMaterialRow}>添加子料</Button>
+            </div>
+            <div className="space-y-2 max-h-[240px] overflow-y-auto">
+              {formMaterials.map((m, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <Select value={m.product_id} onValueChange={(v) => updateMaterialRow(idx, 'product_id', v)}>
+                    <SelectTrigger className="flex-1 h-9 text-xs"><SelectValue placeholder="选择物料" /></SelectTrigger>
+                    <SelectContent>
+                      {products.filter((p) => p.id !== formProductId).map((p) => (
+                        <SelectItem key={p.id} value={p.id} className="text-xs">{p.code} - {p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input value={m.required_qty} onChange={(e) => updateMaterialRow(idx, 'required_qty', e.target.value)} placeholder="用量" type="number" step="0.01" className="w-24 h-9 text-xs" />
+                  <button onClick={() => removeMaterialRow(idx)} className="text-red-400 hover:text-red-600 text-sm">x</button>
+                </div>
+              ))}
+              {formMaterials.length === 0 && (
+                <div className="text-xs text-gray-400 py-2">选择成品后自动从 BOM 加载，或手动添加</div>
+              )}
+            </div>
+          </div>
+
+          <div className="pt-4 flex gap-3">
+            <Button onClick={handleSave} disabled={saving || !formProductId || !formQuantity} className="flex-1">
+              {saving ? '保存中...' : '保存'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+            <Button variant="outline" onClick={() => setSheetOpen(false)} className="flex-1">取消</Button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+
+    {/* 删除确认 */}
+    <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>确认删除</AlertDialogTitle>
+          <AlertDialogDescription>确认删除该生产订单及其用料明细吗？</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>取消</AlertDialogCancel>
+          <AlertDialogAction onClick={handleDelete}>确认删除</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    {/* 完成入库对话框 */}
+    <Dialog open={!!completeOrderId} onOpenChange={(open) => { if (!open) setCompleteOrderId(null); }}>
+      <DialogContent ref={completeDialogRef}>
+        <DialogHeader>
+          <DialogTitle>完成生产 - 自动入库</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-gray-600">
+          完成生产后将自动创建入库单，系统根据BOM库位号自动匹配入库仓库，无库位号则入待发货仓。
+        </p>
+        {completeOrderId && (() => {
+          const order = orders.find(o => o.id === completeOrderId);
+          if (!order) return null;
+          return (
+            <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="text-sm font-medium text-gray-800">
+                产品：{order.products?.code} {order.products?.name}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">
+                数量：{Number(order.quantity).toLocaleString()} {order.products?.unit || '个'}
+              </div>
+            </div>
+          );
+        })()}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setCompleteOrderId(null)}>取消</Button>
+          <Button className="bg-green-600 hover:bg-green-700" onClick={handleCompleteInbound} disabled={completing}>
+            {completing ? '处理中...' : '确认完成入库'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
