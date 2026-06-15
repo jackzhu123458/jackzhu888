@@ -27,13 +27,21 @@ export async function POST(request: NextRequest) {
 
   if (Array.isArray(body)) {
     // 批量替换：先删除所有，再插入
-    const { error: deleteError } = await supabase
+    // 删除所有现有记录
+    const { data: existingRows } = await supabase
       .from('delivery_category_groups')
-      .delete()
-      .neq('id', 0);
+      .select('id');
 
-    if (deleteError) {
-      return NextResponse.json({ error: '删除失败: ' + deleteError.message }, { status: 500 });
+    if (existingRows && existingRows.length > 0) {
+      const ids = existingRows.map((r: Record<string, unknown>) => r.id);
+      const { error: deleteError } = await supabase
+        .from('delivery_category_groups')
+        .delete()
+        .in('id', ids);
+
+      if (deleteError) {
+        return NextResponse.json({ error: '删除失败: ' + deleteError.message }, { status: 500 });
+      }
     }
 
     if (body.length > 0) {
