@@ -18,7 +18,12 @@ export async function GET() {
 // POST - 创建或更新类目分组
 export async function POST(request: NextRequest) {
   const supabase = getSupabaseClient();
-  const body = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
 
   if (Array.isArray(body)) {
     // 批量替换：先删除所有，再插入
@@ -28,14 +33,14 @@ export async function POST(request: NextRequest) {
       .neq('id', 0);
 
     if (deleteError) {
-      return NextResponse.json({ error: deleteError.message }, { status: 500 });
+      return NextResponse.json({ error: '删除失败: ' + deleteError.message }, { status: 500 });
     }
 
     if (body.length > 0) {
-      const rows = body.map((g: { group_no: number; group_name: string; categories: string }) => ({
-        group_no: g.group_no,
-        group_name: g.group_name,
-        categories: g.categories,
+      const rows = body.map((g: Record<string, unknown>) => ({
+        group_no: Number(g.group_no),
+        group_name: String(g.group_name || ''),
+        categories: String(g.categories || ''),
       }));
 
       const { data, error } = await supabase
@@ -44,7 +49,7 @@ export async function POST(request: NextRequest) {
         .select();
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: '插入失败: ' + error.message }, { status: 500 });
       }
       return NextResponse.json(data);
     }
@@ -52,10 +57,11 @@ export async function POST(request: NextRequest) {
   }
 
   // 单条创建
-  const { group_no, group_name, categories } = body;
+  const b = body as Record<string, unknown>;
+  const { group_no, group_name, categories } = b;
   const { data, error } = await supabase
     .from('delivery_category_groups')
-    .insert({ group_no, group_name, categories })
+    .insert({ group_no: Number(group_no), group_name: String(group_name || ''), categories: String(categories || '') })
     .select()
     .single();
 
