@@ -1327,14 +1327,13 @@ export default function DeliveryPage() {
 
       {/* ─── Delivery Print Preview Dialog ─── */}
       <Dialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen}>
-        <DialogContent className="!fixed !inset-0 !w-screen !h-screen !max-w-none !translate-x-0 !translate-y-0 !rounded-none !border-0 !p-0 !gap-0 flex flex-col" style={{ top: 0, left: 0 }}>
-          <DialogHeader className="px-6 pt-4 pb-2 no-print shrink-0 flex flex-row items-center justify-between">
+        <DialogContent className="!max-w-none !p-0 !gap-0 flex flex-col" style={{ width: 'calc(241mm + 40px)', maxHeight: '92vh' }}>
+          <DialogHeader className="px-5 pt-4 pb-2 no-print shrink-0 flex flex-row items-center justify-between">
             <DialogTitle>打印预览 - 送货单</DialogTitle>
           </DialogHeader>
           <div className="overflow-y-auto flex-1 min-h-0 flex justify-center" style={{ background: '#E5E7EB' }}>
-            <div className="py-4 flex justify-center" style={{ minWidth: 'fit-content' }}>
             {/* 打印区域 — 白纸效果，实际尺寸 241mm×279mm */}
-            <div id="delivery-print-area" className="bg-white shrink-0" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '279mm', padding: '8mm 10mm', boxSizing: 'border-box', fontSize: '13px', lineHeight: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
+            <div id="delivery-print-area" className="bg-white shrink-0 my-4" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '279mm', padding: '8mm 10mm', boxSizing: 'border-box', fontSize: '13px', lineHeight: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
               {/* 抬头区域 — 从系统设置读取公司信息 */}
               <div style={{ textAlign: 'center', marginBottom: '2px' }}>
                 <div style={{ fontSize: '18px', fontWeight: 'bold', letterSpacing: '4px' }}>{companyInfo.name || '常州横林新顺电器配件厂'}</div>
@@ -1489,8 +1488,7 @@ export default function DeliveryPage() {
                 });
               })()}
             </div>
-            </div>
-            </div>
+          </div>
             {/* 操作按钮 */}
             <div className="flex justify-end gap-2 px-6 py-3 no-print shrink-0 border-t bg-white">
               <Button variant="outline" onClick={() => setPrintPreviewOpen(false)}>关闭</Button>
