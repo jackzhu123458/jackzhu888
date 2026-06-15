@@ -1331,9 +1331,10 @@ export default function DeliveryPage() {
           <DialogHeader className="px-6 pt-4 pb-2 no-print shrink-0 flex flex-row items-center justify-between">
             <DialogTitle>打印预览 - 送货单</DialogTitle>
           </DialogHeader>
-          <div className="flex justify-center py-4 overflow-y-auto flex-1 min-h-0" style={{ background: '#E5E7EB' }}>
+          <div className="overflow-y-auto flex-1 min-h-0 flex justify-center" style={{ background: '#E5E7EB' }}>
+            <div className="py-4 flex justify-center" style={{ minWidth: 'fit-content' }}>
             {/* 打印区域 — 白纸效果，实际尺寸 241mm×279mm */}
-            <div id="delivery-print-area" className="bg-white" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '279mm', padding: '8mm 10mm', boxSizing: 'border-box', fontSize: '13px', lineHeight: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
+            <div id="delivery-print-area" className="bg-white shrink-0" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '279mm', padding: '8mm 10mm', boxSizing: 'border-box', fontSize: '13px', lineHeight: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
               {/* 抬头区域 — 从系统设置读取公司信息 */}
               <div style={{ textAlign: 'center', marginBottom: '2px' }}>
                 <div style={{ fontSize: '18px', fontWeight: 'bold', letterSpacing: '4px' }}>{companyInfo.name || '常州横林新顺电器配件厂'}</div>
@@ -1487,6 +1488,7 @@ export default function DeliveryPage() {
                   );
                 });
               })()}
+            </div>
             </div>
             </div>
             {/* 操作按钮 */}
