@@ -1792,6 +1792,7 @@ export default function DeliveryPage() {
                 <div className="flex-1 flex flex-wrap gap-1">
                   {availableCategories.map((cat) => {
                     const isGroupCat = group.categories.split(',').includes(cat);
+                    const isOtherGroupCat = editingGroups.some((g, gi) => gi !== idx && g.categories.split(',').includes(cat));
                     const catProducts = products.filter((p) => p.category === cat);
                     const shortName = catProducts.length > 0 ? catProducts[0].name.split('/')[0] : '';
                     const catLabel = cat && cat !== '0' ? `${cat}-${shortName}` : (shortName || `类目${cat}`);
@@ -1811,9 +1812,11 @@ export default function DeliveryPage() {
                         className={`h-6 px-1.5 rounded text-[10px] border transition-colors ${
                           isGroupCat
                             ? 'bg-[#1E40AF] text-white border-[#1E40AF]'
-                            : 'bg-white text-gray-500 border-gray-200 hover:border-[#1E40AF]'
+                            : isOtherGroupCat
+                              ? 'bg-blue-50 text-blue-600 border-blue-300 hover:border-[#1E40AF]'
+                              : 'bg-white text-gray-500 border-gray-200 hover:border-[#1E40AF]'
                         }`}
-                        title={`类目${cat}`}
+                        title={isOtherGroupCat && !isGroupCat ? `已被其他组选中，点击也选入本组` : `类目${cat}`}
                       >
                         {catLabel}
                       </button>
