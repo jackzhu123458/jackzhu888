@@ -1333,7 +1333,7 @@ export default function DeliveryPage() {
           </DialogHeader>
           <div className="overflow-y-auto flex-1 min-h-0 flex justify-center" style={{ background: '#E5E7EB' }}>
             {/* 打印区域 — 白纸效果，实际尺寸 241mm×139.5mm（三联二等分纸） */}
-            <div id="delivery-print-area" className="bg-white shrink-0 my-4" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '139.5mm', padding: '3mm 5mm', boxSizing: 'border-box', fontSize: '16px', lineHeight: '22px', boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
+            <div id="delivery-print-area" className="bg-white shrink-0 my-4" style={{ fontFamily: 'PingFang SC, Microsoft YaHei, SimSun, sans-serif', width: '241mm', minHeight: '139.5mm', padding: '3mm 5mm', boxSizing: 'border-box', fontSize: '19px', lineHeight: '22px', boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
               {/* 抬头区域 — 从系统设置读取公司信息 */}
               <div style={{ textAlign: 'center', marginBottom: '1px' }}>
                 <div style={{ fontSize: '25px', fontWeight: 'bold', letterSpacing: '4px' }}>{companyInfo.name || '常州横林新顺电器配件厂'}</div>
@@ -1404,13 +1404,13 @@ export default function DeliveryPage() {
                         <table style={{ width: '100%', tableLayout: 'auto', borderCollapse: 'collapse', border: '1px solid #000' }}>
                           <tbody>
                             <tr style={{ background: '#f0f0f0' }}>
-                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>项次</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>订单编号</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>物料编号</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>物料名称</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>单位</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>数量</th>
-                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>备注</th>
+                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '19px', textAlign: 'center' }}>项次</th>
+                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '19px', textAlign: 'center' }}>订单编号</th>
+                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '19px', textAlign: 'center' }}>物料编号</th>
+                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '19px', textAlign: 'center' }}>物料名称</th>
+                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '19px', textAlign: 'center' }}>单位</th>
+                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '19px', textAlign: 'center' }}>数量</th>
+                              <th style={{ border: '1px solid #000', padding: '2px 4px', fontWeight: 'bold', fontSize: '19px', textAlign: 'center' }}>备注</th>
                               <th rowSpan={totalRows + 1} style={{ border: '1px solid #000', padding: '4px 1px', fontSize: '10px', writingMode: 'vertical-rl', letterSpacing: '1px', lineHeight: '1.4', textAlign: 'center' }}>
                                 <span style={{ color: '#333' }}>(一)存根白</span>
                                 <span style={{ color: '#cc0000' }}>(二)客户红</span>
@@ -1421,23 +1421,23 @@ export default function DeliveryPage() {
                               const prod = getProduct(item);
                               return (
                                 <tr key={`item-${pageIdx}-${idx}`}>
-                                  <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '16px' }}>{pageIdx * MAX_ROWS + idx + 1}</td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 4px', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '16px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px' }}>{pageIdx * MAX_ROWS + idx + 1}</td>
+                                  <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '19px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {orderNo}
                                   </td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 4px', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '16px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '19px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {prod.code || ''}
                                   </td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 4px', fontSize: '16px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {prod.name || ''}{prod.spec ? `/${prod.spec}` : ''}
                                   </td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '16px' }}>
+                                  <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px' }}>
                                     {translateUnit(prod.unit || '')}
                                   </td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'right', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '16px' }}>
+                                  <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontFamily: 'SF Mono, Menlo, Consolas, monospace', fontSize: '19px' }}>
                                     {item.quantity}
                                   </td>
-                                  <td style={{ border: '1px solid #000', padding: '2px 4px', fontSize: '16px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {item.remark || ''}
                                   </td>
                                 </tr>
@@ -1446,13 +1446,13 @@ export default function DeliveryPage() {
                             {/* 补空行至MAX_ROWS */}
                             {Array.from({ length: Math.max(0, totalRows - pageItems.length) }).map((_, i) => (
                               <tr key={`empty-${pageIdx}-${i}`}>
-                                <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', height: '22px', fontSize: '16px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 4px', fontSize: '16px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 4px', fontSize: '16px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 4px', fontSize: '16px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 4px', fontSize: '16px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 4px', fontSize: '16px' }}>&nbsp;</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 4px', fontSize: '16px' }}>&nbsp;</td>
+                                <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', height: '22px', fontSize: '19px' }}>&nbsp;</td>
+                                <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px' }}>&nbsp;</td>
+                                <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px' }}>&nbsp;</td>
+                                <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px' }}>&nbsp;</td>
+                                <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px' }}>&nbsp;</td>
+                                <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px' }}>&nbsp;</td>
+                                <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'center', fontSize: '19px' }}>&nbsp;</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1787,7 +1787,7 @@ export default function DeliveryPage() {
             border: none;
             box-shadow: none;
             box-sizing: border-box;
-            font-size: 16px !important;
+            font-size: 19px !important;
             line-height: 22px !important;
             overflow: visible;
           }
