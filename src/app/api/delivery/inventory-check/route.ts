@@ -43,7 +43,8 @@ export async function GET(request: NextRequest) {
     const wid = inv.warehouse_id as string;
     const qty = Number(inv.quantity) || 0;
     const reserved = Number(inv.reserved_qty) || 0;
-    const available = Math.max(0, qty - reserved);
+    // 出货时预留量正是为本单预留的，所以实际可出货量 = 总库存
+    const available = qty;
 
     if (!invByProduct.has(pid)) invByProduct.set(pid, []);
     invByProduct.get(pid)!.push({
@@ -60,11 +61,11 @@ export async function GET(request: NextRequest) {
     const prod = it.products as Record<string, string> | null;
     const stocks = invByProduct.get(it.product_id) || [];
 
-    // 按可用库存降序排列
-    stocks.sort((a, b) => b.available - a.available);
+    // 按总库存降序排列
+    stocks.sort((a, b) => b.quantity - a.quantity);
 
-    // 自动选择：优先有可用库存的仓库
-    const selectedWh = stocks.find(s => s.available > 0)?.warehouse_id || stocks[0]?.warehouse_id || '';
+    // 自动选择：优先有库存的仓库
+    const selectedWh = stocks.find(s => s.quantity > 0)?.warehouse_id || stocks[0]?.warehouse_id || '';
 
     return {
       product_id: it.product_id,

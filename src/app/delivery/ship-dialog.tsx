@@ -100,7 +100,7 @@ export default function ShipDialog({ open, onOpenChange, noteId, onShip }: ShipD
                 <th className="text-left p-2 font-medium">物料</th>
                 <th className="text-center p-2 font-medium">需出数量</th>
                 <th className="text-left p-2 font-medium">出库仓库</th>
-                <th className="text-center p-2 font-medium">可用库存</th>
+                <th className="text-center p-2 font-medium">库存</th>
               </tr>
             </thead>
             <tbody>
@@ -125,15 +125,15 @@ export default function ShipDialog({ open, onOpenChange, noteId, onShip }: ShipD
                         )}
                         {ps.stocks.map(s => (
                           <option key={s.warehouse_id} value={s.warehouse_id}>
-                            {s.warehouse_name}（可用 {s.available}）
+                            {s.warehouse_name}（库存 {s.quantity}）
                           </option>
                         ))}
                       </select>
                     </td>
                     <td className="text-center p-2">
                       {selectedStock ? (
-                        <span className={selectedStock.available >= ps.required_qty ? 'text-green-600' : 'text-red-600'}>
-                          {selectedStock.available}
+                        <span className={selectedStock.quantity >= ps.required_qty ? 'text-green-600' : 'text-red-600'}>
+                          {selectedStock.quantity}
                         </span>
                       ) : (
                         <span className="text-red-600">0</span>
