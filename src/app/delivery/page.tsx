@@ -100,7 +100,6 @@ export default function DeliveryPage() {
   // Order picker
   const [orderPickerOpen, setOrderPickerOpen] = useState(false);
   const [customerOrders, setCustomerOrders] = useState<CustomerOrder[]>([]);
-  const [warehouses, setWarehouses] = useState<Array<{ id: string; name: string }>>([]);
   const [shipDialogOpen, setShipDialogOpen] = useState(false);
   const [itemSearches, setItemSearches] = useState<Record<number, string>>({});
   const [orderInventoryMap, setOrderInventoryMap] = useState<Record<string, { quantity: number; reserved_qty: number }>>({});
@@ -120,20 +119,18 @@ export default function DeliveryPage() {
   }, []);
 
   const fetchMeta = useCallback(async () => {
-    const [cRes, pRes, oRes, whRes, sRes] = await Promise.all([
+    const [cRes, pRes, oRes, sRes] = await Promise.all([
       fetch('/api/customers'),
       fetch('/api/products'),
       fetch('/api/orders?status=confirmed'),
-      fetch('/api/warehouses'),
       fetch('/api/settings'),
     ]);
-    const [cData, pData, oData, whData, sData] = await Promise.all([
-      cRes.json(), pRes.json(), oRes.json(), whRes.json(), sRes.json(),
+    const [cData, pData, oData, sData] = await Promise.all([
+      cRes.json(), pRes.json(), oRes.json(), sRes.json(),
     ]);
 
     setCustomers(Array.isArray(cData) ? cData : []);
     if (Array.isArray(oData)) setCustomerOrders(oData.filter((o: CustomerOrder) => ['confirmed', 'in_progress', 'pending'].includes(o.status)));
-    if (Array.isArray(whData)) setWarehouses(whData);
     setProducts(Array.isArray(pData) ? pData : []);
 
     // 提取产品类目列表
@@ -456,13 +453,17 @@ export default function DeliveryPage() {
   };
 
   /* ─── Ship ─── */
-  const handleShip = async (warehouseId: string) => {
-    if (!form.id || !warehouseId) return;
+  const handleShip = async (warehouseAllocations: Record<string, string>) => {
+    if (!form.id) return;
     try {
       const res = await fetch('/api/delivery', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: form.id, status: 'shipped', warehouse_id: warehouseId }),
+        body: JSON.stringify({
+          id: form.id,
+          status: 'shipped',
+          warehouse_allocations: warehouseAllocations,
+        }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -1001,7 +1002,7 @@ export default function DeliveryPage() {
       <ShipDialog
         open={shipDialogOpen}
         onOpenChange={setShipDialogOpen}
-        warehouses={warehouses}
+        noteId={form.id}
         onShip={handleShip}
       />
 

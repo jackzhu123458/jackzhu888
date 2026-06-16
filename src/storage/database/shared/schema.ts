@@ -80,6 +80,7 @@ export const bom = pgTable(
     quantity: numeric("quantity", { precision: 12, scale: 4 }).notNull(),
     location_no: varchar("location_no", { length: 50 }).default(""),
     remark: text("remark"),
+    warehouse_id: varchar("warehouse_id", { length: 36 }).references(() => warehouses.id),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp("updated_at", { withTimezone: true }),
   },

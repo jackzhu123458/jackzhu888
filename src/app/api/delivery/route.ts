@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const client = getSupabaseClient();
   const body = await request.json();
-  const { id, items, warehouse_id, customer_order: _co2, customer_orders: _cos2, delivery_note_items: _dnis2, ...updates } = body;
+  const { id, items, warehouse_id, warehouse_allocations, customer_order: _co2, customer_orders: _cos2, delivery_note_items: _dnis2, ...updates } = body;
   if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 });
 
   // 获取修改前的状态
@@ -145,13 +145,20 @@ export async function PUT(request: NextRequest) {
 
   // 如果状态从 draft → shipped → 出库扣减
   if (beforeNote && beforeNote.status !== 'shipped' && updates.status === 'shipped') {
-    const whId = warehouse_id || beforeNote.warehouse_id;
-    if (whId) {
-      const { data: currentItems } = await client
-        .from('delivery_note_items')
-        .select('*')
-        .eq('note_id', id);
-      await handleShipment(client, id, whId, currentItems);
+    const { data: currentItems } = await client
+      .from('delivery_note_items')
+      .select('*')
+      .eq('note_id', id);
+
+    if (warehouse_allocations && Object.keys(warehouse_allocations).length > 0) {
+      // 多仓库扣减：每个产品从指定仓库扣减
+      await handleShipmentMultiWarehouse(client, id, warehouse_allocations, currentItems);
+    } else {
+      // 兼容旧逻辑：单仓库扣减
+      const whId = warehouse_id || beforeNote.warehouse_id;
+      if (whId) {
+        await handleShipment(client, id, whId, currentItems);
+      }
     }
   }
 
@@ -171,22 +178,22 @@ export async function DELETE(request: NextRequest) {
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 });
 
-  // 获取送货单详情（状态、仓库、明细），用于回退库存
+  // 获取送货单详情（状态、明细），用于回退库存
   const { data: note } = await client
     .from('delivery_notes')
-    .select('status, warehouse_id')
+    .select('status')
     .eq('id', id)
     .maybeSingle();
 
   // 如果已出库（shipped），需要回退库存和客户订单已交量
-  if (note?.status === 'shipped' && note.warehouse_id) {
+  if (note?.status === 'shipped') {
     const { data: items } = await client
       .from('delivery_note_items')
       .select('*')
       .eq('note_id', id);
 
     if (items && items.length > 0) {
-      await handleShipmentRollback(client, id, note.warehouse_id, items);
+      await handleShipmentRollback(client, id, items);
     }
   }
 
@@ -212,25 +219,50 @@ async function safeUpdate(
 async function handleShipmentRollback(
   client: ReturnType<typeof getSupabaseClient>,
   noteId: string,
-  warehouseId: string,
   items: Array<Record<string, unknown>>
 ) {
   if (items.length === 0) return;
 
   const productIds = items.map(it => it.product_id as string).filter(Boolean);
   const orderItemIds = items.map(it => it.customer_order_item_id as string).filter(Boolean);
+  const warehouseIds = [...new Set(items.map(it => it.warehouse_id as string).filter(Boolean))];
 
-  const invResult = await client
-    .from('inventory')
-    .select('id, product_id, quantity, reserved_qty')
-    .eq('warehouse_id', warehouseId)
-    .in('product_id', productIds);
+  // 获取所有涉及仓库的库存
+  let invResult: { data: Array<Record<string, unknown>> | null };
+  if (warehouseIds.length > 0) {
+    invResult = await client
+      .from('inventory')
+      .select('id, product_id, warehouse_id, quantity, reserved_qty')
+      .in('product_id', productIds)
+      .in('warehouse_id', warehouseIds);
+  } else {
+    // 兼容旧数据：没有 warehouse_id 的项，回退到单仓库逻辑
+    const { data: note } = await client
+      .from('delivery_notes')
+      .select('warehouse_id')
+      .eq('id', noteId)
+      .maybeSingle();
+    if (note?.warehouse_id) {
+      invResult = await client
+        .from('inventory')
+        .select('id, product_id, warehouse_id, quantity, reserved_qty')
+        .eq('warehouse_id', note.warehouse_id as string)
+        .in('product_id', productIds);
+    } else {
+      invResult = { data: [] };
+    }
+  }
 
   const orderItemsResult = orderItemIds.length > 0
     ? await client.from('customer_order_items').select('id, delivered_qty, reserved_qty, quantity').in('id', orderItemIds)
     : { data: [] as Array<Record<string, unknown>> | null };
 
-  const invMap = new Map((invResult.data || []).map((inv: Record<string, unknown>) => [inv.product_id as string, inv]));
+  // key: `${product_id}_${warehouse_id}` → inventory record
+  const invMap = new Map(
+    (invResult.data || []).map((inv: Record<string, unknown>) =>
+      [`${inv.product_id}_${inv.warehouse_id}`, inv]
+    )
+  );
   const orderItemMap = new Map((orderItemsResult.data || []).map((oi: Record<string, unknown>) => [oi.id as string, oi]));
 
   // 逐条执行更新，确保每条都真正写入数据库
@@ -240,12 +272,26 @@ async function handleShipmentRollback(
     if (!productId || quantity <= 0) continue;
 
     // 回退库存：加回 quantity 和 reserved_qty
-    const inv = invMap.get(productId);
-    if (inv) {
-      await safeUpdate(client, 'inventory', {
-        quantity: Number(inv.quantity) + quantity,
-        reserved_qty: Number(inv.reserved_qty || 0) + quantity,
-      }, { id: inv.id as string });
+    const warehouseId = item.warehouse_id as string;
+    if (warehouseId) {
+      const invKey = `${productId}_${warehouseId}`;
+      const inv = invMap.get(invKey);
+      if (inv) {
+        await safeUpdate(client, 'inventory', {
+          quantity: Number(inv.quantity) + quantity,
+          reserved_qty: Number(inv.reserved_qty || 0) + quantity,
+        }, { id: inv.id as string });
+      }
+    } else {
+      // 兼容旧数据：没有 warehouse_id 的项，用单仓库逻辑
+      const invArr = (invResult.data || []).filter(inv => (inv as Record<string, unknown>).product_id === productId);
+      const inv = invArr[0];
+      if (inv) {
+        await safeUpdate(client, 'inventory', {
+          quantity: Number(inv.quantity) + quantity,
+          reserved_qty: Number(inv.reserved_qty || 0) + quantity,
+        }, { id: inv.id as string });
+      }
     }
 
     // 回退客户订单：减少已交量，恢复预留量
@@ -256,6 +302,78 @@ async function handleShipmentRollback(
         await safeUpdate(client, 'customer_order_items', {
           delivered_qty: Math.max(0, Number(orderItem.delivered_qty || 0) - quantity),
           reserved_qty: Number(orderItem.reserved_qty || 0) + quantity,
+        }, { id: orderItem.id as string });
+      }
+    }
+  }
+}
+
+// 多仓库出库处理：每个产品从指定的仓库扣减库存
+async function handleShipmentMultiWarehouse(
+  client: ReturnType<typeof getSupabaseClient>,
+  noteId: string,
+  warehouseAllocations: Record<string, string>,  // product_id -> warehouse_id
+  items: Array<Record<string, unknown>> | null
+) {
+  if (!items || items.length === 0) {
+    const { data } = await client
+      .from('delivery_note_items')
+      .select('*')
+      .eq('note_id', noteId);
+    items = data || [];
+  }
+  if (items.length === 0) return;
+
+  const productIds = items.map(it => it.product_id as string).filter(Boolean);
+  const orderItemIds = items.map(it => it.customer_order_item_id as string).filter(Boolean);
+
+  // 获取所有涉及仓库的库存
+  const warehouseIds = [...new Set(Object.values(warehouseAllocations))];
+  const invResult = await client
+    .from('inventory')
+    .select('id, product_id, warehouse_id, quantity, reserved_qty')
+    .in('product_id', productIds)
+    .in('warehouse_id', warehouseIds);
+
+  const orderItemsResult = orderItemIds.length > 0
+    ? await client.from('customer_order_items').select('id, delivered_qty, reserved_qty, quantity').in('id', orderItemIds)
+    : { data: [] as Array<Record<string, unknown>> | null };
+
+  // key: `${product_id}_${warehouse_id}` → inventory record
+  const invMap = new Map(
+    (invResult.data || []).map((inv: Record<string, unknown>) =>
+      [`${inv.product_id}_${inv.warehouse_id}`, inv]
+    )
+  );
+  const orderItemMap = new Map((orderItemsResult.data || []).map((oi: Record<string, unknown>) => [oi.id as string, oi]));
+
+  for (const item of items) {
+    const productId = item.product_id as string;
+    const quantity = Number(item.quantity || 0);
+    if (!productId || quantity <= 0) continue;
+
+    const warehouseId = warehouseAllocations[productId];
+    if (!warehouseId) continue;
+
+    // 记录每个明细项的出库仓库
+    await safeUpdate(client, 'delivery_note_items', { warehouse_id: warehouseId }, { id: item.id as string });
+
+    const invKey = `${productId}_${warehouseId}`;
+    const inv = invMap.get(invKey);
+    if (inv) {
+      await safeUpdate(client, 'inventory', {
+        quantity: Math.max(0, Number(inv.quantity) - quantity),
+        reserved_qty: Math.max(0, Number(inv.reserved_qty || 0) - quantity),
+      }, { id: inv.id as string });
+    }
+
+    const orderItemId = item.customer_order_item_id as string;
+    if (orderItemId) {
+      const orderItem = orderItemMap.get(orderItemId);
+      if (orderItem) {
+        await safeUpdate(client, 'customer_order_items', {
+          delivered_qty: Number(orderItem.delivered_qty || 0) + quantity,
+          reserved_qty: Math.max(0, Number(orderItem.reserved_qty || 0) - quantity),
         }, { id: orderItem.id as string });
       }
     }
@@ -302,6 +420,9 @@ async function handleShipment(
     const productId = item.product_id as string;
     const quantity = Number(item.quantity || 0);
     if (!productId || quantity <= 0) continue;
+
+    // 记录每个明细项的出库仓库
+    await safeUpdate(client, 'delivery_note_items', { warehouse_id: warehouseId }, { id: item.id as string });
 
     const inv = invMap.get(productId);
     if (inv) {
