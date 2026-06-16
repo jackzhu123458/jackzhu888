@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { translateUnit } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,12 +29,24 @@ import {
   Save,
   X,
   Search,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   Minus,
+  TrendingUp,
+  AlertTriangle,
+  Package,
+  DollarSign,
 } from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Scatter,
+  ComposedChart,
+  Legend,
+} from 'recharts';
 
 /* ─── Types ─── */
 interface Product {
@@ -44,6 +56,8 @@ interface Product {
   spec: string | null;
   unit: string;
   location_no?: string;
+  category?: string;
+  price?: number | string | null;
 }
 interface Warehouse {
   id: string;
@@ -57,6 +71,12 @@ interface InboundItem {
   product?: Product;
   products?: Product | Product[];
   quantity: number;
+  unit_price: number;
+  amount: number;
+  category: string;
+  location_no: string;
+  diff_qty: number;
+  item_status: string;
   remark: string;
 }
 interface InboundNote {
@@ -67,32 +87,58 @@ interface InboundNote {
   warehouse_id: string;
   operator: string | null;
   status: string;
+  supplier: string | null;
+  planned_date: string | null;
+  actual_date: string | null;
   remark: string | null;
   created_at: string;
   warehouses?: Warehouse | Warehouse[] | null;
   inbound_note_items: InboundItem[];
 }
 
+interface DailyStat {
+  date: string;
+  qty: number;
+  amount: number;
+  abnormal: boolean;
+  notes: string[];
+}
+interface InboundStats {
+  daily: DailyStat[];
+  summary: {
+    totalQty: number;
+    totalAmount: number;
+    abnormalCount: number;
+    totalNotes: number;
+    days: number;
+  };
+}
+
 /* ─── Helpers ─── */
-const formatDate = (d: string) => {
+const formatDate = (d: string | null) => {
+  if (!d) return '-';
+  try { return new Date(d).toISOString().split('T')[0]; } catch { return d; }
+};
+
+const formatDateTime = (d: string | null) => {
+  if (!d) return '-';
   try {
-    return new Date(d).toISOString().split('T')[0];
-  } catch {
-    return d;
-  }
+    return new Date(d).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch { return d; }
 };
 
 const statusLabel = (s: string) => {
   const m: Record<string, { label: string; cls: string }> = {
-    pending: { label: '待入库', cls: 'bg-yellow-100 text-yellow-800' },
+    draft: { label: '草稿', cls: 'bg-gray-100 text-gray-800' },
+    pending: { label: '待审核', cls: 'bg-yellow-100 text-yellow-800' },
     confirmed: { label: '已入库', cls: 'bg-green-100 text-green-800' },
-    completed: { label: '已入库', cls: 'bg-green-100 text-green-800' },
+    abnormal: { label: '异常', cls: 'bg-red-100 text-red-800' },
   };
   return m[s] || { label: s, cls: 'bg-gray-100 text-gray-800' };
 };
 
 const typeLabel = (s: string) => {
-  const m: Record<string, string> = { production: '生产入库', other: '其他入库' };
+  const m: Record<string, string> = { production: '生产入库', purchase: '采购入库', other: '其他入库' };
   return m[s] || s;
 };
 
@@ -102,9 +148,24 @@ const emptyNote = (): Omit<InboundNote, 'id' | 'created_at'> => ({
   production_order_id: null,
   warehouse_id: '',
   operator: null,
-  status: 'confirmed',
+  status: 'pending',
   remark: '',
+  supplier: null,
+  planned_date: null,
+  actual_date: null,
   inbound_note_items: [],
+});
+
+const emptyItem = (): InboundItem => ({
+  product_id: '',
+  quantity: 0,
+  unit_price: 0,
+  amount: 0,
+  category: '',
+  location_no: '',
+  diff_qty: 0,
+  item_status: 'normal',
+  remark: '',
 });
 
 const getProdObj = (raw: Product | Product[] | undefined): Product | undefined => {
@@ -124,18 +185,17 @@ export default function InboundPage() {
   const [notes, setNotes] = useState<InboundNote[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [stats, setStats] = useState<InboundStats | null>(null);
   const [currentIdx, setCurrentIdx] = useState(-1);
   const [editMode, setEditMode] = useState(false);
   const [isFormDirty, setIsFormDirty] = useState(false);
-
-  // Form state
-  const [form, setForm] = useState<Omit<InboundNote, 'id' | 'created_at'> & { id?: string }>(emptyNote());
-
-  // Dialogs
-  const [deleteOpen, setDeleteOpen] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [itemSearches, setItemSearches] = useState<Record<number, string>>({});
   const [showItemDropdown, setShowItemDropdown] = useState<number | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [chartDays, setChartDays] = useState(30);
+
+  const [form, setForm] = useState<Omit<InboundNote, 'id' | 'created_at'> & { id?: string }>(emptyNote());
 
   const current = currentIdx >= 0 ? notes[currentIdx] : null;
 
@@ -154,7 +214,14 @@ export default function InboundPage() {
     if (Array.isArray(pData)) setProducts(pData);
   }, []);
 
+  const fetchStats = useCallback(async () => {
+    const res = await fetch(`/api/inbound/stats?days=${chartDays}`);
+    const data = await res.json();
+    if (data.daily) setStats(data);
+  }, [chartDays]);
+
   useEffect(() => { fetchNotes(); fetchMeta(); }, [fetchNotes, fetchMeta]);
+  useEffect(() => { fetchStats(); }, [fetchStats]);
 
   /* ─── Navigation ─── */
   const goTo = (idx: number) => {
@@ -178,12 +245,21 @@ export default function InboundPage() {
       operator: note.operator,
       status: note.status,
       remark: note.remark || '',
+      supplier: note.supplier || null,
+      planned_date: note.planned_date ? formatDate(note.planned_date) : null,
+      actual_date: note.actual_date ? formatDate(note.actual_date) : null,
       inbound_note_items: Array.isArray(note.inbound_note_items)
         ? note.inbound_note_items.map((it) => {
             const product = getProdObj(it.products as Product | Product[] | undefined);
             return {
               ...it,
               product,
+              unit_price: Number(it.unit_price || product?.price || 0),
+              amount: Number(it.amount || 0),
+              category: it.category || product?.category || '',
+              location_no: it.location_no || product?.location_no || '',
+              diff_qty: Number(it.diff_qty || 0),
+              item_status: it.item_status || 'normal',
               remark: it.remark || '',
             };
           })
@@ -191,7 +267,6 @@ export default function InboundPage() {
     });
   };
 
-  // 首次加载后自动选择第一条记录
   useEffect(() => {
     if (notes.length > 0 && currentIdx < 0 && !editMode) {
       setCurrentIdx(0);
@@ -232,13 +307,18 @@ export default function InboundPage() {
       items: validItems.map(it => ({
         product_id: it.product_id,
         quantity: Number(it.quantity),
+        unit_price: Number(it.unit_price || 0),
+        amount: Number(it.amount || Number(it.quantity) * Number(it.unit_price || 0)),
+        category: it.category || null,
+        location_no: it.location_no || null,
+        diff_qty: Number(it.diff_qty || 0),
+        item_status: Number(it.diff_qty || 0) !== 0 ? 'abnormal' : 'normal',
         remark: it.remark,
       })),
     };
 
     try {
       if (form.id) {
-        // 更新
         const { id, inbound_note_items, warehouses, ...noteFields } = payload as typeof payload & { id?: string; inbound_note_items?: unknown; warehouses?: unknown };
         const res = await fetch('/api/inbound', {
           method: 'PUT',
@@ -249,7 +329,6 @@ export default function InboundPage() {
         if (data.error) { alert('保存失败: ' + data.error); return; }
         await fetchNotes();
       } else {
-        // 新建
         const { id, inbound_note_items, warehouses, ...noteFields } = payload as typeof payload & { id?: string; inbound_note_items?: unknown; warehouses?: unknown };
         const res = await fetch('/api/inbound', {
           method: 'POST',
@@ -268,6 +347,7 @@ export default function InboundPage() {
       }
       setEditMode(false);
       setIsFormDirty(false);
+      await fetchStats();
     } catch (e) {
       alert('保存失败: ' + String(e));
     }
@@ -296,17 +376,14 @@ export default function InboundPage() {
     setForm(emptyNote());
     setCurrentIdx(-1);
     await fetchNotes();
+    await fetchStats();
   };
 
   /* ─── Items manipulation ─── */
   const addEmptyItem = () => {
     setForm(prev => ({
       ...prev,
-      inbound_note_items: [...prev.inbound_note_items, {
-        product_id: '',
-        quantity: 0,
-        remark: '',
-      }],
+      inbound_note_items: [...prev.inbound_note_items, emptyItem()],
     }));
     setIsFormDirty(true);
   };
@@ -323,12 +400,17 @@ export default function InboundPage() {
     setForm(prev => {
       const items = [...prev.inbound_note_items];
       items[idx] = { ...items[idx], [field]: value };
+      // 自动计算金额
+      if (field === 'quantity' || field === 'unit_price') {
+        const qty = Number(items[idx].quantity || 0);
+        const price = Number(items[idx].unit_price || 0);
+        items[idx] = { ...items[idx], amount: qty * price };
+      }
       return { ...prev, inbound_note_items: items };
     });
     setIsFormDirty(true);
   };
 
-  /* ─── Search products for inline picker ─── */
   const searchInboundProducts = (query: string) => {
     if (!query.trim()) return [];
     const q = query.toLowerCase();
@@ -340,10 +422,16 @@ export default function InboundPage() {
   const selectProductForItem = (idx: number, p: Product) => {
     setForm(prev => {
       const items = [...prev.inbound_note_items];
+      const qty = Number(items[idx].quantity || 0);
+      const price = Number(p.price || items[idx].unit_price || 0);
       items[idx] = {
         ...items[idx],
         product_id: p.id,
         product: p,
+        unit_price: price,
+        amount: qty * price,
+        category: p.category || items[idx].category || '',
+        location_no: p.location_no || items[idx].location_no || '',
       };
       return { ...prev, inbound_note_items: items };
     });
@@ -362,6 +450,7 @@ export default function InboundPage() {
         const s = searchText.trim().toLowerCase();
         const wh = getWhObj(note.warehouses);
         if (note.note_no?.toLowerCase().includes(s)) return true;
+        if (note.supplier?.toLowerCase().includes(s)) return true;
         if (wh?.name?.toLowerCase().includes(s)) return true;
         return (note.inbound_note_items || []).some(item => {
           const prod = getProdObj(item.products as Product | Product[] | undefined);
@@ -370,11 +459,35 @@ export default function InboundPage() {
       })
     : notes;
 
+  // 总计
+  const totalQty = form.inbound_note_items.reduce((s, it) => s + Number(it.quantity || 0), 0);
+  const totalAmount = form.inbound_note_items.reduce((s, it) => s + Number(it.amount || 0), 0);
+
+  /* ─── Chart data ─── */
+  const chartData = (stats?.daily || []).map(d => ({
+    date: d.date.slice(5), // MM-DD
+    入库数量: d.qty,
+    入库金额: Math.round(d.amount * 100) / 100,
+    abnormal: d.abnormal ? d.qty : undefined,
+  }));
+
+  const abnormalPoints = (stats?.daily || [])
+    .filter(d => d.abnormal)
+    .map(d => ({
+      date: d.date.slice(5),
+      入库数量: d.qty,
+      abnormalFlag: d.qty,
+      noteNos: d.notes.join(', '),
+    }));
+
+  // 格式化金额刻度
+  const formatAmountTick = (v: number) => v >= 10000 ? Math.round(v / 10000) + '万' : String(v);
+
   /* ─── Render ─── */
   return (
     <div className="flex h-[calc(100vh-64px)] overflow-hidden">
       {/* ─── Left: 入库单列表 ─── */}
-      <div className="w-[280px] border-r border-gray-200 bg-gray-50/50 flex flex-col shrink-0">
+      <div className="w-[260px] border-r border-gray-200 bg-gray-50/50 flex flex-col shrink-0">
         <div className="p-3 border-b border-gray-200">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
@@ -420,46 +533,120 @@ export default function InboundPage() {
                   <div className="text-[11px] text-gray-400 mt-0.5">
                     {note.created_at ? new Date(note.created_at).toLocaleDateString('zh-CN') : ''}
                     <span className="ml-2">{note.inbound_note_items?.length || 0}项</span>
+                    {note.supplier && <span className="ml-2">· {note.supplier}</span>}
                   </div>
                 </div>
               );
             })
           )}
         </div>
-        {/* Navigation */}
-        {notes.length > 0 && (
-          <div className="flex items-center justify-center gap-1 p-2 border-t border-gray-200 bg-white">
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => goTo(0)} disabled={currentIdx <= 0}>
-              <ChevronsLeft className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => goTo(currentIdx - 1)} disabled={currentIdx <= 0}>
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </Button>
-            <span className="text-xs text-gray-500 px-1">
-              {currentIdx >= 0 ? currentIdx + 1 : 0}/{notes.length}
-            </span>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => goTo(currentIdx + 1)} disabled={currentIdx >= notes.length - 1}>
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => goTo(notes.length - 1)} disabled={currentIdx >= notes.length - 1}>
-              <ChevronsRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        )}
       </div>
 
-      {/* ─── Right: 入库单详情 ─── */}
+      {/* ─── Right: 主内容区 ─── */}
       <div className="flex-1 overflow-y-auto">
+        {/* ─── 顶部趋势图 ─── */}
+        <div className="border-b border-gray-200 bg-white">
+          <div className="flex items-center justify-between px-6 py-3 border-b border-gray-100">
+            <h2 className="text-sm font-medium text-gray-900 flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-[#1E40AF]" />
+              入库趋势
+            </h2>
+            <div className="flex items-center gap-2">
+              <Select value={String(chartDays)} onValueChange={v => setChartDays(Number(v))}>
+                <SelectTrigger className="h-7 w-24 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">近7天</SelectItem>
+                  <SelectItem value="30">近30天</SelectItem>
+                  <SelectItem value="90">近90天</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* 统计卡片 */}
+          {stats && (
+            <div className="grid grid-cols-4 gap-4 px-6 py-3 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-lg bg-blue-50 flex items-center justify-center">
+                  <Package className="h-4 w-4 text-[#1E40AF]" />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">入库总量</div>
+                  <div className="text-lg font-semibold text-gray-900 font-mono">{stats.summary.totalQty.toLocaleString()}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-lg bg-green-50 flex items-center justify-center">
+                  <DollarSign className="h-4 w-4 text-green-600" />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">入库金额</div>
+                  <div className="text-lg font-semibold text-gray-900 font-mono">{stats.summary.totalAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-lg bg-yellow-50 flex items-center justify-center">
+                  <Package className="h-4 w-4 text-yellow-600" />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">入库单数</div>
+                  <div className="text-lg font-semibold text-gray-900 font-mono">{stats.summary.totalNotes}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-lg bg-red-50 flex items-center justify-center">
+                  <AlertTriangle className="h-4 w-4 text-red-500" />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">异常天数</div>
+                  <div className="text-lg font-semibold text-gray-900 font-mono">{stats.summary.abnormalCount}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 图表 */}
+          <div className="px-6 py-4" style={{ height: 260 }}>
+            {chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6B7280' }} />
+                  <YAxis yAxisId="qty" tick={{ fontSize: 11, fill: '#6B7280' }} />
+                  <YAxis yAxisId="amount" orientation="right" tick={{ fontSize: 11, fill: '#6B7280' }} tickFormatter={formatAmountTick} />
+                  <Tooltip
+                    contentStyle={{ fontSize: 12, borderRadius: 6, border: '1px solid #E5E7EB' }}
+                    formatter={(value: number, name: string) => [
+                      name === '入库金额' ? value.toLocaleString() : value,
+                      name,
+                    ]}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar yAxisId="qty" dataKey="入库数量" fill="#1E40AF" radius={[2, 2, 0, 0]} barSize={chartDays > 30 ? 8 : 16} />
+                  <Bar yAxisId="amount" dataKey="入库金额" fill="#16A34A" radius={[2, 2, 0, 0]} barSize={chartDays > 30 ? 8 : 16} opacity={0.4} />
+                  {abnormalPoints.length > 0 && (
+                    <Scatter yAxisId="qty" data={abnormalPoints} dataKey="abnormalFlag" fill="#DC2626" shape="diamond" />
+                  )}
+                </ComposedChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-gray-400 text-sm">暂无数据</div>
+            )}
+          </div>
+        </div>
+
+        {/* ─── 入库单详情/编辑 ─── */}
         {!editMode && !form.id ? (
-          /* 空状态 */
-          <div className="flex flex-col items-center justify-center h-full text-gray-400">
+          <div className="flex flex-col items-center justify-center h-64 text-gray-400">
             <p className="text-sm">点击左侧入库单查看详情</p>
             <p className="text-xs mt-1">或点击 + 新增入库单</p>
           </div>
         ) : (
-          <div className="p-6 max-w-4xl mx-auto">
-            {/* ─── Header ─── */}
-            <div className="flex items-center justify-between mb-6">
+          <div className="p-6 max-w-5xl mx-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
               <div>
                 <h1 className="text-xl font-semibold text-gray-900">
                   {editMode ? (form.id ? '编辑入库单' : '新增入库单') : '入库单详情'}
@@ -491,7 +678,7 @@ export default function InboundPage() {
               </div>
             </div>
 
-            {/* ─── 表单区域 ─── */}
+            {/* 表单区域 */}
             <div className="bg-white border border-gray-200 rounded-lg">
               {/* 顶部信息栏 */}
               <div className="grid grid-cols-4 gap-4 p-4 border-b border-gray-100">
@@ -521,12 +708,12 @@ export default function InboundPage() {
                   <p className="text-sm text-gray-900">{typeLabel(form.type)}</p>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">入库时间</label>
-                  <p className="text-sm text-gray-900">
-                    {form.id ? (notes.find(n => n.id === form.id)?.created_at
-                      ? new Date(notes.find(n => n.id === form.id)!.created_at).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-                      : '-') : new Date().toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                  </p>
+                  <label className="text-xs text-gray-500 mb-1 block">供应商</label>
+                  {editMode ? (
+                    <Input value={form.supplier || ''} onChange={e => { setForm(prev => ({ ...prev, supplier: e.target.value })); setIsFormDirty(true); }} placeholder="可选" className="h-9 text-sm" />
+                  ) : (
+                    <p className="text-sm text-gray-900">{form.supplier || '-'}</p>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">状态</label>
@@ -534,16 +721,47 @@ export default function InboundPage() {
                 </div>
               </div>
 
+              {/* 第二行：日期信息 */}
+              <div className="grid grid-cols-4 gap-4 p-4 border-b border-gray-100">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">入库时间</label>
+                  <p className="text-sm text-gray-900">
+                    {form.id ? (notes.find(n => n.id === form.id)?.created_at
+                      ? formatDateTime(notes.find(n => n.id === form.id)!.created_at)
+                      : '-') : formatDateTime(new Date().toISOString())}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">计划到货日</label>
+                  {editMode ? (
+                    <Input type="date" value={form.planned_date || ''} onChange={e => { setForm(prev => ({ ...prev, planned_date: e.target.value || null })); setIsFormDirty(true); }} className="h-9 text-sm" />
+                  ) : (
+                    <p className="text-sm text-gray-900">{formatDate(form.planned_date)}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">实际到货日</label>
+                  {editMode ? (
+                    <Input type="date" value={form.actual_date || ''} onChange={e => { setForm(prev => ({ ...prev, actual_date: e.target.value || null })); setIsFormDirty(true); }} className="h-9 text-sm" />
+                  ) : (
+                    <p className="text-sm text-gray-900">{formatDate(form.actual_date)}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">操作人</label>
+                  {editMode ? (
+                    <Input value={form.operator || ''} onChange={e => { setForm(prev => ({ ...prev, operator: e.target.value })); setIsFormDirty(true); }} placeholder="可选" className="h-9 text-sm" />
+                  ) : (
+                    <p className="text-sm text-gray-900">{form.operator || '-'}</p>
+                  )}
+                </div>
+              </div>
+
               {/* 备注 */}
               <div className="px-4 py-3 border-b border-gray-100">
                 <label className="text-xs text-gray-500 mb-1 block">备注</label>
                 {editMode ? (
-                  <Input
-                    value={form.remark || ''}
-                    onChange={e => { setForm(prev => ({ ...prev, remark: e.target.value })); setIsFormDirty(true); }}
-                    placeholder="可选"
-                    className="h-8 text-sm"
-                  />
+                  <Input value={form.remark || ''} onChange={e => { setForm(prev => ({ ...prev, remark: e.target.value })); setIsFormDirty(true); }} placeholder="可选" className="h-8 text-sm" />
                 ) : (
                   <p className="text-sm text-gray-700">{form.remark || '-'}</p>
                 )}
@@ -555,7 +773,7 @@ export default function InboundPage() {
                   <h3 className="text-sm font-medium text-gray-900">
                     入库明细
                     <span className="text-gray-400 font-normal ml-2">
-                      {form.inbound_note_items.length}项 · 合计 {form.inbound_note_items.reduce((s, it) => s + Number(it.quantity), 0).toLocaleString()}
+                      {form.inbound_note_items.length}项 · 合计 {totalQty.toLocaleString()} · 金额 ¥{totalAmount.toLocaleString()}
                     </span>
                   </h3>
                   {editMode && (
@@ -565,127 +783,163 @@ export default function InboundPage() {
                   )}
                 </div>
 
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-200 bg-gray-50/50">
-                      <th className="text-left px-3 py-2 font-medium text-gray-500 w-8">#</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-500 w-32">物料编码</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-500">物料名称</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-500 w-16">单位</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-500 w-16">库位</th>
-                      <th className="text-right px-3 py-2 font-medium text-gray-500 w-24">数量</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-500 w-32">备注</th>
-                      {editMode && <th className="w-10"></th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {form.inbound_note_items.length === 0 ? (
-                      <tr>
-                        <td colSpan={editMode ? 8 : 7} className="px-3 py-8 text-center text-gray-400 text-xs">
-                          {editMode ? '点击"添加行"按钮添加入库物料' : '暂无明细'}
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-gray-50/50">
+                        <th className="text-left px-2 py-2 font-medium text-gray-500 w-8">#</th>
+                        <th className="text-left px-2 py-2 font-medium text-gray-500 w-28">物料编码</th>
+                        <th className="text-left px-2 py-2 font-medium text-gray-500">物料名称</th>
+                        <th className="text-left px-2 py-2 font-medium text-gray-500 w-16">分类</th>
+                        <th className="text-center px-2 py-2 font-medium text-gray-500 w-10">单位</th>
+                        <th className="text-right px-2 py-2 font-medium text-gray-500 w-16">库位</th>
+                        <th className="text-right px-2 py-2 font-medium text-gray-500 w-16">数量</th>
+                        <th className="text-right px-2 py-2 font-medium text-gray-500 w-20">单价</th>
+                        <th className="text-right px-2 py-2 font-medium text-gray-500 w-20">金额</th>
+                        <th className="text-right px-2 py-2 font-medium text-gray-500 w-16">差异</th>
+                        <th className="text-left px-2 py-2 font-medium text-gray-500 w-24">备注</th>
+                        {editMode && <th className="w-8"></th>}
                       </tr>
-                    ) : (
-                      form.inbound_note_items.map((item, idx) => {
-                        const prod = item.product || getProdObj(item.products as Product | Product[] | undefined);
-                        return (
-                          <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50/30">
-                            <td className="px-3 py-2.5 text-gray-400 text-xs">{idx + 1}</td>
-                            <td className="px-3 py-2.5 font-mono text-xs text-gray-900">
-                              {editMode ? (
-                                <div className="relative">
-                                  <Input
-                                    value={itemSearches[idx] !== undefined ? itemSearches[idx] : (prod?.code || '')}
-                                    onChange={e => {
-                                      setItemSearches(prev => ({ ...prev, [idx]: e.target.value }));
-                                      setShowItemDropdown(idx);
-                                    }}
-                                    onFocus={() => {
-                                      if (!item.product_id) {
-                                        setItemSearches(prev => ({ ...prev, [idx]: '' }));
+                    </thead>
+                    <tbody>
+                      {form.inbound_note_items.length === 0 ? (
+                        <tr>
+                          <td colSpan={editMode ? 12 : 11} className="px-2 py-8 text-center text-gray-400 text-xs">
+                            {editMode ? '点击"添加行"按钮添加入库物料' : '暂无明细'}
+                          </td>
+                        </tr>
+                      ) : (
+                        form.inbound_note_items.map((item, idx) => {
+                          const prod = item.product || getProdObj(item.products as Product | Product[] | undefined);
+                          const isAbnormal = item.item_status === 'abnormal' || Number(item.diff_qty || 0) !== 0;
+                          return (
+                            <tr key={idx} className={`border-b border-gray-50 hover:bg-gray-50/30 ${isAbnormal ? 'bg-red-50/40' : ''}`}>
+                              <td className="px-2 py-2 text-gray-400 text-xs">{idx + 1}</td>
+                              <td className="px-2 py-2 font-mono text-xs text-gray-900">
+                                {editMode ? (
+                                  <div className="relative">
+                                    <Input
+                                      value={itemSearches[idx] !== undefined ? itemSearches[idx] : (prod?.code || '')}
+                                      onChange={e => {
+                                        setItemSearches(prev => ({ ...prev, [idx]: e.target.value }));
                                         setShowItemDropdown(idx);
-                                      }
-                                    }}
-                                    placeholder="输入编码/名称搜索"
-                                    className="h-8 text-xs font-mono"
-                                  />
-                                  {showItemDropdown === idx && itemSearches[idx] !== undefined && itemSearches[idx].trim() && (
-                                    <>
-                                      <div className="fixed inset-0 z-40" onClick={() => { setShowItemDropdown(null); }} />
-                                      <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-48 overflow-y-auto mt-0.5">
-                                        {searchInboundProducts(itemSearches[idx]).length === 0 ? (
-                                          <div className="px-3 py-2 text-xs text-gray-400">无匹配结果</div>
-                                        ) : (
-                                          searchInboundProducts(itemSearches[idx]).map(p => (
-                                            <div
-                                              key={p.id}
-                                              className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-xs"
-                                              onClick={() => selectProductForItem(idx, p)}
-                                            >
-                                              <span className="font-mono">{p.code}</span>
-                                              <span className="text-gray-500 ml-2">{p.name}</span>
-                                              {p.location_no && <span className="text-blue-600 ml-1">[{p.location_no}]</span>}
-                                            </div>
-                                          ))
-                                        )}
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
-                              ) : (
-                                prod?.code || '-'
-                              )}
-                            </td>
-                            <td className="px-3 py-2.5 text-gray-700 text-xs">{prod?.name || '-'}</td>
-                            <td className="px-3 py-2.5 text-center text-gray-500 text-xs">{prod ? translateUnit(prod.unit) : '-'}</td>
-                            <td className="px-3 py-2.5 text-center text-xs">
-                              {prod?.location_no ? (
-                                <Badge className="bg-blue-50 text-blue-700 text-[10px] px-1.5 py-0">{prod.location_no}</Badge>
-                              ) : '-'}
-                            </td>
-                            <td className="px-3 py-2.5 text-right font-mono text-gray-900 text-xs">
-                              {editMode ? (
-                                <Input
-                                  type="number"
-                                  value={item.quantity || ''}
-                                  onChange={e => updateItem(idx, 'quantity', e.target.value)}
-                                  className="h-8 w-20 text-right text-xs font-mono ml-auto"
-                                  min={0}
-                                />
-                              ) : (
-                                Number(item.quantity).toLocaleString()
-                              )}
-                            </td>
-                            <td className="px-3 py-2.5 text-xs text-gray-500">
-                              {editMode ? (
-                                <Input
-                                  value={item.remark || ''}
-                                  onChange={e => updateItem(idx, 'remark', e.target.value)}
-                                  placeholder="可选"
-                                  className="h-8 text-xs"
-                                />
-                              ) : (
-                                item.remark || '-'
-                              )}
-                            </td>
-                            {editMode && (
-                              <td className="px-1 py-2.5">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 w-7 p-0 text-red-500 hover:text-red-600"
-                                  onClick={() => removeItem(idx)}
-                                >
-                                  <Minus className="h-3.5 w-3.5" />
-                                </Button>
+                                      }}
+                                      onFocus={() => {
+                                        if (!item.product_id) {
+                                          setItemSearches(prev => ({ ...prev, [idx]: '' }));
+                                          setShowItemDropdown(idx);
+                                        }
+                                      }}
+                                      placeholder="搜索编码/名称"
+                                      className="h-7 text-xs font-mono"
+                                    />
+                                    {showItemDropdown === idx && itemSearches[idx] !== undefined && itemSearches[idx].trim() && (
+                                      <>
+                                        <div className="fixed inset-0 z-40" onClick={() => setShowItemDropdown(null)} />
+                                        <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-48 overflow-y-auto mt-0.5">
+                                          {searchInboundProducts(itemSearches[idx]).length === 0 ? (
+                                            <div className="px-3 py-2 text-xs text-gray-400">无匹配结果</div>
+                                          ) : (
+                                            searchInboundProducts(itemSearches[idx]).map(p => (
+                                              <div
+                                                key={p.id}
+                                                className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-xs"
+                                                onClick={() => selectProductForItem(idx, p)}
+                                              >
+                                                <span className="font-mono">{p.code}</span>
+                                                <span className="text-gray-500 ml-2">{p.name}</span>
+                                                {p.location_no && <span className="text-blue-600 ml-1">[{p.location_no}]</span>}
+                                              </div>
+                                            ))
+                                          )}
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                ) : (
+                                  prod?.code || '-'
+                                )}
                               </td>
-                            )}
-                          </tr>
-                        );
-                      })
+                              <td className="px-2 py-2 text-gray-700 text-xs">{prod?.name || '-'}</td>
+                              <td className="px-2 py-2 text-xs">
+                                {editMode ? (
+                                  <Input value={item.category} onChange={e => updateItem(idx, 'category', e.target.value)} className="h-7 text-xs" placeholder="分类" />
+                                ) : (
+                                  item.category || '-'
+                                )}
+                              </td>
+                              <td className="px-2 py-2 text-center text-gray-500 text-xs">{prod ? translateUnit(prod.unit) : '-'}</td>
+                              <td className="px-2 py-2 text-center text-xs">
+                                {editMode ? (
+                                  <Input value={item.location_no} onChange={e => updateItem(idx, 'location_no', e.target.value)} className="h-7 text-xs text-center" placeholder="库位" />
+                                ) : (
+                                  item.location_no || (prod?.location_no ? (
+                                    <Badge className="bg-blue-50 text-blue-700 text-[10px] px-1.5 py-0">{prod.location_no}</Badge>
+                                  ) : '-')
+                                )}
+                              </td>
+                              <td className="px-2 py-2 text-right font-mono text-gray-900 text-xs">
+                                {editMode ? (
+                                  <Input type="number" value={item.quantity || ''} onChange={e => updateItem(idx, 'quantity', e.target.value)} className="h-7 w-16 text-right text-xs font-mono ml-auto" min={0} />
+                                ) : (
+                                  Number(item.quantity).toLocaleString()
+                                )}
+                              </td>
+                              <td className="px-2 py-2 text-right font-mono text-xs">
+                                {editMode ? (
+                                  <Input type="number" value={item.unit_price || ''} onChange={e => updateItem(idx, 'unit_price', e.target.value)} className="h-7 w-20 text-right text-xs font-mono ml-auto" min={0} step="0.01" />
+                                ) : (
+                                  item.unit_price ? `¥${Number(item.unit_price).toFixed(2)}` : '-'
+                                )}
+                              </td>
+                              <td className="px-2 py-2 text-right font-mono text-xs">
+                                {editMode ? (
+                                  <Input type="number" value={item.amount || ''} onChange={e => updateItem(idx, 'amount', e.target.value)} className="h-7 w-20 text-right text-xs font-mono ml-auto" min={0} step="0.01" />
+                                ) : (
+                                  item.amount ? `¥${Number(item.amount).toFixed(2)}` : '-'
+                                )}
+                              </td>
+                              <td className="px-2 py-2 text-right font-mono text-xs">
+                                {editMode ? (
+                                  <Input type="number" value={item.diff_qty || ''} onChange={e => updateItem(idx, 'diff_qty', e.target.value)} className="h-7 w-16 text-right text-xs font-mono ml-auto" step="1" />
+                                ) : (
+                                  Number(item.diff_qty || 0) !== 0 ? (
+                                    <span className="text-red-600">{Number(item.diff_qty).toLocaleString()}</span>
+                                  ) : '-'
+                                )}
+                              </td>
+                              <td className="px-2 py-2 text-xs text-gray-500">
+                                {editMode ? (
+                                  <Input value={item.remark || ''} onChange={e => updateItem(idx, 'remark', e.target.value)} placeholder="可选" className="h-7 text-xs" />
+                                ) : (
+                                  item.remark || '-'
+                                )}
+                              </td>
+                              {editMode && (
+                                <td className="px-1 py-2">
+                                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500 hover:text-red-600" onClick={() => removeItem(idx)}>
+                                    <Minus className="h-3 w-3" />
+                                  </Button>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                    {form.inbound_note_items.length > 0 && (
+                      <tfoot>
+                        <tr className="border-t border-gray-200 bg-gray-50/50 font-medium">
+                          <td colSpan={6} className="px-2 py-2 text-xs text-gray-500 text-right">合计</td>
+                          <td className="px-2 py-2 text-right font-mono text-xs text-gray-900">{totalQty.toLocaleString()}</td>
+                          <td className="px-2 py-2"></td>
+                          <td className="px-2 py-2 text-right font-mono text-xs text-gray-900">¥{totalAmount.toLocaleString()}</td>
+                          <td colSpan={editMode ? 3 : 2}></td>
+                        </tr>
+                      </tfoot>
                     )}
-                  </tbody>
-                </table>
+                  </table>
+                </div>
               </div>
             </div>
           </div>

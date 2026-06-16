@@ -274,7 +274,10 @@ export const inboundNotes = pgTable(
     production_order_id: varchar("production_order_id", { length: 36 }).references(() => productionOrders.id),
     warehouse_id: varchar("warehouse_id", { length: 36 }).notNull().references(() => warehouses.id),
     operator: varchar("operator", { length: 50 }),
-    status: varchar("status", { length: 30 }).notNull().default("draft"), // draft, confirmed
+    supplier: varchar("supplier", { length: 100 }),         // 供应商
+    planned_date: timestamp("planned_date", { withTimezone: true }),  // 计划到货日
+    actual_date: timestamp("actual_date", { withTimezone: true }),    // 实际到货日
+    status: varchar("status", { length: 30 }).notNull().default("draft"), // draft, pending, confirmed, abnormal
     remark: text("remark"),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp("updated_at", { withTimezone: true }),
@@ -293,6 +296,12 @@ export const inboundNoteItems = pgTable(
     note_id: varchar("note_id", { length: 36 }).notNull().references(() => inboundNotes.id, { onDelete: "cascade" }),
     product_id: varchar("product_id", { length: 36 }).notNull().references(() => products.id),
     quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull(),
+    unit_price: numeric("unit_price", { precision: 12, scale: 2 }),    // 单价
+    amount: numeric("amount", { precision: 12, scale: 2 }),            // 金额
+    category: varchar("category", { length: 50 }),                     // 分类
+    location_no: varchar("location_no", { length: 50 }),               // 库位
+    diff_qty: numeric("diff_qty", { precision: 12, scale: 2 }),       // 差异数量
+    item_status: varchar("item_status", { length: 30 }),               // 明细状态: normal/abnormal
     remark: text("remark"),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
