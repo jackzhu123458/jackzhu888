@@ -231,7 +231,7 @@ export const deliveryNotes = pgTable(
     warehouse_id: varchar("warehouse_id", { length: 36 }).references(() => warehouses.id),
     delivery_date: timestamp("delivery_date", { withTimezone: true }),
     status: varchar("status", { length: 30 }).notNull().default("draft"),
-    delivery_category: varchar("delivery_category", { length: 50 }),
+    delivery_category: varchar("delivery_category", { length: 255 }),
     remark: text("remark"),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp("updated_at", { withTimezone: true }),
