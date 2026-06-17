@@ -102,7 +102,7 @@ export function getLocalApiKey(): string {
   const secret = process.env.JWT_SECRET || 'local-dev-secret-change-me';
   // Manual JWT creation using HS256 — avoids jsonwebtoken bundling issues in Docker
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-  const payload = Buffer.from(JSON.stringify({ role: 'anon', iss: 'supabase', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3153600000 })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ role: 'anon' })).toString('base64url');
   const data = `${header}.${payload}`;
   const signature = crypto.createHmac('sha256', secret).update(data).digest('base64url');
   localApiKey = `${data}.${signature}`;

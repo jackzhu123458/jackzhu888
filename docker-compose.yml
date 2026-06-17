@@ -45,7 +45,10 @@ services:
       PGRST_DB_URI: postgres://erp:${DB_PASSWORD:-erp123456}@db:5432/erp
       PGRST_DB_ANON_ROLE: anon
       PGRST_DB_SCHEMA: public
-      PGRST_JWT_SECRET: ${JWT_SECRET:-local-dev-secret-change-me}
+      # JWT 验证已禁用：本地部署不需要 PostgREST 层面的 JWT 验证。
+      # 不设置 PGRST_JWT_SECRET 时，PostgREST 忽略 Authorization header，
+      # 所有请求直接使用 anon 角色（已授予完整 CRUD 权限）。
+      # PGRST_JWT_SECRET: ${JWT_SECRET:-local-dev-secret-change-me}
       PGRST_SERVER_PORT: 3000
 
   web:
