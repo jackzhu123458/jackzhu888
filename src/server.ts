@@ -43,7 +43,7 @@ async function proxyToPostgrest(req: IncomingMessage, res: ServerResponse, pathn
     const proxyRes = await fetch(target, {
       method: req.method || 'GET',
       headers,
-      body,
+      body: body as BodyInit | undefined,
     });
 
     res.statusCode = proxyRes.status;
