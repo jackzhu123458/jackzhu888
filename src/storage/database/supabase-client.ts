@@ -1,6 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { execSync } from 'child_process';
-import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { getReportBuffer, createWrappedFetch } from 'coze-coding-dev-sdk';
 
 /* ── env loading (once, with guard) ── */
@@ -95,11 +95,17 @@ function getLocalUrl(): string {
 // PostgREST v12 verifies the JWT in the Authorization header — a dummy/invalid
 // token causes 401. We sign a real JWT with { role: "anon" } so PostgREST
 // accepts it and uses the configured anon role for database access.
+// Uses Node.js crypto (no external dependency) for maximum Docker compatibility.
 let localApiKey: string | null = null;
-function getLocalApiKey(): string {
+export function getLocalApiKey(): string {
   if (localApiKey) return localApiKey;
   const secret = process.env.JWT_SECRET || 'local-dev-secret-change-me';
-  localApiKey = jwt.sign({ role: 'anon' }, secret, { expiresIn: '100y' });
+  // Manual JWT creation using HS256 — avoids jsonwebtoken bundling issues in Docker
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ role: 'anon', iss: 'supabase', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3153600000 })).toString('base64url');
+  const data = `${header}.${payload}`;
+  const signature = crypto.createHmac('sha256', secret).update(data).digest('base64url');
+  localApiKey = `${data}.${signature}`;
   return localApiKey;
 }
 

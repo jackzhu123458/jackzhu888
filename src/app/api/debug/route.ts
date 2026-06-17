@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { getSupabaseClient, getLocalApiKey } from '@/storage/database/supabase-client';
 
 export async function GET() {
   const debug: Record<string, unknown> = {};
@@ -7,7 +7,7 @@ export async function GET() {
   // 1. 环境变量检查
   debug.env = {
     POSTGREST_URL: process.env.POSTGREST_URL || '(not set)',
-    JWT_SECRET: process.env.JWT_SECRET ? '(set)' : '(not set)',
+    JWT_SECRET: process.env.JWT_SECRET ? `(set, length=${process.env.JWT_SECRET.length})` : '(not set)',
     PORT: process.env.PORT || process.env.DEPLOY_RUN_PORT || '(not set)',
     COZE_PROJECT_ENV: process.env.COZE_PROJECT_ENV || '(not set)',
     NODE_ENV: process.env.NODE_ENV || '(not set)',
@@ -15,6 +15,24 @@ export async function GET() {
 
   // 2. 本地模式检查
   debug.isLocalMode = !!process.env.POSTGREST_URL;
+
+  // 2.5 检查生成的 JWT
+  if (process.env.POSTGREST_URL) {
+    try {
+      const apiKey = getLocalApiKey();
+      debug.localApiKey = {
+        length: apiKey.length,
+        header: apiKey.substring(0, 50),
+        hasThreeParts: apiKey.split('.').length === 3,
+        parts: apiKey.split('.').map((p: string, i: number) => ({ part: i, length: p.length })),
+      };
+    } catch (err) {
+      debug.localApiKey = {
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      };
+    }
+  }
 
   // 3. 测试 Supabase 客户端查询
   try {
