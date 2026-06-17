@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { execSync } from 'child_process';
+import jwt from 'jsonwebtoken';
 import { getReportBuffer, createWrappedFetch } from 'coze-coding-dev-sdk';
 
 /* ── env loading (once, with guard) ── */
@@ -90,10 +91,17 @@ function getLocalUrl(): string {
   return `http://localhost:${port}`;
 }
 
-// Dummy JWT for PostgREST — PostgREST will fail to verify it (wrong secret)
-// and fall back to the configured `anon` role, which has full table access.
-const LOCAL_DUMMY_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJsb2NhbCIsInJvbGUiOiJhbm9uIn0.dummykey';
+// Valid JWT signed with JWT_SECRET for PostgREST auth.
+// PostgREST v12 verifies the JWT in the Authorization header — a dummy/invalid
+// token causes 401. We sign a real JWT with { role: "anon" } so PostgREST
+// accepts it and uses the configured anon role for database access.
+let localApiKey: string | null = null;
+function getLocalApiKey(): string {
+  if (localApiKey) return localApiKey;
+  const secret = process.env.JWT_SECRET || 'local-dev-secret-change-me';
+  localApiKey = jwt.sign({ role: 'anon' }, secret, { expiresIn: '100y' });
+  return localApiKey;
+}
 
 /* ── singleton client cache ── */
 
@@ -140,7 +148,7 @@ function getSupabaseClient(token?: string): SupabaseClient {
       return buildClient(url, token, { Authorization: `Bearer ${token}` });
     }
     if (!cachedAdminClient) {
-      cachedAdminClient = buildClient(url, LOCAL_DUMMY_KEY);
+      cachedAdminClient = buildClient(url, getLocalApiKey());
     }
     return cachedAdminClient;
   }
@@ -169,7 +177,7 @@ function getSupabaseCredentials() {
   loadEnv();
 
   if (isLocalMode()) {
-    return { url: getLocalUrl(), anonKey: LOCAL_DUMMY_KEY };
+    return { url: getLocalUrl(), anonKey: getLocalApiKey() };
   }
 
   const url = process.env.COZE_SUPABASE_URL;
@@ -183,7 +191,7 @@ function getSupabaseServiceRoleKey(): string | undefined {
   loadEnv();
 
   if (isLocalMode()) {
-    return LOCAL_DUMMY_KEY;
+    return getLocalApiKey();
   }
 
   return process.env.COZE_SUPABASE_SERVICE_ROLE_KEY;
