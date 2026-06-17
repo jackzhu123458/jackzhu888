@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseClient, isLocalMode } from '@/storage/database/supabase-client';
+import { getSupabaseClient } from '@/storage/database/supabase-client';
 
 export async function GET() {
   const debug: Record<string, unknown> = {};
@@ -14,7 +14,7 @@ export async function GET() {
   };
 
   // 2. 本地模式检查
-  debug.isLocalMode = isLocalMode();
+  debug.isLocalMode = !!process.env.POSTGREST_URL;
 
   // 3. 测试 Supabase 客户端查询
   try {
