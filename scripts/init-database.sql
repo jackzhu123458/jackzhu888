@@ -336,7 +336,7 @@ CREATE INDEX IF NOT EXISTS role_permissions_role_id_idx ON role_permissions(role
 CREATE INDEX IF NOT EXISTS role_permissions_permission_id_idx ON role_permissions(permission_id);
 
 -- ============================================
-// ========== 初始化默认数据 ==========
+-- ========== 初始化默认数据 ==========
 -- ============================================
 
 -- 插入 admin 角色（如果不存在）
@@ -358,6 +358,40 @@ WHERE u.username = 'admin' AND r.code = 'admin'
 AND NOT EXISTS (
   SELECT 1 FROM user_roles ur WHERE ur.user_id = u.id AND ur.role_id = r.id
 );
+
+-- ============================================
+-- PostgREST 匿名角色和权限（本地部署用）
+-- ============================================
+
+-- 创建 PostgREST 使用的 anon 角色（如果不存在）
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    CREATE ROLE anon NOLOGIN;
+  END IF;
+END;
+$$;
+
+-- 创建 PostgREST 使用的 authenticator 角色（如果不存在）
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticator') THEN
+    CREATE ROLE authenticator NOLOGIN;
+  END IF;
+END;
+$$;
+
+-- 让 authenticator 能够切换为 anon
+GRANT anon TO authenticator;
+
+-- 授予 anon 角色对所有表的 SELECT/INSERT/UPDATE/DELETE 权限
+GRANT USAGE ON SCHEMA public TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO anon;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon;
+
+-- 确保未来新建的表也自动授予权限
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO anon;
 
 -- ============================================
 -- 完成提示

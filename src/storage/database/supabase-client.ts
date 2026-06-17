@@ -8,7 +8,10 @@ let envLoaded = false;
 
 function loadEnv(): void {
   if (envLoaded) return;
-  if (process.env.COZE_SUPABASE_URL && process.env.COZE_SUPABASE_ANON_KEY) {
+  if (
+    (process.env.COZE_SUPABASE_URL && process.env.COZE_SUPABASE_ANON_KEY) ||
+    process.env.POSTGREST_URL
+  ) {
     envLoaded = true;
     return;
   }
@@ -17,7 +20,10 @@ function loadEnv(): void {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require('dotenv').config();
-      if (process.env.COZE_SUPABASE_URL && process.env.COZE_SUPABASE_ANON_KEY) {
+      if (
+        (process.env.COZE_SUPABASE_URL && process.env.COZE_SUPABASE_ANON_KEY) ||
+        process.env.POSTGREST_URL
+      ) {
         envLoaded = true;
         return;
       }
@@ -68,12 +74,33 @@ except Exception as e:
   }
 }
 
+/* ── local database mode detection ── */
+
+/**
+ * When POSTGREST_URL is set, the app uses a local PostgreSQL + PostgREST
+ * instead of Supabase cloud. The Supabase client connects to the app's own
+ * server (http://localhost:PORT), and server.ts proxies /rest/v1/* to PostgREST.
+ */
+function isLocalMode(): boolean {
+  return !!process.env.POSTGREST_URL;
+}
+
+function getLocalUrl(): string {
+  const port = process.env.PORT || process.env.DEPLOY_RUN_PORT || '5000';
+  return `http://localhost:${port}`;
+}
+
+// Dummy JWT for PostgREST — PostgREST will fail to verify it (wrong secret)
+// and fall back to the configured `anon` role, which has full table access.
+const LOCAL_DUMMY_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJsb2NhbCIsInJvbGUiOiJhbm9uIn0.dummykey';
+
 /* ── singleton client cache ── */
 
 let cachedAdminClient: SupabaseClient | null = null;
 let cachedAnonClient: SupabaseClient | null = null;
 
-function buildClient(anonKey: string, key: string, extraHeaders?: Record<string, string>): SupabaseClient {
+function buildClient(url: string, key: string, extraHeaders?: Record<string, string>): SupabaseClient {
   // Avoid MaxListenersExceededWarning from Supabase's process event listeners
   const currentMax = process.getMaxListeners?.() ?? 10;
   if (currentMax < 20) process.setMaxListeners(20);
@@ -91,7 +118,7 @@ function buildClient(anonKey: string, key: string, extraHeaders?: Record<string,
     // Silent — reporting setup failure should not block client creation
   }
 
-  return createClient(anonKey, key, {
+  return createClient(url, key, {
     global: globalOptions,
     db: { timeout: 30000 },
     auth: { autoRefreshToken: false, persistSession: false },
@@ -106,6 +133,19 @@ function buildClient(anonKey: string, key: string, extraHeaders?: Record<string,
 function getSupabaseClient(token?: string): SupabaseClient {
   loadEnv();
 
+  // Local database mode (PostgREST)
+  if (isLocalMode()) {
+    const url = getLocalUrl();
+    if (token) {
+      return buildClient(url, token, { Authorization: `Bearer ${token}` });
+    }
+    if (!cachedAdminClient) {
+      cachedAdminClient = buildClient(url, LOCAL_DUMMY_KEY);
+    }
+    return cachedAdminClient;
+  }
+
+  // Cloud Supabase mode
   const url = process.env.COZE_SUPABASE_URL;
   const anonKey = process.env.COZE_SUPABASE_ANON_KEY;
   if (!url) throw new Error('COZE_SUPABASE_URL is not set');
@@ -127,6 +167,11 @@ function getSupabaseClient(token?: string): SupabaseClient {
 
 function getSupabaseCredentials() {
   loadEnv();
+
+  if (isLocalMode()) {
+    return { url: getLocalUrl(), anonKey: LOCAL_DUMMY_KEY };
+  }
+
   const url = process.env.COZE_SUPABASE_URL;
   const anonKey = process.env.COZE_SUPABASE_ANON_KEY;
   if (!url) throw new Error('COZE_SUPABASE_URL is not set');
@@ -136,6 +181,11 @@ function getSupabaseCredentials() {
 
 function getSupabaseServiceRoleKey(): string | undefined {
   loadEnv();
+
+  if (isLocalMode()) {
+    return LOCAL_DUMMY_KEY;
+  }
+
   return process.env.COZE_SUPABASE_SERVICE_ROLE_KEY;
 }
 

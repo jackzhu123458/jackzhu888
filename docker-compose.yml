@@ -1,31 +1,71 @@
 # 新顺电器仓库进销存管理系统 - Docker Compose 部署配置
 #
-# 使用方法：
-#   1. 复制 .env.example 为 .env 并填写 Supabase 连接信息
+# 本地部署模式（无需 Supabase 云端）：
+#   1. 复制 .env.example 为 .env（默认即为本地模式，无需修改）
 #      cp .env.example .env
-#      vim .env
 #
 #   2. 构建并启动
 #      docker compose up -d --build
 #
-#   3. 查看日志
-#      docker compose logs -f
+#   3. 首次启动后初始化数据库（执行建表脚本）
+#      docker compose exec db psql -U erp -d erp -f /docker-entrypoint-initdb.d/init-database.sql
 #
-#   4. 停止
+#   4. 查看日志
+#      docker compose logs -f web
+#
+#   5. 停止
 #      docker compose down
 
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: xinshun-erp-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: erp
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-erp123456}
+      POSTGRES_DB: erp
+    volumes:
+      - erp-db-data:/var/lib/postgresql/data
+      - ./scripts/init-database.sql:/docker-entrypoint-initdb.d/init-database.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erp -d erp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgrest:
+    image: postgrest/postgrest:v12.2.3
+    container_name: xinshun-erp-postgrest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://erp:${DB_PASSWORD:-erp123456}@db:5432/erp
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_DB_SCHEMA: public
+      PGRST_JWT_SECRET: ${JWT_SECRET:-local-dev-secret-change-me}
+      PGRST_SERVER_PORT: 3000
+
   web:
     build: .
     container_name: xinshun-erp
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      postgrest:
+        condition: service_started
     ports:
-      - "5000:5000"
+      - "${DEPLOY_RUN_PORT:-5000}:${DEPLOY_RUN_PORT:-5000}"
     environment:
-      - COZE_SUPABASE_URL=${COZE_SUPABASE_URL}
-      - COZE_SUPABASE_ANON_KEY=${COZE_SUPABASE_ANON_KEY}
-      - COZE_SUPABASE_SERVICE_ROLE_KEY=${COZE_SUPABASE_SERVICE_ROLE_KEY}
+      - POSTGREST_URL=http://postgrest:3000
       - COZE_PROJECT_ENV=PROD
-      - PORT=5000
+      - PORT=${DEPLOY_RUN_PORT:-5000}
+      - JWT_SECRET=${JWT_SECRET:-local-dev-secret-change-me}
     env_file:
       - .env
+
+volumes:
+  erp-db-data:
