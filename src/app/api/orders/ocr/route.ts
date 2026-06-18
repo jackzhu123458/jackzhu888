@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { LLMClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -47,9 +46,15 @@ export async function POST(request: NextRequest) {
 
     const dataUri = `data:${mimeType};base64,${imageBase64}`;
 
-    const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
-    const config = new Config();
-    const client = new LLMClient(config, customHeaders);
+    // 检查大模型凭据是否可用
+    const baseUrl = process.env.COZE_INTEGRATION_BASE_URL;
+    const apiKey = process.env.COZE_WORKLOAD_IDENTITY_API_KEY;
+
+    if (!baseUrl || !apiKey) {
+      return NextResponse.json({
+        error: '大模型凭据未配置。请在 .env 中设置 COZE_INTEGRATION_BASE_URL 和 COZE_WORKLOAD_IDENTITY_API_KEY'
+      }, { status: 500 });
+    }
 
     const systemPrompt = `你是一个采购订单识别助手。用户会上传采购订单图片，你需要识别图片中的信息并以 JSON 格式返回。
 
@@ -78,31 +83,50 @@ export async function POST(request: NextRequest) {
 5. 如果某个字段识别不到，留空字符串或 0
 6. 只返回 JSON，不要有任何其他文字`;
 
+    // 直接用 fetch 调用大模型 API，不依赖 SDK
     const messages = [
-      { role: 'system' as const, content: systemPrompt },
+      { role: 'system', content: systemPrompt },
       {
-        role: 'user' as const,
+        role: 'user',
         content: [
-          { type: 'text' as const, text: '请识别这张采购订单图片中的所有信息，按 JSON 格式返回。' },
+          { type: 'text', text: '请识别这张采购订单图片中的所有信息，按 JSON 格式返回。' },
           {
-            type: 'image_url' as const,
+            type: 'image_url',
             image_url: {
               url: dataUri,
-              detail: 'high' as const,
+              detail: 'high',
             },
           },
         ],
       },
     ];
 
-    const response = await client.invoke(messages, {
-      model: 'doubao-seed-2-0-pro-260215',
-      temperature: 0.1,
+    const apiResponse = await fetch(`${baseUrl}/api/v1/llm/invoke`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'doubao-seed-2-0-pro-260215',
+        messages,
+        temperature: 0.1,
+        stream: false,
+      }),
     });
 
-    const content = response.content.trim();
+    if (!apiResponse.ok) {
+      const errorText = await apiResponse.text();
+      console.error('LLM API error:', apiResponse.status, errorText);
+      return NextResponse.json({
+        error: `大模型调用失败 (${apiResponse.status}): ${errorText.slice(0, 200)}`
+      }, { status: 500 });
+    }
 
-    // 提取 JSON（处理模型可能返回 markdown 代码块的情况）
+    const apiData = await apiResponse.json();
+    const content = (apiData.choices?.[0]?.message?.content || apiData.content || '').trim();
+
+    // 提取 JSON
     let jsonStr = content;
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
