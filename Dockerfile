@@ -47,10 +47,10 @@ COPY --from=builder /app/package.json ./package.json
 
 # 预下载 Tesseract.js 中文+英文语言数据（避免运行时从国外 CDN 下载超时）
 RUN mkdir -p /app/lang-data && \
-    wget -q -O /app/lang-data/chi_sim.traineddata.gz \
-      "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/chi_sim.traineddata.gz" && \
-    wget -q -O /app/lang-data/eng.traineddata.gz \
-      "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/eng.traineddata.gz" && \
+    wget -q -O /app/lang-data/chi_sim.traineddata \
+      "https://raw.githubusercontent.com/tesseract-ocr/tessdata/main/chi_sim.traineddata" && \
+    wget -q -O /app/lang-data/eng.traineddata \
+      "https://raw.githubusercontent.com/tesseract-ocr/tessdata/main/eng.traineddata" && \
     chown -R nextjs:nodejs /app/lang-data
 
 # 确保 nextjs 用户有权限访问临时目录
