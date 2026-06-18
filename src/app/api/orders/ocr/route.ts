@@ -72,11 +72,17 @@ export async function POST(request: Request) {
 注意事项：
 1. 仔细识别每一行物料明细，不要遗漏
 2. 数量去掉逗号，转为数字（如 10,000 → 10000）
-3. 日期统一转为 YYYY-MM-DD 格式（如 2026.07.01 → 2026-07-01）
+3. 日期统一转为 YYYY-MM-DD 格式（如 2026.07.01 → 2026-07-01, 6/9 → 当年6月9日 → 2026-06-09）
 4. 物料编号通常是数字+点号格式（如 30.113.01.0025）
 5. 客户/供应商名称必须完整识别，不要缩写！例如"常州宝捷电机有限公司"不要缩写为"宝捷电机"
 6. 客户/供应商编码通常是S+数字格式（如 S0080），注意区分字母O和数字0
-7. **非常重要**：每个物料行可能有不同的交货日期！请务必逐行识别表格中"交货日期"列的值，不要把订单头部的交货日期统一填到所有行。例如第1行交货日期是2026-06-09，第2行可能是2026-07-07，必须分别如实填写。
+7. **极其重要 - 交货日期逐行识别**：
+   - 采购订单的表格中，每个物料行都有各自的交货日期
+   - 有些订单同一列中不同行的交货日期不同（如第1行6/9，第2行7/7）
+   - 有些表格的交货日期列可能只在该组第一行标注，后续行如果属于同一交货日期则省略（看起来像空格），这时需要根据上下文推断：
+     * 如果下一行交货日期为空，且与前一行属于同一单据编号/分组，则复制前一行的交货日期
+     * 如果下一行有新的交货日期，则使用新的日期
+   - 绝对不能把订单头部的"交货日期"统一填到所有物料行！
 8. 如果某个字段识别不到，留空字符串或 0
 9. 只返回 JSON，不要有任何其他文字`;
 
@@ -114,6 +120,7 @@ export async function POST(request: Request) {
 
     const content = (response.content || '').trim();
     console.log('[OCR] LLM response length:', content.length);
+    console.log('[OCR] LLM raw response:', content.slice(0, 2000));
 
     // 提取 JSON
     let jsonStr = content;
@@ -130,12 +137,18 @@ export async function POST(request: Request) {
       parsed = { items: [] };
     }
 
+    // 日志：每个物料行的交货日期
+    if (parsed.items && parsed.items.length > 0) {
+      console.log('[OCR] Parsed items delivery dates:', parsed.items.map((item, i) => `#${i+1} ${item.code}: ${item.delivery_date}`).join(' | '));
+    }
+
     return NextResponse.json({
       success: true,
       data: {
         order_no: parsed.order_no || '',
         order_date: parsed.order_date || '',
         delivery_date: parsed.delivery_date || '',
+        delivery_deadline: parsed.delivery_date || '',  // 订单级别交货期限，前端使用此字段
         customer_name: parsed.customer_name || '',
         customer_code: parsed.customer_code || '',
         items: (parsed.items || []).map((item) => ({
