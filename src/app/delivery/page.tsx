@@ -224,12 +224,17 @@ export default function DeliveryPage() {
   /* ─── CRUD ─── */
   const handleNew = (copy = false) => {
     const base = copy && form.id ? { ...form } : emptyNote();
+    // 新建时默认选中所有分组类目
+    const defaultCategory = !copy && categoryGroups.length > 0
+      ? [...new Set(categoryGroups.flatMap(g => parseCategories(g.categories)))].join(',')
+      : base.delivery_category;
     setForm({
       ...base,
       id: undefined,
       note_no: '',
       status: 'draft',
       delivery_date: new Date().toISOString().split('T')[0],
+      delivery_category: defaultCategory,
     });
     setCurrentIdx(-1);
     setEditMode(true);
@@ -794,53 +799,42 @@ export default function DeliveryPage() {
                 )}
               </div>
 
-              {/* 送货类目 */}
+              {/* 送货类目 - 始终可点击切换，不受编辑模式限制 */}
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500 whitespace-nowrap w-16">送货类目</label>
-                {editMode ? (
-                  <div className="flex gap-1.5 flex-wrap items-center">
-                    {categoryGroups.map(group => {
-                      const isSelected = selectedCategories.some(c => parseCategories(group.categories).includes(c));
-                      return (
-                        <button
-                          key={group.group_no}
-                          type="button"
-                          onClick={() => {
-                            const groupCats = parseCategories(group.categories);
-                            const next = isSelected
-                              ? selectedCategories.filter(c => !groupCats.includes(c))
-                              : [...new Set([...selectedCategories, ...groupCats])];
-                            setForm(prev => ({ ...prev, delivery_category: next.join(',') }));
-                            setIsFormDirty(true);
-                          }}
-                          className={`h-7 px-2.5 rounded text-xs font-medium border transition-colors ${
-                            isSelected ? 'bg-[#1E40AF] text-white border-[#1E40AF]' : 'bg-white text-gray-600 border-gray-300 hover:border-[#1E40AF] hover:text-[#1E40AF]'
-                          }`}
-                          title={`包含类目：${group.categories}`}
-                        >
-                          {group.group_no}. {group.group_name}
-                        </button>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      onClick={() => setGroupManageOpen(true)}
-                      className="h-7 px-2 rounded text-xs text-gray-500 border border-dashed border-gray-300 hover:border-[#1E40AF] hover:text-[#1E40AF] transition-colors"
-                    >
-                      设置分组
-                    </button>
-                    {categoryGroups.length === 0 && <span className="text-xs text-gray-400">暂无分组，点击"设置分组"添加</span>}
-                  </div>
-                ) : (
-                  <span className="text-xs text-[#111827]">
-                    {form.delivery_category
-                      ? categoryGroups
-                          .filter(g => selectedCategories.some(c => parseCategories(g.categories).includes(c)))
-                          .map(g => `${g.group_no}.${g.group_name}`)
-                          .join('、') || form.delivery_category
-                      : '-'}
-                  </span>
-                )}
+                <div className="flex gap-1.5 flex-wrap items-center">
+                  {categoryGroups.map(group => {
+                    const isSelected = selectedCategories.some(c => parseCategories(group.categories).includes(c));
+                    return (
+                      <button
+                        key={group.group_no}
+                        type="button"
+                        onClick={() => {
+                          const groupCats = parseCategories(group.categories);
+                          const next = isSelected
+                            ? selectedCategories.filter(c => !groupCats.includes(c))
+                            : [...new Set([...selectedCategories, ...groupCats])];
+                          setForm(prev => ({ ...prev, delivery_category: next.join(',') }));
+                          setIsFormDirty(true);
+                        }}
+                        className={`h-7 px-2.5 rounded text-xs font-medium border transition-colors ${
+                          isSelected ? 'bg-[#1E40AF] text-white border-[#1E40AF]' : 'bg-white text-gray-600 border-gray-300 hover:border-[#1E40AF] hover:text-[#1E40AF]'
+                        }`}
+                        title={`包含类目：${group.categories}`}
+                      >
+                        {group.group_no}. {group.group_name}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => setGroupManageOpen(true)}
+                    className="h-7 px-2 rounded text-xs text-gray-500 border border-dashed border-gray-300 hover:border-[#1E40AF] hover:text-[#1E40AF] transition-colors"
+                  >
+                    设置分组
+                  </button>
+                  {categoryGroups.length === 0 && <span className="text-xs text-gray-400">暂无分组，点击"设置分组"添加</span>}
+                </div>
               </div>
             </div>
           </div>
