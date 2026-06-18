@@ -30,6 +30,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV COZE_PROJECT_ENV=PROD
+ENV TESSERACT_LANG_PATH=/app/lang-data
 
 # tesseract.js 自带 WASM 引擎，仅需 libc6-compat 兼容层
 RUN apk add --no-cache libc6-compat
@@ -44,9 +45,16 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/package.json ./package.json
 
+# 预下载 Tesseract.js 中文+英文语言数据（避免运行时从国外 CDN 下载超时）
+RUN mkdir -p /app/lang-data && \
+    wget -q -O /app/lang-data/chi_sim.traineddata.gz \
+      "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/chi_sim.traineddata.gz" && \
+    wget -q -O /app/lang-data/eng.traineddata.gz \
+      "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/eng.traineddata.gz" && \
+    chown -R nextjs:nodejs /app/lang-data
+
 # 确保 nextjs 用户有权限访问临时目录
-RUN mkdir -p /tmp/tesseract-output && chown nextjs:nodejs /tmp/tesseract-output && \
-    mkdir -p /tmp/tesseract-lang-data && chown nextjs:nodejs /tmp/tesseract-lang-data
+RUN mkdir -p /tmp/tesseract-output && chown nextjs:nodejs /tmp/tesseract-output
 
 USER nextjs
 

@@ -31,12 +31,23 @@ interface OcrResult {
 async function extractTextWithTesseract(imageBuffer: Buffer): Promise<string> {
   // 动态 import，避免开发环境加载拖慢启动
   const { createWorker } = await import('tesseract.js');
+
+  const langPath = process.env.TESSERACT_LANG_PATH || undefined;
+
   const worker = await createWorker(['chi_sim', 'eng'], 1, {
+    langPath: langPath || undefined,
     logger: () => {}, // 静默
   });
 
   try {
-    const { data } = await worker.recognize(imageBuffer);
+    // 30 秒超时保护，防止卡死
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('OCR 超时（30s）')), 30000)
+    );
+    const { data } = await Promise.race([
+      worker.recognize(imageBuffer),
+      timeoutPromise,
+    ]);
     return data.text || '';
   } finally {
     await worker.terminate();
