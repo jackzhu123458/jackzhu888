@@ -88,6 +88,7 @@ export default function DeliveryPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [showOrderDropdown, setShowOrderDropdown] = useState(false);
 
   // Print preview
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
@@ -102,6 +103,8 @@ export default function DeliveryPage() {
   const [customerOrders, setCustomerOrders] = useState<CustomerOrder[]>([]);
   const [shipDialogOpen, setShipDialogOpen] = useState(false);
   const [itemSearches, setItemSearches] = useState<Record<number, string>>({});
+  const [itemOrderSearches, setItemOrderSearches] = useState<Record<number, string>>({});
+  const [showItemOrderDropdown, setShowItemOrderDropdown] = useState<Record<number, boolean>>({});
   const [orderInventoryMap, setOrderInventoryMap] = useState<Record<string, { quantity: number; reserved_qty: number }>>({});
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
 
@@ -381,7 +384,7 @@ export default function DeliveryPage() {
       };
     });
 
-    const cust = order.customers as Record<string, string> | undefined;
+    const cust = order.customers;
     setForm(prev => ({
       ...prev,
       customer_id: order.customer_id || '',
@@ -730,7 +733,52 @@ export default function DeliveryPage() {
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500 whitespace-nowrap w-16">客户订单</label>
                 {editMode ? (
-                  <Input className="h-7 text-xs flex-1" value={form.customer_order || ''} onChange={(e) => { setForm(prev => ({ ...prev, customer_order: e.target.value })); setIsFormDirty(true); }} />
+                  <div className="relative flex-1">
+                    <Input
+                      className="h-7 text-xs font-mono"
+                      value={form.customer_order || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setForm(prev => ({ ...prev, customer_order: val, customer_order_id: null }));
+                        setShowOrderDropdown(true);
+                        setIsFormDirty(true);
+                      }}
+                      onFocus={() => setShowOrderDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowOrderDropdown(false), 200)}
+                      placeholder="输入订单号搜索"
+                    />
+                    {showOrderDropdown && (() => {
+                      const q = (form.customer_order || '').toLowerCase();
+                      const filtered = customerOrders.filter(o => {
+                        const hasUndelivered = (o.customer_order_items || []).some(i => Number(i.quantity) - Number(i.delivered_qty) > 0);
+                        if (!hasUndelivered) return false;
+                        if (!q) return true;
+                        return o.order_no.toLowerCase().includes(q) ||
+                          (o.customers?.name || '').toLowerCase().includes(q);
+                      });
+                      return filtered.length > 0 ? (
+                        <div className="absolute z-50 top-7 left-0 bg-white border rounded shadow-lg max-h-48 overflow-auto w-72">
+                          {filtered.slice(0, 15).map(o => {
+                            const undeliveredCount = (o.customer_order_items || []).filter(i => Number(i.quantity) - Number(i.delivered_qty) > 0).length;
+                            return (
+                              <button key={o.id} className="w-full text-left px-2 py-1.5 hover:bg-gray-100 text-xs border-b border-gray-50 last:border-0"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  importFromOrder(o);
+                                  setShowOrderDropdown(false);
+                                }}>
+                                <div className="flex items-center justify-between">
+                                  <span className="font-mono text-[#1E40AF]">{o.order_no}</span>
+                                  <span className="text-gray-400">{undeliveredCount}项待交</span>
+                                </div>
+                                {o.customers && <div className="text-gray-500 mt-0.5">{o.customers.name}</div>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : q ? <div className="absolute z-50 top-7 left-0 bg-white border rounded shadow-lg p-2 text-xs text-gray-400 w-48">无匹配订单</div> : null;
+                    })()}
+                  </div>
                 ) : (
                   <span className="text-xs text-[#111827]">{form.customer_order || '-'}</span>
                 )}
@@ -827,7 +875,54 @@ export default function DeliveryPage() {
                     <td className="py-2 px-2 text-gray-500">{idx + 1}</td>
                     <td className="py-2 px-2">
                       {editMode ? (
-                        <Input className="h-6 text-xs" value={item.customer_order || ''} onChange={(e) => updateItem(idx, 'customer_order', e.target.value)} placeholder="输入订单号" />
+                        <div className="relative">
+                          <Input
+                            className="h-6 text-xs font-mono"
+                            value={item.customer_order || ''}
+                            onChange={(e) => {
+                              updateItem(idx, 'customer_order', e.target.value);
+                              setItemOrderSearches(prev => ({ ...prev, [idx]: e.target.value }));
+                              setShowItemOrderDropdown(prev => ({ ...prev, [idx]: true }));
+                            }}
+                            onFocus={() => {
+                              setItemOrderSearches(prev => ({ ...prev, [idx]: item.customer_order || '' }));
+                              setShowItemOrderDropdown(prev => ({ ...prev, [idx]: true }));
+                            }}
+                            onBlur={() => setTimeout(() => {
+                              setShowItemOrderDropdown(prev => ({ ...prev, [idx]: false }));
+                              setItemOrderSearches(prev => { const next = { ...prev }; delete next[idx]; return next; });
+                            }, 200)}
+                            placeholder="输入订单号"
+                          />
+                          {showItemOrderDropdown[idx] && (() => {
+                            const q = (itemOrderSearches[idx] || item.customer_order || '').toLowerCase();
+                            const filtered = customerOrders.filter(o => {
+                              const hasUndelivered = (o.customer_order_items || []).some(i => Number(i.quantity) - Number(i.delivered_qty) > 0);
+                              if (!hasUndelivered) return false;
+                              if (!q) return true;
+                              return o.order_no.toLowerCase().includes(q) ||
+                                (o.customers?.name || '').toLowerCase().includes(q);
+                            });
+                            return filtered.length > 0 ? (
+                              <div className="absolute z-50 top-6 left-0 bg-white border rounded shadow-lg max-h-40 overflow-auto w-56">
+                                {filtered.slice(0, 10).map(o => {
+                                  return (
+                                    <button key={o.id} className="w-full text-left px-2 py-1 hover:bg-gray-100 text-xs border-b border-gray-50 last:border-0"
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        updateItem(idx, 'customer_order', o.order_no);
+                                        setShowItemOrderDropdown(prev => ({ ...prev, [idx]: false }));
+                                        setItemOrderSearches(prev => { const next = { ...prev }; delete next[idx]; return next; });
+                                      }}>
+                                      <span className="font-mono text-[#1E40AF]">{o.order_no}</span>
+                                      {o.customers && <span className="text-gray-400 ml-2">{o.customers.name}</span>}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ) : null;
+                          })()}
+                        </div>
                       ) : (
                         <span className="text-gray-500 font-mono">{item.customer_order || '-'}</span>
                       )}
