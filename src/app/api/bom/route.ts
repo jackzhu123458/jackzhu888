@@ -1,14 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const client = getSupabaseClient();
-  const { data, error } = await client
+  const { searchParams } = new URL(request.url);
+  const parentProductId = searchParams.get('parent_product_id');
+
+  let query = client
     .from('bom')
     .select('*, parent_product:products!bom_parent_product_id_products_id_fk(id, code, name, spec, unit, type, price), child_product:products!bom_child_product_id_products_id_fk(id, code, name, spec, unit, type, price)')
     .order('created_at', { ascending: false })
     .limit(500);
+
+  if (parentProductId) {
+    query = query.eq('parent_product_id', parentProductId);
+  }
+
+  const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // 如果有 parentProductId 参数，返回简化的子物料列表
+  if (parentProductId && Array.isArray(data)) {
+    const children = data.map(bom => ({
+      child_product_id: (bom.child_product as Record<string, unknown>)?.id || bom.child_product_id,
+      quantity: bom.quantity,
+      child_code: (bom.child_product as Record<string, unknown>)?.code || '',
+      child_name: (bom.child_product as Record<string, unknown>)?.name || '',
+      child_unit: (bom.child_product as Record<string, unknown>)?.unit || '',
+      child_type: (bom.child_product as Record<string, unknown>)?.type || null,
+      child_category: (bom.child_product as Record<string, unknown>)?.category || null,
+    }));
+    return NextResponse.json(children);
+  }
+
   return NextResponse.json(data);
 }
 

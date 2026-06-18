@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { translateUnit } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ArrowDownCircle, ArrowUpCircle, MapPin, Info, Pencil } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, MapPin, Info, Pencil, ChevronRight, ChevronDown, Package } from 'lucide-react';
 
 // 库位号颜色配置 - A~F 各区域独立配色
 const LOCATION_COLORS: Record<string, { bg: string; text: string; border: string; light: string; desc: string }> = {
@@ -135,7 +135,32 @@ interface TrendData {
   trend: TrendPoint[];
 }
 
+// BOM子物料数据
+interface BOMChild {
+  child_product_id: string;
+  quantity: number;
+  child_code: string;
+  child_name: string;
+  child_unit: string;
+  child_type: string | null;
+  child_category: string | null;
+}
+
 type TabKey = 'inventory' | 'heatmap' | 'fifo' | 'trend';
+
+// 产品类型定义
+const PRODUCT_TYPES: { value: string; label: string; color: string }[] = [
+  { value: 'finished', label: '成品', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+  { value: 'semi_finished', label: '半成品', color: 'bg-purple-100 text-purple-700 border-purple-200' },
+  { value: 'raw_material', label: '原材料', color: 'bg-orange-100 text-orange-700 border-orange-200' },
+  { value: 'component', label: '配件/外购', color: 'bg-green-100 text-green-700 border-green-200' },
+  { value: 'other', label: '其他', color: 'bg-gray-100 text-gray-700 border-gray-200' },
+];
+
+function getProductTypeLabel(type: string | null): { label: string; color: string } {
+  const found = PRODUCT_TYPES.find(t => t.value === type);
+  return found ? { label: found.label, color: found.color } : { label: '其他', color: 'bg-gray-100 text-gray-700 border-gray-200' };
+}
 
 export default function InventoryPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('inventory');
@@ -144,6 +169,12 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState('');
   const [warehouseType, setWarehouseType] = useState<string>('all');
+  const [productType, setProductType] = useState<string>('all');
+
+  // BOM展开状态
+  const [expandedBom, setExpandedBom] = useState<Set<string>>(new Set());
+  const [bomData, setBomData] = useState<Record<string, BOMChild[]>>({});
+  const [bomLoading, setBomLoading] = useState<Set<string>>(new Set());
 
   // 进出记录弹窗状态
   const [txProductId, setTxProductId] = useState('');
@@ -191,6 +222,31 @@ export default function InventoryPage() {
   }, []);
 
   useEffect(() => { loadInventory(); }, [loadInventory]);
+
+  // 切换BOM展开/折叠
+  const toggleBom = useCallback(async (productId: string) => {
+    if (expandedBom.has(productId)) {
+      setExpandedBom(prev => { const next = new Set(prev); next.delete(productId); return next; });
+      return;
+    }
+    // 展开：加载BOM子物料
+    setExpandedBom(prev => new Set(prev).add(productId));
+    if (bomData[productId]) return; // 已缓存
+
+    setBomLoading(prev => new Set(prev).add(productId));
+    try {
+      const res = await fetch(`/api/bom?parent_product_id=${productId}`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setBomData(prev => ({ ...prev, [productId]: data }));
+      } else {
+        setBomData(prev => ({ ...prev, [productId]: [] }));
+      }
+    } catch {
+      setBomData(prev => ({ ...prev, [productId]: [] }));
+    }
+    setBomLoading(prev => { const next = new Set(prev); next.delete(productId); return next; });
+  }, [expandedBom, bomData]);
 
   // 加载物料进出记录
   const loadTransactions = useCallback(async (productId: string, productCode: string, productName: string) => {
@@ -357,6 +413,9 @@ export default function InventoryPage() {
         item.inventory_records.some(r => r.warehouse_type === warehouseType)
       );
     }
+    if (productType !== 'all') {
+      result = result.filter(item => item.product_type === productType);
+    }
     if (keyword) {
       const kw = keyword.toLowerCase();
       result = result.filter(
@@ -522,7 +581,7 @@ export default function InventoryPage() {
       {/* 库存列表Tab */}
       {activeTab === 'inventory' && (
         <>
-          <div className="flex items-center gap-4 mb-4">
+          <div className="flex items-center gap-4 mb-2">
             <Input
               placeholder="搜索物料编码、名称或库位号..."
               value={keyword}
@@ -530,6 +589,7 @@ export default function InventoryPage() {
               className="w-80"
             />
             <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400 mr-1">仓库:</span>
               {(['all', 'raw_material', 'product'] as const).map((type) => (
                 <button
                   key={type}
@@ -558,6 +618,29 @@ export default function InventoryPage() {
                 disabled={importLoading}
               />
             </label>
+          </div>
+          {/* 产品类型筛选 */}
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-xs text-gray-400 mr-1">产品类型:</span>
+            <button
+              onClick={() => setProductType('all')}
+              className={`px-3 py-1.5 text-sm rounded-md border ${
+                productType === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              全部类型
+            </button>
+            {PRODUCT_TYPES.map((pt) => (
+              <button
+                key={pt.value}
+                onClick={() => setProductType(pt.value)}
+                className={`px-3 py-1.5 text-sm rounded-md border ${
+                  productType === pt.value ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {pt.label}
+              </button>
+            ))}
           </div>
           {importResult && (
             <div className={`mb-4 px-4 py-2.5 rounded-md text-sm flex items-center justify-between ${
@@ -590,8 +673,10 @@ export default function InventoryPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50/50">
+                  <th className="text-left px-3 py-3 font-medium text-gray-500 w-8"></th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">物料编码</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">物料名称</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">类型</th>
                   <th className="text-right px-5 py-3 font-medium text-gray-500">总库存 <span className="text-blue-400 font-normal text-xs">[可编辑]</span></th>
                   <th className="text-right px-5 py-3 font-medium text-gray-500">预留量 <span className="text-blue-400 font-normal text-xs">[可编辑]</span></th>
                   <th className="text-right px-5 py-3 font-medium text-gray-500">可用量</th>
@@ -602,140 +687,169 @@ export default function InventoryPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={8} className="px-5 py-12 text-center text-gray-400">加载中...</td></tr>
+                  <tr><td colSpan={10} className="px-5 py-12 text-center text-gray-400">加载中...</td></tr>
                 ) : filteredInventory.length === 0 ? (
-                  <tr><td colSpan={8} className="px-5 py-12 text-center text-gray-400">暂无库存数据</td></tr>
+                  <tr><td colSpan={10} className="px-5 py-12 text-center text-gray-400">暂无库存数据</td></tr>
                 ) : (
                   Array.from(summaryMap.entries()).map(([productId, summary]) => {
                     const locationNos = summary.warehouses.map(w => w.locationNo).filter(Boolean);
-                    const locationDisplay = locationNos.length > 0 ? locationNos.join(', ') : '';
+                    const isExpanded = expandedBom.has(productId);
+                    const childItems = bomData[productId];
+                    const isLoadingBom = bomLoading.has(productId);
+                    const productType = (summary.product as Record<string, unknown>).type as string | null;
+                    const typeInfo = getProductTypeLabel(productType);
+                    const hasBomIndicator = productType === 'finished' || productType === 'semi_finished';
 
                     return (
-                      <tr key={productId} className="border-b border-gray-50 hover:bg-gray-50/50">
-                        <td className="px-5 py-3">
-                          <button
-                            className="font-mono text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                            onClick={() => loadTransactions(productId, summary.product.code, summary.product.name)}
-                            title="点击查看进出记录"
-                          >
-                            {summary.product.code}
-                          </button>
-                        </td>
-                        <td className="px-5 py-3 text-gray-900">{summary.product.name}</td>
-                        <td className="px-5 py-3 text-right">
-                          {editingQtyId === `qty-${productId}` && editingQtyField === 'quantity' ? (
-                            <Input
-                              autoFocus
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={editingQtyValue}
-                              onChange={(e) => setEditingQtyValue(e.target.value)}
-                              onBlur={() => saveQty(summary.warehouses[0]?.inventoryId || null, productId, summary.warehouses[0]?.warehouseId || null, 'quantity', editingQtyValue)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') saveQty(summary.warehouses[0]?.inventoryId || null, productId, summary.warehouses[0]?.warehouseId || null, 'quantity', editingQtyValue);
-                                if (e.key === 'Escape') setEditingQtyId(null);
-                              }}
-                              className="h-7 w-24 text-right font-mono text-sm"
-                            />
-                          ) : (
+                      <>
+                        <tr key={productId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                          {/* BOM展开按钮 */}
+                          <td className="px-3 py-3">
+                            {hasBomIndicator ? (
+                              <button
+                                className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-200 text-gray-400 hover:text-blue-600 cursor-pointer"
+                                onClick={() => toggleBom(productId)}
+                                title={isExpanded ? '折叠BOM子物料' : '展开BOM子物料'}
+                              >
+                                {isLoadingBom ? (
+                                  <span className="text-xs text-gray-300">...</span>
+                                ) : isExpanded ? (
+                                  <ChevronDown className="w-4 h-4" />
+                                ) : (
+                                  <ChevronRight className="w-4 h-4" />
+                                )}
+                              </button>
+                            ) : null}
+                          </td>
+                          <td className="px-5 py-3">
                             <button
-                              className="font-mono font-medium text-gray-900 hover:text-blue-600 cursor-pointer inline-flex items-center gap-1"
-                              onClick={() => {
-                                setEditingQtyId(`qty-${productId}`);
-                                setEditingQtyField('quantity');
-                                setEditingQtyValue(summary.totalQty.toFixed(2));
-                              }}
-                              title="点击修改库存数量"
+                              className="font-mono text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                              onClick={() => loadTransactions(productId, summary.product.code, summary.product.name)}
+                              title="点击查看进出记录"
                             >
-                              {summary.totalQty.toFixed(2)}
-                              <Pencil className="w-3.5 h-3.5 text-gray-400 hover:text-blue-500" />
+                              {summary.product.code}
                             </button>
-                          )}
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          {editingQtyId === `res-${productId}` && editingQtyField === 'reserved_qty' ? (
-                            <Input
-                              autoFocus
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={editingQtyValue}
-                              onChange={(e) => setEditingQtyValue(e.target.value)}
-                              onBlur={() => saveQty(summary.warehouses[0]?.inventoryId || null, productId, summary.warehouses[0]?.warehouseId || null, 'reserved_qty', editingQtyValue)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') saveQty(summary.warehouses[0]?.inventoryId || null, productId, summary.warehouses[0]?.warehouseId || null, 'reserved_qty', editingQtyValue);
-                                if (e.key === 'Escape') setEditingQtyId(null);
-                              }}
-                              className="h-7 w-24 text-right font-mono text-sm"
-                            />
-                          ) : (
-                            <button
-                              className="font-mono text-amber-600 hover:text-blue-600 cursor-pointer inline-flex items-center gap-1"
-                              onClick={() => {
-                                setEditingQtyId(`res-${productId}`);
-                                setEditingQtyField('reserved_qty');
-                                setEditingQtyValue(summary.totalReserved.toFixed(2));
-                              }}
-                              title="点击修改预留数量"
-                            >
-                              {summary.totalReserved.toFixed(2)}
-                              <Pencil className="w-3.5 h-3.5 text-gray-400 hover:text-blue-500" />
-                            </button>
-                          )}
-                        </td>
-                        <td className="px-5 py-3 text-right font-mono font-medium text-green-700">{(summary.totalQty - summary.totalReserved).toFixed(2)}</td>
-                        <td className="px-5 py-3 text-gray-600">{translateUnit(summary.product.unit)}</td>
-                        <td className="px-5 py-3">
-                          {editingLocationId === summary.product.id ? (
-                            <div className="flex flex-col gap-1">
+                          </td>
+                          <td className="px-5 py-3 text-gray-900">{summary.product.name}</td>
+                          <td className="px-5 py-3">
+                            <span className={`inline-flex px-2 py-0.5 rounded text-xs border ${typeInfo.color}`}>
+                              {typeInfo.label}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 text-right">
+                            {editingQtyId === `qty-${productId}` && editingQtyField === 'quantity' ? (
                               <Input
                                 autoFocus
-                                value={editingLocationValue}
-                                onChange={(e) => setEditingLocationValue(e.target.value)}
-                                onBlur={() => setTimeout(() => saveLocationNo(summary.product.id, editingLocationValue), 150)}
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={editingQtyValue}
+                                onChange={(e) => setEditingQtyValue(e.target.value)}
+                                onBlur={() => saveQty(summary.warehouses[0]?.inventoryId || null, productId, summary.warehouses[0]?.warehouseId || null, 'quantity', editingQtyValue)}
                                 onKeyDown={(e) => {
-                                  if (e.key === 'Enter') saveLocationNo(summary.product.id, editingLocationValue);
-                                  if (e.key === 'Escape') setEditingLocationId(null);
+                                  if (e.key === 'Enter') saveQty(summary.warehouses[0]?.inventoryId || null, productId, summary.warehouses[0]?.warehouseId || null, 'quantity', editingQtyValue);
+                                  if (e.key === 'Escape') setEditingQtyId(null);
                                 }}
-                                className="h-7 w-28 text-xs font-mono"
-                                placeholder="输入库位号"
+                                className="h-7 w-24 text-right font-mono text-sm"
                               />
-                              <div className="flex gap-1 flex-wrap">
-                                {['A','B','C','D','E','F'].map(loc => {
-                                  const color = getLocationColor(loc);
-                                  const selected = editingLocationValue === loc;
-                                  return (
-                                    <button
-                                      key={loc}
-                                      className={`inline-flex items-center justify-center w-9 h-9 rounded-lg text-lg font-black border-2 cursor-pointer transition-all ${
-                                        selected
-                                          ? `${color?.bg || 'bg-blue-600'} ${color?.text || 'text-white'} ${color?.border || 'border-blue-600'} shadow-md scale-110`
-                                          : `${color?.light || 'bg-gray-50 text-gray-600 border-gray-200'} hover:scale-105`
-                                      }`}
-                                      onMouseDown={(e) => { e.preventDefault(); setEditingLocationValue(loc); }}
-                                    >{loc}</button>
-                                  );
-                                })}
+                            ) : (
+                              <button
+                                className="font-mono font-medium text-gray-900 hover:text-blue-600 cursor-pointer inline-flex items-center gap-1"
+                                onClick={() => {
+                                  setEditingQtyId(`qty-${productId}`);
+                                  setEditingQtyField('quantity');
+                                  setEditingQtyValue(summary.totalQty.toFixed(2));
+                                }}
+                                title="点击修改库存数量"
+                              >
+                                {summary.totalQty.toFixed(2)}
+                                <Pencil className="w-3.5 h-3.5 text-gray-400 hover:text-blue-500" />
+                              </button>
+                            )}
+                          </td>
+                          <td className="px-5 py-3 text-right">
+                            {editingQtyId === `res-${productId}` && editingQtyField === 'reserved_qty' ? (
+                              <Input
+                                autoFocus
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={editingQtyValue}
+                                onChange={(e) => setEditingQtyValue(e.target.value)}
+                                onBlur={() => saveQty(summary.warehouses[0]?.inventoryId || null, productId, summary.warehouses[0]?.warehouseId || null, 'reserved_qty', editingQtyValue)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveQty(summary.warehouses[0]?.inventoryId || null, productId, summary.warehouses[0]?.warehouseId || null, 'reserved_qty', editingQtyValue);
+                                  if (e.key === 'Escape') setEditingQtyId(null);
+                                }}
+                                className="h-7 w-24 text-right font-mono text-sm"
+                              />
+                            ) : (
+                              <button
+                                className="font-mono text-amber-600 hover:text-blue-600 cursor-pointer inline-flex items-center gap-1"
+                                onClick={() => {
+                                  setEditingQtyId(`res-${productId}`);
+                                  setEditingQtyField('reserved_qty');
+                                  setEditingQtyValue(summary.totalReserved.toFixed(2));
+                                }}
+                                title="点击修改预留数量"
+                              >
+                                {summary.totalReserved.toFixed(2)}
+                                <Pencil className="w-3.5 h-3.5 text-gray-400 hover:text-blue-500" />
+                              </button>
+                            )}
+                          </td>
+                          <td className="px-5 py-3 text-right font-mono font-medium text-green-700">{(summary.totalQty - summary.totalReserved).toFixed(2)}</td>
+                          <td className="px-5 py-3 text-gray-600">{translateUnit(summary.product.unit)}</td>
+                          <td className="px-5 py-3">
+                            {editingLocationId === summary.product.id ? (
+                              <div className="flex flex-col gap-1">
+                                <Input
+                                  autoFocus
+                                  value={editingLocationValue}
+                                  onChange={(e) => setEditingLocationValue(e.target.value)}
+                                  onBlur={() => setTimeout(() => saveLocationNo(summary.product.id, editingLocationValue), 150)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') saveLocationNo(summary.product.id, editingLocationValue);
+                                    if (e.key === 'Escape') setEditingLocationId(null);
+                                  }}
+                                  className="h-7 w-28 text-xs font-mono"
+                                  placeholder="输入库位号"
+                                />
+                                <div className="flex gap-1 flex-wrap">
+                                  {['A','B','C','D','E','F'].map(loc => {
+                                    const color = getLocationColor(loc);
+                                    const selected = editingLocationValue === loc;
+                                    return (
+                                      <button
+                                        key={loc}
+                                        className={`inline-flex items-center justify-center w-9 h-9 rounded-lg text-lg font-black border-2 cursor-pointer transition-all ${
+                                          selected
+                                            ? `${color?.bg || 'bg-blue-600'} ${color?.text || 'text-white'} ${color?.border || 'border-blue-600'} shadow-md scale-110`
+                                            : `${color?.light || 'bg-gray-50 text-gray-600 border-gray-200'} hover:scale-105`
+                                        }`}
+                                        onMouseDown={(e) => { e.preventDefault(); setEditingLocationValue(loc); }}
+                                      >{loc}</button>
+                                    );
+                                  })}
+                                </div>
                               </div>
-                            </div>
-                          ) : (
-                            <button
-                              className="flex items-center gap-1 cursor-pointer group"
-                              onClick={() => { setEditingLocationId(summary.product.id); setEditingLocationValue(summary.product_location_no || ''); }}
-                              title="点击编辑库位号"
-                            >
-                              {(() => {
-                                const loc = summary.product_location_no || '';
-                                const color = loc ? getLocationColor(loc) : null;
-                                return color ? (
-                                  <span className={`inline-flex items-center justify-center w-10 h-10 rounded-lg text-xl font-black ${color.bg} ${color.text} shadow-sm group-hover:shadow-md transition-all`}>
-                                    {loc}
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 text-xs text-gray-300 group-hover:text-blue-400">
-                                    <MapPin className="w-3 h-3" />
-                                    未设置
+                            ) : (
+                              <button
+                                className="flex items-center gap-1 cursor-pointer group"
+                                onClick={() => { setEditingLocationId(summary.product.id); setEditingLocationValue(summary.product_location_no || ''); }}
+                                title="点击编辑库位号"
+                              >
+                                {(() => {
+                                  const loc = summary.product_location_no || '';
+                                  const color = loc ? getLocationColor(loc) : null;
+                                  return color ? (
+                                    <span className={`inline-flex items-center justify-center w-10 h-10 rounded-lg text-xl font-black ${color.bg} ${color.text} shadow-sm group-hover:shadow-md transition-all`}>
+                                      {loc}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-xs text-gray-300 group-hover:text-blue-400">
+                                      <MapPin className="w-3 h-3" />
+                                      未设置
                                     </span>
                                   );
                                 })()}
@@ -814,6 +928,69 @@ export default function InventoryPage() {
                           </div>
                         </td>
                       </tr>
+                      {/* BOM子物料行 */}
+                      {isExpanded && childItems && childItems.length > 0 && childItems.map((child) => {
+                        const childInv = inventory.find(i => i.product_id === child.child_product_id);
+                        const childQty = childInv ? childInv.total_quantity : 0;
+                        const childReserved = childInv ? childInv.total_reserved : 0;
+                        const childAvailable = childQty - childReserved;
+                        const requiredQty = child.quantity;
+                        const isShortage = childAvailable < requiredQty;
+                        const childTypeInfo = getProductTypeLabel(child.child_type);
+                        return (
+                          <tr key={`bom-${productId}-${child.child_product_id}`} className="border-b border-gray-50 bg-amber-50/30">
+                            <td className="px-3 py-2"></td>
+                            <td className="px-5 py-2 pl-10">
+                              <span className="font-mono text-gray-500 text-xs">{child.child_code}</span>
+                            </td>
+                            <td className="px-5 py-2 pl-10">
+                              <div className="flex items-center gap-2">
+                                <Package className="w-3 h-3 text-gray-400" />
+                                <span className="text-gray-700 text-xs">{child.child_name}</span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-2">
+                              <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] border ${childTypeInfo.color}`}>
+                                {childTypeInfo.label}
+                              </span>
+                            </td>
+                            <td className="px-5 py-2 text-right">
+                              <span className={`font-mono text-xs ${isShortage ? 'text-red-600 font-medium' : 'text-gray-600'}`}>
+                                {childQty.toFixed(2)}
+                              </span>
+                            </td>
+                            <td className="px-5 py-2 text-right">
+                              <span className="font-mono text-xs text-amber-600">{childReserved.toFixed(2)}</span>
+                            </td>
+                            <td className="px-5 py-2 text-right">
+                              <span className={`font-mono text-xs font-medium ${isShortage ? 'text-red-600' : 'text-green-700'}`}>
+                                {childAvailable.toFixed(2)}
+                              </span>
+                            </td>
+                            <td className="px-5 py-2 text-gray-500 text-xs">{translateUnit(child.child_unit)}</td>
+                            <td className="px-5 py-2"></td>
+                            <td className="px-5 py-2">
+                              <span className="text-xs text-gray-500">
+                                需求: <span className={`font-mono ${isShortage ? 'text-red-600 font-medium' : 'text-gray-700'}`}>{requiredQty}</span>
+                                {isShortage && <span className="ml-1 text-red-500 text-[10px]">缺料</span>}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {isExpanded && childItems && childItems.length === 0 && (
+                        <tr key={`bom-empty-${productId}`} className="border-b border-gray-50 bg-amber-50/30">
+                          <td colSpan={10} className="px-5 py-3 pl-12 text-xs text-gray-400">
+                            暂无BOM子物料，请在BOM管理中添加
+                          </td>
+                        </tr>
+                      )}
+                      {isExpanded && isLoadingBom && (
+                        <tr key={`bom-loading-${productId}`} className="border-b border-gray-50 bg-amber-50/30">
+                          <td colSpan={10} className="px-5 py-3 pl-12 text-xs text-gray-400">加载BOM数据...</td>
+                        </tr>
+                      )}
+                    </>
                     );
                   })
                 )}
