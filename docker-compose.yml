@@ -67,6 +67,8 @@ services:
       - COZE_PROJECT_ENV=PROD
       - PORT=${DEPLOY_RUN_PORT:-5000}
       - JWT_SECRET=${JWT_SECRET:-local-dev-secret-change-me}
+      - COZE_INTEGRATION_BASE_URL=${COZE_INTEGRATION_BASE_URL:-}
+      - COZE_WORKLOAD_IDENTITY_API_KEY=${COZE_WORKLOAD_IDENTITY_API_KEY:-}
     env_file:
       - .env
 

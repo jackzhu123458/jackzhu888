@@ -30,14 +30,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV COZE_PROJECT_ENV=PROD
-ENV TESSERACT_LANG_PATH=/app/lang-data
 
-# 安装系统级 tesseract OCR + 中文/英文语言数据（完全离线，不依赖 CDN）
-RUN apk add --no-cache \
-    tesseract-ocr \
-    tesseract-ocr-data-chi_sim \
-    tesseract-ocr-data-eng \
-    libc6-compat
+RUN apk add --no-cache libc6-compat
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
@@ -48,9 +42,6 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/package.json ./package.json
-
-# 确保 nextjs 用户有权限访问临时目录
-RUN mkdir -p /tmp/tesseract-output && chown nextjs:nodejs /tmp/tesseract-output
 
 USER nextjs
 
