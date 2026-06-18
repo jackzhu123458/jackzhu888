@@ -69,7 +69,8 @@ export default function OrderPickerDialog({
                   <th className="py-2 px-2 text-left">物料</th>
                   <th className="py-2 px-2 text-left">类目</th>
                   <th className="py-2 px-2 text-right">未交数量</th>
-                  <th className="py-2 px-2 text-right">库存量</th>
+                  <th className="py-2 px-2 text-right">可用库存</th>
+                  <th className="py-2 px-2 text-right">预留</th>
                   <th className="py-2 px-2 text-center">状态</th>
                   <th className="py-2 px-2 w-20"></th>
                 </tr>
@@ -91,7 +92,10 @@ export default function OrderPickerDialog({
                   return filteredItems.map((item: OrderItem, idx: number) => {
                     const undelivered = Number(item.quantity) - Number(item.delivered_qty);
                     const prod = resolveProduct(item.products);
-                    const totalStock = orderInventoryMap[item.product_id]?.quantity || 0;
+                    const inv = orderInventoryMap[item.product_id];
+                    const totalStock = inv?.quantity || 0;
+                    const reservedQty = inv?.reserved_qty || 0;
+                    const availableQty = totalStock - reservedQty;
                     const categoryGroup = prod?.category ? findCategoryGroup(prod.category, categoryGroups) : undefined;
 
                     return (
@@ -116,8 +120,9 @@ export default function OrderPickerDialog({
                         </td>
                         <td className="py-2 px-2 text-right font-mono">{undelivered}</td>
                         <td className="py-2 px-2 text-right font-mono">
-                          {totalStock > 0 ? <span className="text-green-600">{totalStock}</span> : <span className="text-red-500">0</span>}
+                          {availableQty > 0 ? <span className="text-green-600">{availableQty}</span> : <span className="text-red-500">{availableQty}</span>}
                         </td>
+                        <td className="py-2 px-2 text-right font-mono text-orange-500">{reservedQty > 0 ? reservedQty : '-'}</td>
                         <td className="py-2 px-2 text-center">
                           <span className="text-xs text-gray-400">导入时检查</span>
                         </td>

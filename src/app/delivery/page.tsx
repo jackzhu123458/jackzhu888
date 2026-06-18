@@ -343,14 +343,14 @@ export default function DeliveryPage() {
     const selectedCategories = parseCategories(form.delivery_category);
     const orderItems = (order.customer_order_items || []).filter(i => Number(i.quantity) - Number(i.delivered_qty) > 0);
 
-    // 按类目筛选 + 检查库存
+    // 按类目筛选 + 检查可用库存（总库存 - 预扣量 = 可用于发货的库存）
     const filteredItems = filterItemsByCategory(orderItems, selectedCategories).filter(item => {
       const inv = inventoryMap[item.product_id];
-      return inv && inv.quantity > 0;
+      return inv && (inv.quantity - inv.reserved_qty) > 0;
     });
 
     if (filteredItems.length === 0) {
-      alert('该订单中所有物料均无库存，无法导入。请先完成生产入库。');
+      alert('该订单中所有物料均无可用库存，无法导入。请先完成生产入库或释放预扣。');
       return;
     }
 
@@ -358,15 +358,16 @@ export default function DeliveryPage() {
       const undelivered = Number(item.quantity) - Number(item.delivered_qty);
       if (undelivered <= 0) return false;
       const inv = inventoryMap[item.product_id];
-      return !inv || inv.quantity <= 0;
+      return !inv || (inv.quantity - inv.reserved_qty) <= 0;
     });
-    if (hasUnavailable && !window.confirm('部分物料库存不足（未完成生产），仅导入有库存的物料。是否继续？')) return;
+    if (hasUnavailable && !window.confirm('部分物料可用库存不足（已被其他订单预扣或未完成生产），仅导入有可用库存的物料。是否继续？')) return;
 
     const items: DeliveryItem[] = filteredItems.map(item => {
       const prod = resolveProduct(item.products);
       const undelivered = Number(item.quantity) - Number(item.delivered_qty);
-      const stockQty = inventoryMap[item.product_id]?.quantity || 0;
-      const deliverQty = Math.min(undelivered, stockQty);
+      const inv = inventoryMap[item.product_id];
+      const availableQty = inv ? inv.quantity - inv.reserved_qty : 0;
+      const deliverQty = Math.min(undelivered, Math.max(0, availableQty));
 
       return {
         product_id: item.product_id,
@@ -374,7 +375,7 @@ export default function DeliveryPage() {
         quantity: deliverQty,
         unit_price: Number(item.price) || 0,
         per_box_qty: deliverQty,
-        remark: stockQty < undelivered ? `欠交 ${undelivered - stockQty}` : (item.remark || ''),
+        remark: availableQty < undelivered ? `欠交 ${undelivered - availableQty}（可用${availableQty}，预扣${inv?.reserved_qty || 0}）` : (item.remark || ''),
         customer_order_item_id: item.id,
         customer_order: order.order_no,
       };
