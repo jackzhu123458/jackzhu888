@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { LLMClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
 
 interface ParsedOrder {
   order_no?: string;
@@ -19,8 +20,15 @@ export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    console.log('[OCR] Received request, has image:', !!body.image, 'mimeType:', body.mimeType);
+    const rawText = await request.text();
+    let body: { image?: string; mimeType?: string };
+    try {
+      body = JSON.parse(rawText);
+    } catch (parseErr) {
+      console.error('[OCR] JSON parse failed. Raw text length:', rawText.length, 'First 100 chars:', rawText.slice(0, 100));
+      return NextResponse.json({ error: `JSON解析失败: ${(parseErr as Error).message}。数据长度: ${rawText.length}` }, { status: 400 });
+    }
+    console.log('[OCR] Received request, has image:', !!body.image, 'mimeType:', body.mimeType, 'image length:', body.image?.length);
 
     if (!body.image) {
       return NextResponse.json({ error: '未找到图片数据，请重新选择图片' }, { status: 400 });
@@ -69,49 +77,40 @@ export async function POST(request: Request) {
 5. 如果某个字段识别不到，留空字符串或 0
 6. 只返回 JSON，不要有任何其他文字`;
 
+    // 使用 SDK 调用大模型
+    const customHeaders = HeaderUtils.extractForwardHeaders(
+      new Headers(request.headers)
+    );
+
+    const config = new Config();
+    const client = new LLMClient(config, customHeaders);
+
     const messages = [
-      { role: 'system', content: systemPrompt },
+      { role: 'system' as const, content: systemPrompt },
       {
-        role: 'user',
+        role: 'user' as const,
         content: [
-          { type: 'text', text: '请识别这张采购订单图片中的所有信息，按 JSON 格式返回。' },
+          { type: 'text' as const, text: '请识别这张采购订单图片中的所有信息，按 JSON 格式返回。' },
           {
-            type: 'image_url',
+            type: 'image_url' as const,
             image_url: {
               url: dataUri,
-              detail: 'high',
+              detail: 'high' as const,
             },
           },
         ],
       },
     ];
 
-    console.log('[OCR] Calling LLM API:', `${baseUrl}/api/v1/llm/invoke`);
+    console.log('[OCR] Calling LLM via SDK...');
 
-    const apiResponse = await fetch(`${baseUrl}/api/v1/llm/invoke`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'doubao-seed-2-0-pro-260215',
-        messages,
-        temperature: 0.1,
-        stream: false,
-      }),
+    const response = await client.invoke(messages, {
+      model: 'doubao-seed-1-8-251228',
+      temperature: 0.1,
     });
 
-    if (!apiResponse.ok) {
-      const errorText = await apiResponse.text();
-      console.error('[OCR] LLM API error:', apiResponse.status, errorText);
-      return NextResponse.json({
-        error: `大模型调用失败 (${apiResponse.status}): ${errorText.slice(0, 200)}`
-      }, { status: 500 });
-    }
-
-    const apiData = await apiResponse.json();
-    const content = (apiData.choices?.[0]?.message?.content || apiData.content || '').trim();
+    const content = (response.content || '').trim();
+    console.log('[OCR] LLM response length:', content.length);
 
     // 提取 JSON
     let jsonStr = content;
@@ -124,6 +123,7 @@ export async function POST(request: Request) {
     try {
       parsed = JSON.parse(jsonStr);
     } catch {
+      console.error('[OCR] JSON parse failed, content:', content.slice(0, 500));
       parsed = { items: [] };
     }
 
