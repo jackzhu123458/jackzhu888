@@ -360,9 +360,16 @@ export default function OrdersPage() {
         body: JSON.stringify({ image: base64Data, mimeType: file.type }),
       });
 
-      const result = await res.json();
-      if (result.error) {
-        alert(result.error);
+      let result: { error?: string; data?: Record<string, unknown> };
+      try {
+        result = await res.json();
+      } catch {
+        const text = await res.text().catch(() => '');
+        alert(`图片识别失败: 服务器返回非JSON响应 (HTTP ${res.status})\n${text.slice(0, 200)}`);
+        return;
+      }
+      if (!res.ok || result.error) {
+        alert(result.error || `图片识别失败 (HTTP ${res.status})`);
         return;
       }
 
@@ -500,7 +507,8 @@ export default function OrdersPage() {
       }
     } catch (error) {
       console.error('OCR error:', error);
-      alert('图片识别失败，请重试');
+      const msg = error instanceof Error ? error.message : '未知错误';
+      alert(`图片识别失败: ${msg}`);
     } finally {
       setOcrLoading(false);
       // 重置 file input
