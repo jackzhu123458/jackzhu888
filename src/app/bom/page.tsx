@@ -86,6 +86,29 @@ export default function BomPage() {
   // 选中行状态
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
 
+  // 树状展开状态：记录哪些成品节点展开了
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+
+  // 子物料编辑弹窗
+  const [addChildOpen, setAddChildOpen] = useState(false);
+  const [addChildParentId, setAddChildParentId] = useState<string>('');
+  const [addChildSearch, setAddChildSearch] = useState('');
+  const [addChildMode, setAddChildMode] = useState<'existing' | 'new'>('existing');
+  const [addChildSelectedId, setAddChildSelectedId] = useState<string>('');
+  const [addChildQty, setAddChildQty] = useState('1');
+  // 新建子物料
+  const [addChildNewCode, setAddChildNewCode] = useState('');
+  const [addChildNewName, setAddChildNewName] = useState('');
+  const [addChildNewUnit, setAddChildNewUnit] = useState('个');
+  const [addChildNewType, setAddChildNewType] = useState('raw_material');
+  const [addChildNewSpec, setAddChildNewSpec] = useState('');
+  const [addChildNewCostPrice, setAddChildNewCostPrice] = useState('');
+
+  // 编辑用量弹窗
+  const [editQtyOpen, setEditQtyOpen] = useState(false);
+  const [editQtyBomId, setEditQtyBomId] = useState<string>('');
+  const [editQtyValue, setEditQtyValue] = useState('');
+
   // 图纸管理对话框
   const [drawingDialogOpen, setDrawingDialogOpen] = useState(false);
   const [drawingProductId, setDrawingProductId] = useState<string | null>(null);
@@ -691,6 +714,128 @@ export default function BomPage() {
 
   const finishedProducts = products.filter((p) => p.type === 'finished_product' || p.type === 'semi_finished');
 
+  // 获取某个成品的子物料列表
+  const getChildren = (parentId: string) => {
+    return bomList.filter(b => b.parent_product_id === parentId);
+  };
+
+  // 切换节点展开/折叠
+  const toggleNodeExpand = (productId: string) => {
+    setExpandedNodes(prev => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+  };
+
+  // 打开"添加子物料"弹窗
+  const openAddChildDialog = (parentId: string) => {
+    setAddChildParentId(parentId);
+    setAddChildSearch('');
+    setAddChildMode('existing');
+    setAddChildSelectedId('');
+    setAddChildQty('1');
+    setAddChildNewCode('');
+    setAddChildNewName('');
+    setAddChildNewUnit('个');
+    setAddChildNewType('raw_material');
+    setAddChildNewSpec('');
+    setAddChildNewCostPrice('');
+    setAddChildOpen(true);
+  };
+
+  // 保存添加子物料
+  const handleAddChildSave = async () => {
+    if (!addChildParentId) return;
+    try {
+      let childId = '';
+      if (addChildMode === 'existing') {
+        if (!addChildSelectedId) { alert('请选择一个产品'); return; }
+        childId = addChildSelectedId;
+        if (addChildParentId === childId) { alert('不能将自身添加为子物料'); return; }
+        // 检查是否已存在
+        const exists = bomList.some(b => b.parent_product_id === addChildParentId && b.child_product_id === childId);
+        if (exists) { alert('该子物料已存在'); return; }
+      } else {
+        if (!addChildNewCode.trim() || !addChildNewName.trim()) { alert('请填写产品编号和名称'); return; }
+        const res = await fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: addChildNewCode.trim(),
+            name: addChildNewName.trim(),
+            unit: addChildNewUnit,
+            type: addChildNewType,
+            spec: addChildNewSpec.trim() || null,
+            cost_price: addChildNewCostPrice ? parseFloat(addChildNewCostPrice) : 0,
+            price: 0,
+          }),
+        });
+        if (res.ok) {
+          const prod = await res.json();
+          childId = prod.id;
+        } else {
+          const err = await res.json();
+          alert(err.error || '创建产品失败');
+          return;
+        }
+      }
+      // 创建 BOM 关系
+      await fetch('/api/bom', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parent_product_id: addChildParentId,
+          child_product_id: childId,
+          quantity: addChildQty || '1',
+        }),
+      });
+      setAddChildOpen(false);
+      loadData();
+      // 确保节点展开
+      setExpandedNodes(prev => { const next = new Set(prev); next.add(addChildParentId); return next; });
+    } catch {
+      alert('添加子物料失败');
+    }
+  };
+
+  // 删除 BOM 关系
+  const handleDeleteBom = async (bomId: string) => {
+    if (!confirm('确认移除该子物料？')) return;
+    try {
+      const res = await fetch(`/api/bom?id=${bomId}`, { method: 'DELETE' });
+      if (res.ok) { loadData(); } else { alert('删除失败'); }
+    } catch { alert('删除失败'); }
+  };
+
+  // 保存编辑用量
+  const handleEditQtySave = async () => {
+    if (!editQtyBomId) return;
+    try {
+      await fetch('/api/bom', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editQtyBomId, quantity: editQtyValue || '1' }),
+      });
+      setEditQtyOpen(false);
+      loadData();
+    } catch { alert('修改用量失败'); }
+  };
+
+  // 搜索已有产品（排除自身和已添加的子物料）
+  const existingProductOptions = useMemo(() => {
+    const existingChildIds = new Set(getChildren(addChildParentId).map(b => b.child_product_id));
+    return products.filter(p => 
+      p.id !== addChildParentId && 
+      !existingChildIds.has(p.id) &&
+      !p.code.startsWith('BOM-') &&
+      (addChildSearch.trim() === '' || 
+        p.code.toLowerCase().includes(addChildSearch.toLowerCase()) ||
+        p.name.toLowerCase().includes(addChildSearch.toLowerCase()))
+    );
+  }, [products, addChildParentId, addChildSearch, bomList]);
+
   return (
     <>
       <div className="flex flex-col h-screen bg-[#F8F9FA] overflow-hidden">        {/* 顶部工具栏 */}
@@ -839,7 +984,7 @@ export default function BomPage() {
                 <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center">操作</div>
               </div>
 
-              {/* 表体 */}
+              {/* 表体 - 树状结构 */}
               {loading ? (
                 <div className="text-center py-12 text-gray-400 text-sm">加载中...</div>
               ) : filteredProducts.length === 0 ? (
@@ -850,83 +995,169 @@ export default function BomPage() {
                 filteredProducts.map((product, idx) => {
                   const isSelected = selectedProductId === product.id;
                   const bomCount = getBomChildCount(product.id);
-                  // 产品自身的库位号
+                  const isExpanded = expandedNodes.has(product.id);
+                  const children = getChildren(product.id);
                   const productLocationNo = product.location_no || '';
                   return (
-                    <div
-                      key={product.id}
-                      className={`grid grid-cols-[50px_80px_120px_1fr_50px_80px_80px_80px_1fr_80px_60px_50px] items-center border-b border-gray-200 cursor-pointer transition-colors ${
-                        isSelected
-                          ? 'bg-[#1E40AF]/10 border-l-2 border-l-[#1E40AF]'
-                          : idx % 2 === 0
-                            ? 'bg-white hover:bg-blue-50/50'
-                            : 'bg-[#F9FAFB] hover:bg-blue-50/50'
-                      }`}
-                      onClick={() => setSelectedProductId(product.id)}
-                      onDoubleClick={() => handleEditProduct(product)}
-                    >
-                      <div className="px-2 py-2.5 text-xs text-gray-500 text-center font-mono border-r border-gray-100">
-                        {idx + 1}
+                    <div key={product.id}>
+                      {/* 成品/父级行 */}
+                      <div
+                        className={`grid grid-cols-[50px_80px_120px_1fr_50px_80px_80px_80px_1fr_80px_60px_50px] items-center border-b border-gray-200 cursor-pointer transition-colors ${
+                          isSelected
+                            ? 'bg-[#1E40AF]/10 border-l-2 border-l-[#1E40AF]'
+                            : idx % 2 === 0
+                              ? 'bg-white hover:bg-blue-50/50'
+                              : 'bg-[#F9FAFB] hover:bg-blue-50/50'
+                        }`}
+                        onClick={() => setSelectedProductId(product.id)}
+                        onDoubleClick={() => handleEditProduct(product)}
+                      >
+                        <div className="px-2 py-2.5 text-xs text-gray-500 text-center font-mono border-r border-gray-100">
+                          {idx + 1}
+                        </div>
+                        <div className="px-2 py-2.5 text-xs text-gray-600 font-mono border-r border-gray-100 truncate">
+                          {product.category || '-'}
+                        </div>
+                        <div className="px-2 py-2.5 text-xs text-gray-900 font-mono border-r border-gray-100 flex items-center gap-1">
+                          {/* 展开箭头 */}
+                          {bomCount > 0 ? (
+                            <svg
+                              className={`w-3.5 h-3.5 shrink-0 transition-transform cursor-pointer ${isExpanded ? 'rotate-90' : ''}`}
+                              fill="currentColor" viewBox="0 0 20 20"
+                              onClick={(e) => { e.stopPropagation(); toggleNodeExpand(product.id); }}
+                            >
+                              <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                            </svg>
+                          ) : (
+                            <span className="w-3.5 shrink-0" />
+                          )}
+                          <span className="truncate">{product.code}</span>
+                        </div>
+                        <div className="px-2 py-2.5 text-sm text-gray-900 border-r border-gray-100 truncate flex items-center">
+                          <span className="truncate">{product.name}</span>
+                          {bomCount > 0 && (
+                            <span
+                              className="ml-1.5 inline-flex items-center px-1.5 py-0 rounded text-[10px] bg-blue-100 text-blue-700 font-medium cursor-pointer shrink-0 hover:bg-blue-200"
+                              onClick={(e) => { e.stopPropagation(); toggleNodeExpand(product.id); }}
+                              title="点击展开子物料"
+                            >
+                              BOM({bomCount})
+                            </span>
+                          )}
+                          {/* 添加子物料按钮 */}
+                          <button
+                            className="ml-1.5 text-[10px] px-1.5 py-0 rounded bg-green-50 text-green-700 font-medium hover:bg-green-100 shrink-0"
+                            onClick={(e) => { e.stopPropagation(); openAddChildDialog(product.id); }}
+                            title="添加子物料"
+                          >+子</button>
+                        </div>
+                        <div className="px-2 py-2.5 text-xs text-gray-600 text-center border-r border-gray-100">
+                          {translateUnit(product.unit)}
+                        </div>
+                        <div className="px-2 py-2.5 text-xs text-gray-900 text-right font-mono border-r border-gray-100">
+                          {Number(product.cost_price || 0).toFixed(2)}
+                        </div>
+                        <div className="px-2 py-2.5 text-xs text-gray-900 text-right font-mono border-r border-gray-100">
+                          {(Number(product.price || 0) / 1.13).toFixed(4)}
+                        </div>
+                        <div className="px-2 py-2.5 text-xs text-gray-900 text-right font-mono border-r border-gray-100">
+                          {Number(product.price || 0).toFixed(2)}
+                        </div>
+                        <div className="px-2 py-2.5 text-xs text-gray-500 truncate border-r border-gray-100">
+                          {product.spec || product.remark || '-'}
+                        </div>
+                        <div className="px-1 py-2.5 text-center border-r border-gray-100">
+                          {productLocationNo ? (
+                            <span className={`inline-flex items-center justify-center w-8 h-8 rounded text-white font-bold text-sm ${
+                              productLocationNo === 'A' ? 'bg-red-500' :
+                              productLocationNo === 'B' ? 'bg-orange-500' :
+                              productLocationNo === 'C' ? 'bg-amber-500' :
+                              productLocationNo === 'D' ? 'bg-green-500' :
+                              productLocationNo === 'E' ? 'bg-blue-500' :
+                              productLocationNo === 'F' ? 'bg-purple-500' :
+                              'bg-gray-500'
+                            }`}>
+                              {productLocationNo}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-300">-</span>
+                          )}
+                        </div>
+                        <div className="px-2 py-2.5 text-xs text-center">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openDrawingDialog(product.id, product.name); }}
+                            className="text-blue-600 hover:text-blue-800 hover:underline"
+                            title="查看图纸"
+                          >
+                            图纸
+                          </button>
+                        </div>
+                        <div className="px-1 py-2.5 text-xs text-center flex items-center justify-center gap-1">
+                          <button onClick={(e) => { e.stopPropagation(); handleEditProduct(product); }} className="p-1 text-gray-400 hover:text-blue-600" title="编辑">✎</button>
+                          <button onClick={(e) => { e.stopPropagation(); setDeleteType('product'); setDeleteId(product.id); }} className="p-1 text-gray-400 hover:text-red-600" title="删除">✕</button>
+                        </div>
                       </div>
-                      <div className="px-2 py-2.5 text-xs text-gray-600 font-mono border-r border-gray-100 truncate">
-                        {product.category || '-'}
-                      </div>
-                      <div className="px-2 py-2.5 text-xs text-gray-900 font-mono border-r border-gray-100 truncate">
-                        {product.code}
-                      </div>
-                      <div className="px-2 py-2.5 text-sm text-gray-900 border-r border-gray-100 truncate">
-                        {product.name}
-                        {bomCount > 0 && (
-                          <span className="ml-1.5 inline-flex items-center px-1.5 py-0 rounded text-[10px] bg-blue-100 text-blue-700 font-medium">
-                            BOM({bomCount})
-                          </span>
-                        )}
-                      </div>
-                      <div className="px-2 py-2.5 text-xs text-gray-600 text-center border-r border-gray-100">
-                        {translateUnit(product.unit)}
-                      </div>
-                      <div className="px-2 py-2.5 text-xs text-gray-900 text-right font-mono border-r border-gray-100">
-                        {Number(product.cost_price || 0).toFixed(2)}
-                      </div>
-                      <div className="px-2 py-2.5 text-xs text-gray-900 text-right font-mono border-r border-gray-100">
-                        {(Number(product.price || 0) / 1.13).toFixed(4)}
-                      </div>
-                      <div className="px-2 py-2.5 text-xs text-gray-900 text-right font-mono border-r border-gray-100">
-                        {Number(product.price || 0).toFixed(2)}
-                      </div>
-                      <div className="px-2 py-2.5 text-xs text-gray-500 truncate border-r border-gray-100">
-                        {product.spec || product.remark || '-'}
-                      </div>
-                      <div className="px-1 py-2.5 text-center border-r border-gray-100">
-                        {productLocationNo ? (
-                          <span className={`inline-flex items-center justify-center w-8 h-8 rounded text-white font-bold text-sm ${
-                            productLocationNo === 'A' ? 'bg-red-500' :
-                            productLocationNo === 'B' ? 'bg-orange-500' :
-                            productLocationNo === 'C' ? 'bg-amber-500' :
-                            productLocationNo === 'D' ? 'bg-green-500' :
-                            productLocationNo === 'E' ? 'bg-blue-500' :
-                            productLocationNo === 'F' ? 'bg-purple-500' :
-                            'bg-gray-500'
-                          }`}>
-                            {productLocationNo}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-300">-</span>
-                        )}
-                      </div>
-                      <div className="px-2 py-2.5 text-xs text-center">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openDrawingDialog(product.id, product.name); }}
-                          className="text-blue-600 hover:text-blue-800 hover:underline"
-                          title="查看图纸"
-                        >
-                          图纸
-                        </button>
-                      </div>
-                      <div className="px-1 py-2.5 text-xs text-center flex items-center justify-center gap-1">
-                        <button onClick={(e) => { e.stopPropagation(); handleEditProduct(product); }} className="p-1 text-gray-400 hover:text-blue-600" title="编辑">✎</button>
-                        <button onClick={(e) => { e.stopPropagation(); setDeleteType('product'); setDeleteId(product.id); }} className="p-1 text-gray-400 hover:text-red-600" title="删除">✕</button>
-                      </div>
+
+                      {/* 子物料行（展开时显示） */}
+                      {isExpanded && children.length > 0 && children.map((bom) => {
+                        const child = bom.child_product;
+                        const typeLabel = child.type === 'raw_material' ? '原材料' : child.type === 'semi_finished' ? '半成品' : child.type === 'finished_product' ? '成品' : '其他';
+                        return (
+                          <div
+                            key={bom.id}
+                            className="grid grid-cols-[50px_80px_120px_1fr_50px_80px_80px_80px_1fr_80px_60px_50px] items-center border-b border-gray-100 bg-amber-50/50"
+                          >
+                            <div className="px-2 py-2 text-xs text-gray-400 text-center border-r border-gray-100" />
+                            <div className="px-2 py-2 text-xs text-gray-400 text-center border-r border-gray-100">
+                              <span className="text-[10px] px-1 py-0.5 rounded bg-gray-100 text-gray-500">{typeLabel}</span>
+                            </div>
+                            <div className="px-2 py-2 text-xs text-gray-700 font-mono border-r border-gray-100 pl-6 truncate">
+                              {child.code}
+                            </div>
+                            <div className="px-2 py-2 text-sm text-gray-800 border-r border-gray-100 pl-6 truncate">
+                              {child.name}
+                              <span className="ml-1.5 text-[10px] px-1 py-0 rounded bg-orange-100 text-orange-700">x{bom.quantity}</span>
+                            </div>
+                            <div className="px-2 py-2 text-xs text-gray-600 text-center border-r border-gray-100">
+                              {translateUnit(child.unit)}
+                            </div>
+                            <div className="px-2 py-2 text-xs text-gray-700 text-right font-mono border-r border-gray-100">
+                              {Number(child.cost_price || 0).toFixed(2)}
+                            </div>
+                            <div className="px-2 py-2 text-xs text-gray-700 text-right font-mono border-r border-gray-100">
+                              {(Number(child.price || 0) / 1.13).toFixed(4)}
+                            </div>
+                            <div className="px-2 py-2 text-xs text-gray-700 text-right font-mono border-r border-gray-100">
+                              {Number(child.price || 0).toFixed(2)}
+                            </div>
+                            <div className="px-2 py-2 text-xs text-gray-500 truncate border-r border-gray-100">
+                              {child.spec || child.remark || '-'}
+                            </div>
+                            <div className="px-1 py-2 text-center border-r border-gray-100">
+                              <span className="text-xs text-gray-300">-</span>
+                            </div>
+                            <div className="px-2 py-2 text-xs text-center">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); openDrawingDialog(child.id, child.name); }}
+                                className="text-blue-500 hover:text-blue-700 hover:underline"
+                                title="查看图纸"
+                              >图纸</button>
+                            </div>
+                            <div className="px-1 py-2 text-xs text-center flex items-center justify-center gap-1">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setEditQtyBomId(bom.id); setEditQtyValue(bom.quantity); setEditQtyOpen(true); }}
+                                className="p-1 text-gray-400 hover:text-blue-600"
+                                title="编辑用量"
+                              >✎</button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDeleteBom(bom.id); }}
+                                className="p-1 text-gray-400 hover:text-red-600"
+                                title="移除子物料"
+                              >✕</button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })
@@ -1560,6 +1791,153 @@ export default function BomPage() {
                 ))}
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 添加子物料弹窗 */}
+      <Dialog open={addChildOpen} onOpenChange={setAddChildOpen}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>添加子物料</DialogTitle>
+            <DialogDescription>
+              为「{products.find(p => p.id === addChildParentId)?.name || ''}」添加子物料，可以从已有产品选择或新建产品
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            {/* 模式切换 */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setAddChildMode('existing')}
+                className={`p-3 rounded-lg border-2 text-left transition-colors ${
+                  addChildMode === 'existing' ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className="font-medium text-sm text-gray-900">从已有产品选择</div>
+                <div className="text-xs text-gray-500 mt-1">搜索并选择已录入的产品</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddChildMode('new')}
+                className={`p-3 rounded-lg border-2 text-left transition-colors ${
+                  addChildMode === 'new' ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className="font-medium text-sm text-gray-900">新建产品</div>
+                <div className="text-xs text-gray-500 mt-1">创建新产品并添加为子物料</div>
+              </button>
+            </div>
+
+            {/* 从已有产品选择 */}
+            {addChildMode === 'existing' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-1.5 block">搜索产品</label>
+                  <Input
+                    value={addChildSearch}
+                    onChange={(e) => setAddChildSearch(e.target.value)}
+                    placeholder="输入编号或名称搜索..."
+                  />
+                </div>
+                <div className="border rounded-lg max-h-[240px] overflow-y-auto">
+                  {existingProductOptions.length === 0 ? (
+                    <div className="text-center py-6 text-gray-400 text-sm">无匹配产品</div>
+                  ) : (
+                    existingProductOptions.map(p => (
+                      <div
+                        key={p.id}
+                        className={`px-3 py-2 cursor-pointer text-sm border-b border-gray-50 flex items-center gap-2 ${
+                          addChildSelectedId === p.id ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50'
+                        }`}
+                        onClick={() => setAddChildSelectedId(p.id)}
+                      >
+                        <span className="font-mono text-xs text-gray-500 w-[100px] shrink-0">{p.code}</span>
+                        <span className="flex-1 truncate">{p.name}</span>
+                        <span className="text-xs text-gray-400 shrink-0">{p.unit}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 新建产品 */}
+            {addChildMode === 'new' && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">产品编号 *</label>
+                    <Input value={addChildNewCode} onChange={(e) => setAddChildNewCode(e.target.value)} placeholder="输入编号" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">产品名称 *</label>
+                    <Input value={addChildNewName} onChange={(e) => setAddChildNewName(e.target.value)} placeholder="输入名称" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">单位</label>
+                    <Select value={addChildNewUnit} onValueChange={setAddChildNewUnit}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {['个', '件', '套', '千克', '公斤', '米', '张', '片', '箱', '包', '根', '条', '只'].map(u => (
+                          <SelectItem key={u} value={u}>{u}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">类型</label>
+                    <Select value={addChildNewType} onValueChange={setAddChildNewType}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="raw_material">原材料</SelectItem>
+                        <SelectItem value="semi_finished">半成品</SelectItem>
+                        <SelectItem value="finished_product">成品</SelectItem>
+                        <SelectItem value="other">其他</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">成本单价</label>
+                    <Input value={addChildNewCostPrice} onChange={(e) => setAddChildNewCostPrice(e.target.value)} placeholder="0.00" type="number" step="0.01" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-1.5 block">型号规格</label>
+                  <Input value={addChildNewSpec} onChange={(e) => setAddChildNewSpec(e.target.value)} placeholder="型号规格" />
+                </div>
+              </div>
+            )}
+
+            {/* 用量 */}
+            <div className="w-[160px]">
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">用量 *</label>
+              <Input value={addChildQty} onChange={(e) => setAddChildQty(e.target.value)} placeholder="1" type="number" step="0.0001" />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button onClick={handleAddChildSave} className="flex-1 bg-green-600 hover:bg-green-700">确定</Button>
+              <Button variant="outline" onClick={() => setAddChildOpen(false)} className="flex-1">取消</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 编辑用量弹窗 */}
+      <Dialog open={editQtyOpen} onOpenChange={setEditQtyOpen}>
+        <DialogContent className="sm:max-w-[360px]">
+          <DialogHeader>
+            <DialogTitle>编辑用量</DialogTitle>
+          </DialogHeader>
+          <div className="mt-2">
+            <label className="text-sm font-medium text-gray-700 mb-1.5 block">用量</label>
+            <Input value={editQtyValue} onChange={(e) => setEditQtyValue(e.target.value)} type="number" step="0.0001" />
+          </div>
+          <div className="flex gap-3 mt-4">
+            <Button onClick={handleEditQtySave} className="flex-1">保存</Button>
+            <Button variant="outline" onClick={() => setEditQtyOpen(false)} className="flex-1">取消</Button>
           </div>
         </DialogContent>
       </Dialog>
