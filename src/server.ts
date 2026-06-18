@@ -31,10 +31,13 @@ async function proxyToPostgrest(req: IncomingMessage, res: ServerResponse, pathn
     body = Buffer.concat(chunks);
   }
 
-  // Forward relevant headers (exclude host, connection which are connection-specific)
+  // Forward relevant headers — strip auth headers because PostgREST runs
+  // without JWT verification in local mode. If these headers reach PostgREST
+  // it returns PGRST300 ("Server lacks JWT secret").
+  const skipHeaders = ['host', 'connection', 'content-length', 'authorization', 'apikey'];
   const headers: Record<string, string> = {};
   for (const [key, value] of Object.entries(req.headers)) {
-    if (value && !['host', 'connection', 'content-length'].includes(key.toLowerCase())) {
+    if (value && !skipHeaders.includes(key.toLowerCase())) {
       headers[key] = Array.isArray(value) ? value.join(', ') : value;
     }
   }
