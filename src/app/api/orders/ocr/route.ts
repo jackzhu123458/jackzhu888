@@ -170,16 +170,28 @@ function normalizeDate(input: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { image } = body;
+    // 兼容 FormData 和 JSON 两种提交方式
+    let imageBase64 = '';
+    const contentType = request.headers.get('content-type') || '';
 
-    if (!image || typeof image !== 'string') {
-      return NextResponse.json({ error: '缺少图片数据' }, { status: 400 });
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await request.formData();
+      const file = formData.get('image') as File | null;
+      if (!file) {
+        return NextResponse.json({ error: '缺少图片文件' }, { status: 400 });
+      }
+      const arrayBuffer = await file.arrayBuffer();
+      imageBase64 = Buffer.from(arrayBuffer).toString('base64');
+    } else {
+      const body = await request.json();
+      const { image } = body;
+      if (!image || typeof image !== 'string') {
+        return NextResponse.json({ error: '缺少图片数据' }, { status: 400 });
+      }
+      imageBase64 = image.includes(',') ? image.split(',')[1] : image;
     }
 
-    // 解析 base64
-    const base64Data = image.includes(',') ? image.split(',')[1] : image;
-    const imageBuffer = Buffer.from(base64Data, 'base64');
+    const imageBuffer = Buffer.from(imageBase64, 'base64');
 
     // 写入临时文件
     const tmpDir = join(tmpdir(), 'ocr-temp');
@@ -204,7 +216,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         rawText,
-        order,
+        data: order,
       });
     } finally {
       // 清理临时文件
