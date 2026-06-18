@@ -115,11 +115,63 @@ export function findCategoryGroup(category: string, groups: CategoryGroup[]): Ca
   return groups.find(g => isCategoryInGroup(category, g));
 }
 
-/** 获取类目显示标签，如 "001-蜗壳" */
+/** 从同类目产品名称中提取公共中文描述（与 BOM 页面 extractCommonLabel 同逻辑） */
+function extractCategoryLabel(products: Product[]): string {
+  const names = products.map(p => p.name).filter(Boolean);
+  if (names.length === 0) return '';
+  if (names.length === 1) {
+    // 单个产品：取名称开头的中文部分
+    const match = names[0].match(/^[\u4e00-\u9fff]+/);
+    return match ? match[0] : names[0].split('/')[0];
+  }
+
+  // 统计每个中文关键词（2字及以上）出现的频率
+  const freq = new Map<string, number>();
+  for (const name of names) {
+    const matches = name.match(/[\u4e00-\u9fff]{2,}/g);
+    if (matches) {
+      for (const m of matches) {
+        if (m.length >= 2) {
+          freq.set(m, (freq.get(m) || 0) + 1);
+        }
+      }
+    }
+  }
+
+  if (freq.size === 0) {
+    // 没有中文关键词，取第一个产品名开头的中文
+    const match = names[0].match(/^[\u4e00-\u9fff]+/);
+    return match ? match[0] : names[0].split('/')[0];
+  }
+
+  // 按频率降序、长度降序排序
+  const sorted = Array.from(freq.entries()).sort((a, b) => {
+    if (b[1] !== a[1]) return b[1] - a[1];
+    return b[0].length - a[0].length;
+  });
+
+  const topFreq = sorted[0][1];
+  const candidates = sorted.filter(([, f]) => f === topFreq || f >= topFreq * 0.5);
+
+  // 优先选择出现在名称开头的词
+  for (const name of names) {
+    const prefix = name.match(/^[\u4e00-\u9fff]{2,}/);
+    if (prefix) {
+      const matched = candidates.find(([word]) =>
+        prefix[0].includes(word) || word.includes(prefix[0])
+      );
+      if (matched) return matched[0];
+    }
+  }
+
+  return sorted[0][0];
+}
+
+/** 获取类目显示标签，如 "027-电容罩"（从同类目产品中提取公共中文名） */
 export function getCategoryLabel(cat: string, products: Product[]): string {
   const catProducts = products.filter(p => p.category === cat);
-  const shortName = catProducts.length > 0 ? catProducts[0].name.split('/')[0] : '';
-  return cat && cat !== '0' ? `${cat}-${shortName}` : (shortName || `类目${cat}`);
+  const label = extractCategoryLabel(catProducts);
+  return cat && cat !== '0' ? `${cat}-${label}` : (label || `类目${cat}`);
 }
 
 /** 格式化日期为 YYYY-MM-DD */
