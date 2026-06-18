@@ -341,12 +341,23 @@ export default function OrdersPage() {
 
     setOcrLoading(true);
     try {
-      const formData = new FormData();
-      formData.append('image', file);
+      // 将图片转为 base64 发送
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result as string;
+          const base64 = result.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+      });
+      reader.readAsDataURL(file);
+      const base64Data = await base64Promise;
 
       const res = await fetch('/api/orders/ocr', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64Data, mimeType: file.type }),
       });
 
       const result = await res.json();

@@ -29,28 +29,23 @@ export async function POST(request: Request) {
       // FormData 模式
       const formData = await request.formData();
 
-      // 尝试所有可能的字段名
-      const file = formData.get('file') || formData.get('image') || formData.get('file') as unknown as File;
-      
+      // 遍历所有字段，找到 File 类型的文件
       let actualFile: File | null = null;
-      if (file instanceof File) {
-        actualFile = file;
-      } else {
-        // 遍历 formData 所有字段找文件
-        for (const [key, value] of formData.entries()) {
-          if (value instanceof File) {
-            actualFile = value;
-            console.log('Found file in field:', key);
-            break;
-          }
+      const allKeys: string[] = [];
+      for (const [key, value] of formData.entries()) {
+        allKeys.push(key);
+        if (value instanceof File && value.size > 0) {
+          actualFile = value;
+          console.log('Found file in field:', key, 'size:', value.size);
+          break;
         }
       }
 
       if (!actualFile) {
-        console.error('No file found in formData. Keys:', Array.from(formData.keys()));
+        console.error('No file found in formData. Keys:', allKeys);
         return NextResponse.json({
           error: '未找到图片文件',
-          detail: `FormData keys: ${Array.from(formData.keys()).join(', ')}`
+          detail: `FormData keys: ${allKeys.join(', ')}`
         }, { status: 400 });
       }
 
