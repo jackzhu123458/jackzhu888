@@ -19,62 +19,28 @@ export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
-    // 获取原始请求体
-    const contentType = request.headers.get('content-type') || '';
+    const body = await request.json();
+    console.log('[OCR] Received request, has image:', !!body.image, 'mimeType:', body.mimeType);
 
-    let imageBuffer: Buffer;
-    let mimeType = 'image/jpeg';
-
-    if (contentType.includes('multipart/form-data')) {
-      // FormData 模式
-      const formData = await request.formData();
-
-      // 遍历所有字段，找到 File 类型的文件
-      let actualFile: File | null = null;
-      const allKeys: string[] = [];
-      for (const [key, value] of formData.entries()) {
-        allKeys.push(key);
-        if (value instanceof File && value.size > 0) {
-          actualFile = value;
-          console.log('Found file in field:', key, 'size:', value.size);
-          break;
-        }
-      }
-
-      if (!actualFile) {
-        console.error('No file found in formData. Keys:', allKeys);
-        return NextResponse.json({
-          error: '未找到图片文件',
-          detail: `FormData keys: ${allKeys.join(', ')}`
-        }, { status: 400 });
-      }
-
-      mimeType = actualFile.type || 'image/jpeg';
-      const arrayBuffer = await actualFile.arrayBuffer();
-      imageBuffer = Buffer.from(arrayBuffer);
-    } else {
-      // JSON 模式
-      const body = await request.json();
-      if (!body.image) {
-        return NextResponse.json({ error: '未找到图片数据' }, { status: 400 });
-      }
-      imageBuffer = Buffer.from(body.image, 'base64');
-      mimeType = body.mimeType || 'image/jpeg';
+    if (!body.image) {
+      return NextResponse.json({ error: '未找到图片数据，请重新选择图片' }, { status: 400 });
     }
+
+    const base64Data: string = body.image;
+    const mimeType: string = body.mimeType || 'image/jpeg';
+    const dataUri = `data:${mimeType};base64,${base64Data}`;
 
     // 检查大模型凭据
     const baseUrl = process.env.COZE_INTEGRATION_BASE_URL;
     const apiKey = process.env.COZE_WORKLOAD_IDENTITY_API_KEY;
+
+    console.log('[OCR] LLM config:', baseUrl ? '(set)' : '(not set)', apiKey ? '(set)' : '(not set)');
 
     if (!baseUrl || !apiKey) {
       return NextResponse.json({
         error: '大模型凭据未配置。请在 .env 中设置 COZE_INTEGRATION_BASE_URL 和 COZE_WORKLOAD_IDENTITY_API_KEY'
       }, { status: 500 });
     }
-
-    // 转为 base64 data URI
-    const base64Image = imageBuffer.toString('base64');
-    const dataUri = `data:${mimeType};base64,${base64Image}`;
 
     const systemPrompt = `你是一个采购订单识别助手。用户会上传采购订单图片，你需要识别图片中的信息并以 JSON 格式返回。
 
@@ -120,7 +86,7 @@ export async function POST(request: Request) {
       },
     ];
 
-    console.log('Calling LLM API:', `${baseUrl}/api/v1/llm/invoke`);
+    console.log('[OCR] Calling LLM API:', `${baseUrl}/api/v1/llm/invoke`);
 
     const apiResponse = await fetch(`${baseUrl}/api/v1/llm/invoke`, {
       method: 'POST',
@@ -138,7 +104,7 @@ export async function POST(request: Request) {
 
     if (!apiResponse.ok) {
       const errorText = await apiResponse.text();
-      console.error('LLM API error:', apiResponse.status, errorText);
+      console.error('[OCR] LLM API error:', apiResponse.status, errorText);
       return NextResponse.json({
         error: `大模型调用失败 (${apiResponse.status}): ${errorText.slice(0, 200)}`
       }, { status: 500 });
@@ -178,7 +144,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    console.error('OCR error:', error);
+    console.error('[OCR] error:', error);
     const message = error instanceof Error ? error.message : '识别失败';
     return NextResponse.json({ error: `图片识别失败: ${message}` }, { status: 500 });
   }
