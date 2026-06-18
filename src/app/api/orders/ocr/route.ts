@@ -1,14 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
-
-export const runtime = 'nodejs';
-export const maxDuration = 60;
-
-interface OrderItem {
-  code: string;
-  name: string;
-  quantity: number;
-  delivery_date?: string;
-}
+import { NextResponse } from 'next/server';
 
 interface ParsedOrder {
   order_no?: string;
@@ -16,37 +6,68 @@ interface ParsedOrder {
   delivery_date?: string;
   customer_name?: string;
   customer_code?: string;
-  items: OrderItem[];
+  items?: Array<{
+    code: string;
+    name: string;
+    quantity: number;
+    delivery_date: string;
+  }>;
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    let imageBase64: string;
-    let mimeType: string;
+export const runtime = 'nodejs';
+export const maxDuration = 60;
 
+export async function POST(request: Request) {
+  try {
+    // 获取原始请求体
     const contentType = request.headers.get('content-type') || '';
 
+    let imageBuffer: Buffer;
+    let mimeType = 'image/jpeg';
+
     if (contentType.includes('multipart/form-data')) {
+      // FormData 模式
       const formData = await request.formData();
-      const file = (formData.get('file') || formData.get('image')) as File | null;
-      if (!file) {
-        return NextResponse.json({ error: '未找到图片文件' }, { status: 400 });
+
+      // 尝试所有可能的字段名
+      const file = formData.get('file') || formData.get('image') || formData.get('file') as unknown as File;
+      
+      let actualFile: File | null = null;
+      if (file instanceof File) {
+        actualFile = file;
+      } else {
+        // 遍历 formData 所有字段找文件
+        for (const [key, value] of formData.entries()) {
+          if (value instanceof File) {
+            actualFile = value;
+            console.log('Found file in field:', key);
+            break;
+          }
+        }
       }
-      const arrayBuffer = await file.arrayBuffer();
-      imageBase64 = Buffer.from(arrayBuffer).toString('base64');
-      mimeType = file.type || 'image/jpeg';
+
+      if (!actualFile) {
+        console.error('No file found in formData. Keys:', Array.from(formData.keys()));
+        return NextResponse.json({
+          error: '未找到图片文件',
+          detail: `FormData keys: ${Array.from(formData.keys()).join(', ')}`
+        }, { status: 400 });
+      }
+
+      mimeType = actualFile.type || 'image/jpeg';
+      const arrayBuffer = await actualFile.arrayBuffer();
+      imageBuffer = Buffer.from(arrayBuffer);
     } else {
+      // JSON 模式
       const body = await request.json();
       if (!body.image) {
         return NextResponse.json({ error: '未找到图片数据' }, { status: 400 });
       }
-      imageBase64 = body.image;
+      imageBuffer = Buffer.from(body.image, 'base64');
       mimeType = body.mimeType || 'image/jpeg';
     }
 
-    const dataUri = `data:${mimeType};base64,${imageBase64}`;
-
-    // 检查大模型凭据是否可用
+    // 检查大模型凭据
     const baseUrl = process.env.COZE_INTEGRATION_BASE_URL;
     const apiKey = process.env.COZE_WORKLOAD_IDENTITY_API_KEY;
 
@@ -55,6 +76,10 @@ export async function POST(request: NextRequest) {
         error: '大模型凭据未配置。请在 .env 中设置 COZE_INTEGRATION_BASE_URL 和 COZE_WORKLOAD_IDENTITY_API_KEY'
       }, { status: 500 });
     }
+
+    // 转为 base64 data URI
+    const base64Image = imageBuffer.toString('base64');
+    const dataUri = `data:${mimeType};base64,${base64Image}`;
 
     const systemPrompt = `你是一个采购订单识别助手。用户会上传采购订单图片，你需要识别图片中的信息并以 JSON 格式返回。
 
@@ -83,7 +108,6 @@ export async function POST(request: NextRequest) {
 5. 如果某个字段识别不到，留空字符串或 0
 6. 只返回 JSON，不要有任何其他文字`;
 
-    // 直接用 fetch 调用大模型 API，不依赖 SDK
     const messages = [
       { role: 'system', content: systemPrompt },
       {
@@ -100,6 +124,8 @@ export async function POST(request: NextRequest) {
         ],
       },
     ];
+
+    console.log('Calling LLM API:', `${baseUrl}/api/v1/llm/invoke`);
 
     const apiResponse = await fetch(`${baseUrl}/api/v1/llm/invoke`, {
       method: 'POST',
