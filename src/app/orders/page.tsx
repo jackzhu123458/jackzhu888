@@ -407,7 +407,8 @@ export default function OrdersPage() {
         setFormOrderDate(data.order_date);
       }
 
-      // 自动填充交货期限
+      // 自动填充交货期限（注意：不要触发 handleDeliveryDeadlineChange 以免覆盖各物料行的独立交货日期）
+      // 只设置表单值，不自动填充到物料行
       if (data.delivery_deadline && !formDeliveryDeadline) {
         setFormDeliveryDeadline(data.delivery_deadline);
       }
