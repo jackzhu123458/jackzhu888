@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -34,15 +34,14 @@ export default function CategoryGroupDialog({
   const [editingGroups, setEditingGroups] = useState<CategoryGroup[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
 
-  const handleOpen = (val: boolean) => {
-    if (val) {
+  // 当弹窗打开时，同步 groups 数据到 editingGroups
+  useEffect(() => {
+    if (open) {
       const copied = groups.map(g => ({ ...g, categories: g.categories || '' }));
       setEditingGroups(copied);
-      // 默认展开所有组
       setExpandedGroups(new Set(copied.map((_, i) => i)));
     }
-    onOpenChange(val);
-  };
+  }, [open, groups]);
 
   const toggleExpand = (idx: number) => {
     const next = new Set(expandedGroups);
@@ -90,7 +89,7 @@ export default function CategoryGroupDialog({
   const unassignedCategories = availableCategories.filter(c => !assignedCategories.has(c));
 
   return (
-    <Dialog open={open} onOpenChange={handleOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>类目分组设置</DialogTitle>
