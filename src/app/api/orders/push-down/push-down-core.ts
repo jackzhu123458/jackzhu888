@@ -69,8 +69,8 @@ export async function pushDownOrder(orderId: string, supabase?: ReturnType<typeo
     const availableQty = inventory ? Number(inventory.quantity) - Number(inventory.reserved_qty || 0) : 0;
     const hasBOM = bomRecords && bomRecords.length > 0;
 
-    if (hasBOM && availableQty >= requiredQty) {
-      // 有BOM + 库存充足 → 预扣
+    if (availableQty >= requiredQty) {
+      // 库存充足 → 预扣（无论是否有BOM，库存够就直接扣）
       if (inventory) {
         const invId = inventory.id;
         const newReserved = Number(inventory.reserved_qty || 0) + requiredQty;
@@ -83,7 +83,13 @@ export async function pushDownOrder(orderId: string, supabase?: ReturnType<typeo
     } else {
       // 库存不足 → 生成生产订单
       const orderNo = `PO-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
-      const productionQty = hasBOM ? requiredQty : (requiredQty - availableQty);
+      const productionQty = hasBOM ? requiredQty : Math.max(0, requiredQty - availableQty);
+
+      if (productionQty <= 0) {
+        // 不应到这里，但防御性跳过
+        console.warn('下推跳过：productionQty=0, product:', product.code, 'required:', requiredQty, 'available:', availableQty);
+        continue;
+      }
 
       const { data: prodOrder, error: prodError } = await db
         .from('production_orders')
@@ -116,6 +122,7 @@ export async function pushDownOrder(orderId: string, supabase?: ReturnType<typeo
         }
       }
 
+      // 库存有部分可用 → 预扣可用部分
       if (availableQty > 0 && inventory) {
         const invId = inventory.id;
         const newReserved = Number(inventory.reserved_qty || 0) + availableQty;
