@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exec } from 'child_process';
-import { writeFile, mkdir, readFile, unlink } from 'fs/promises';
+import { writeFile, mkdir, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
@@ -32,18 +32,18 @@ interface OcrResult {
 
 /**
  * 调用系统 tesseract 命令行工具识别图片
+ * --psm 6: 假设为统一文本块，适合表格
  */
 function runTesseract(imagePath: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    // 15 秒超时
     const timer = setTimeout(() => {
-      reject(new Error('OCR 超时（15s）'));
-    }, 15000);
+      reject(new Error('OCR 超时（30s）'));
+    }, 30000);
 
     exec(
-      `tesseract "${imagePath}" stdout -l chi_sim+eng 2>/dev/null`,
-      { maxBuffer: 10 * 1024 * 1024 },
-      (error, stdout, stderr) => {
+      `tesseract "${imagePath}" stdout -l chi_sim+eng --psm 6 2>/dev/null`,
+      { maxBuffer: 20 * 1024 * 1024 },
+      (error, stdout) => {
         clearTimeout(timer);
         if (error) {
           reject(new Error(`tesseract 执行失败: ${error.message}`));
@@ -56,12 +56,36 @@ function runTesseract(imagePath: string): Promise<string> {
 }
 
 /**
+ * 标准化日期格式为 YYYY-MM-DD
+ */
+function normalizeDate(input: string): string {
+  const m = input.match(/(\d{4})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})/);
+  if (!m) return input;
+  return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+}
+
+/**
+ * 清理 OCR 文本中的常见噪声
+ */
+function cleanLine(line: string): string {
+  return line
+    .replace(/\r/g, '')
+    .replace(/\|/g, ' ')  // 表格竖线变空格
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * 从 OCR 原始文本中解析采购订单结构
+ *
+ * 针对常州恒益电机采购订单格式优化：
+ * - 物料编号格式: 30.113.01.0025 (数字+点号)
+ * - 表格行: 序号 物料编号 物料描述 数量 单位 交货日期 备注
  */
 function parseOrderFromText(rawText: string): OcrResult {
   const lines = rawText
     .split('\n')
-    .map((l) => l.trim())
+    .map(cleanLine)
     .filter((l) => l.length > 0);
 
   const result: OcrResult = {
@@ -74,17 +98,25 @@ function parseOrderFromText(rawText: string): OcrResult {
   };
 
   // ── 提取订单编号 ──
+  // 匹配 "订单编号" "OrderNo." "单号" 后面的数字
   for (const line of lines) {
-    const m = line.match(/(?:订单号|单号|订单编号|PO|No\.?)\s*[:：#]?\s*([A-Za-z0-9\-_\/]+)/i);
-    if (m && m[1] && m[1].length >= 2) {
-      result.order_no = m[1];
+    // 44836 纯数字订单号
+    const m1 = line.match(/(?:订单编号|订单号|单号|Order\s*No\.?)\s*[:：.]?\s*(\d{3,})/i);
+    if (m1) {
+      result.order_no = m1[1];
+      break;
+    }
+    // PO-44836 带前缀
+    const m2 = line.match(/(?:PO|订单)\s*[:：#]?\s*([A-Za-z0-9\-_]{3,})/i);
+    if (m2 && !result.order_no) {
+      result.order_no = m2[1];
       break;
     }
   }
 
   // ── 提取订单日期 ──
   for (const line of lines) {
-    const m = line.match(/(?:订单日期|日期|Date)\s*[:：]?\s*(\d{4}[\/\-.年]\d{1,2}[\/\-.月]\d{1,2})/i);
+    const m = line.match(/(?:订单日期|Order\s*Date|日期)\s*[:：.]?\s*(\d{4}[\/\-.年]\d{1,2}[\/\-.月]\d{1,2})/i);
     if (m) {
       result.order_date = normalizeDate(m[1]);
       break;
@@ -92,80 +124,124 @@ function parseOrderFromText(rawText: string): OcrResult {
   }
 
   // ── 提取交货日期 ──
-  const allDates: string[] = [];
   for (const line of lines) {
-    const m = line.match(/(?:交货|送货|delivery|due)\s*(?:日期|date|期)?\s*[:：]?\s*(\d{4}[\/\-.年]\d{1,2}[\/\-.月]\d{1,2})/i);
+    const m = line.match(/(?:交货日期|Delivery\s*Dat|交货)\s*[:：.]?\s*(\d{4}[\/\-.年]\d{1,2}[\/\-.月]\d{1,2})/i);
     if (m) {
-      const d = normalizeDate(m[1]);
-      if (d) allDates.push(d);
-    }
-  }
-  if (allDates.length > 0) {
-    result.delivery_deadline = allDates[allDates.length - 1];
-  }
-
-  // ── 提取客户信息 ──
-  for (const line of lines) {
-    const m = line.match(/(?:客户|customer|供应商|supplier)\s*[:：]?\s*(.+)/i);
-    if (m && m[1] && m[1].trim().length >= 2) {
-      result.customer_name = m[1].trim();
+      result.delivery_deadline = normalizeDate(m[1]);
       break;
     }
   }
 
-  // ── 提取物料明细 ──
-  // 匹配包含编码 + 数量的行
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  // ── 提取供应商信息 ──
+  for (const line of lines) {
+    // 供应商: 常州市武进横林新顺电器配件厂
+    const m = line.match(/(?:供应商|Vendor|Supplier)\s*[:：.]?\s*(.+)/i);
+    if (m && m[1] && m[1].trim().length >= 4) {
+      const name = m[1].trim();
+      // 去掉后面的其他字段
+      result.customer_name = name.split(/\s{2,}|联系电话|电话|传真|邮箱/)[0].trim();
+      break;
+    }
+  }
 
-    // 尝试匹配: 物料编码 数量 [单价] [日期]
-    // 常见格式: "A001 产品名称 100 个 2024-01-15"
-    // 或者: "编码: A001 名称: xxx 数量: 100"
-    const codeMatch = line.match(/([A-Z][A-Za-z0-9\-_]{2,20})/);
-    const qtyMatch = line.match(/(\d+(?:\.\d+)?)\s*(?:个|件|套|pcs|PCS|kg|KG|米|m|条|台)?/g);
+  // 供应商编码: S0080
+  for (const line of lines) {
+    const m = line.match(/(?:供应商编码|Supplier\s*Code)\s*[:：.]?\s*([A-Z0-9]+)/i);
+    if (m) {
+      result.customer_code = m[1];
+      break;
+    }
+  }
 
-    if (codeMatch && qtyMatch && qtyMatch.length >= 2) {
-      const code = codeMatch[1];
-      const lastQty = qtyMatch[qtyMatch.length - 1].match(/(\d+(?:\.\d+)?)/);
-      if (lastQty) {
-        const qty = parseFloat(lastQty[1]);
-
-        // 查找日期
-        let dateStr = '';
-        const dateMatch = line.match(/(\d{4}[\/\-.年]\d{1,2}[\/\-.月]\d{1,2})/);
-        if (dateMatch) {
-          dateStr = normalizeDate(dateMatch[1]);
-        }
-
-        // 提取物料名称（编码和数量之间的文字）
-        const codeIdx = line.indexOf(code);
-        const qtyIdx = line.indexOf(lastQty[0]);
-        let name = '';
-        if (codeIdx >= 0 && qtyIdx > codeIdx) {
-          name = line.substring(codeIdx + code.length, qtyIdx).trim().replace(/^[\s:：\-]+/, '').trim();
-        }
-
-        result.items.push({
-          material_code: code,
-          material_name: name || '',
-          quantity: qty,
-          unit: '',
-          delivery_date: dateStr,
-        });
+  // 如果没匹配到供应商名，尝试匹配公司名
+  if (!result.customer_name) {
+    for (const line of lines) {
+      if (line.includes('新顺电器') || line.includes('配件厂')) {
+        result.customer_name = line.substring(0, 40);
+        break;
       }
     }
   }
 
-  return result;
-}
+  // ── 提取物料明细 ──
+  // 物料编号格式: 30.113.01.0025 或 40.045.01.0036 (2位.3位.2位.4位)
+  // 也可能是其他格式如 G22x0 等
+  const materialCodePattern = /(\d{2,}\.\d{2,}\.\d{2,}\.\d{2,})/;
+  // 通用物料编码模式（字母+数字组合，至少3位）
+  const generalCodePattern = /([A-Z][A-Z0-9x\-]{2,15})/i;
 
-/**
- * 标准化日期格式为 YYYY-MM-DD
- */
-function normalizeDate(input: string): string {
-  const m = input.match(/(\d{4})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})/);
-  if (!m) return input;
-  return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lowerLine = line.toLowerCase();
+
+    // 跳过表头行
+    if (/(物料编号|物料描述|物料编码|Material|序号|#.*qty)/i.test(line) && line.length < 30) {
+      continue;
+    }
+    // 跳过标题行
+    if (/(采购订单|Purchase Order|常州恒益|电机股份)/i.test(line) && line.length < 30) {
+      continue;
+    }
+
+    // 尝试匹配标准物料编码 (30.113.01.0025 格式)
+    const codeMatch = line.match(materialCodePattern);
+    // 或者通用编码
+    const generalMatch = !codeMatch ? line.match(generalCodePattern) : null;
+    const codeResult = codeMatch || generalMatch;
+
+    if (!codeResult) continue;
+
+    const code = codeResult[1];
+    const codeStart = line.indexOf(code);
+    const afterCode = line.substring(codeStart + code.length).trim();
+
+    // 提取数量: 可能带逗号 "10,000" 或纯数字 "5000"
+    // 数量通常在描述后面，后面跟着单位
+    const qtyMatch = afterCode.match(/(\d[\d,]*\.?\d*)\s*(?:个|件|套|pcs|PCS|kg|KG|米|m|条|台|只|根|对|副)?/);
+
+    if (!qtyMatch) continue;
+
+    const qtyStr = qtyMatch[1].replace(/,/g, '');
+    const qty = parseFloat(qtyStr);
+    if (isNaN(qty) || qty <= 0) continue;
+
+    // 提取物料名称: 编码和数量之间的文字
+    const qtyStart = afterCode.indexOf(qtyMatch[1]);
+    let name = afterCode.substring(0, qtyStart).trim();
+
+    // 清理名称中的前导符号
+    name = name.replace(/^[\s:：\-—|]+/, '').trim();
+
+    // 如果名称为空，尝试用下一行
+    if (!name && i + 1 < lines.length) {
+      const nextLine = lines[i + 1];
+      // 下一行不是新的物料行时，用作名称
+      if (!materialCodePattern.test(nextLine) && !generalCodePattern.test(nextLine) && nextLine.length > 2) {
+        name = nextLine.substring(0, 40);
+      }
+    }
+
+    // 提取日期
+    let dateStr = '';
+    const dateMatch = line.match(/(\d{4}[\/\-.年]\d{1,2}[\/\-.月]\d{1,2})/);
+    if (dateMatch) {
+      dateStr = normalizeDate(dateMatch[1]);
+    }
+
+    // 提取单位
+    const unitMatch = afterCode.match(/(?:个|件|套|pcs|PCS|kg|KG|米|m|条|台|只|根|对|副)/i);
+    const unit = unitMatch ? unitMatch[0] : '';
+
+    result.items.push({
+      material_code: code,
+      material_name: name,
+      quantity: qty,
+      unit,
+      delivery_date: dateStr,
+    });
+  }
+
+  return result;
 }
 
 export async function POST(request: NextRequest) {
