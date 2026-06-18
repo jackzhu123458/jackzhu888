@@ -360,7 +360,23 @@ export default function OrdersPage() {
         body: JSON.stringify({ image: base64Data, mimeType: file.type }),
       });
 
-      let result: { error?: string; data?: Record<string, unknown> };
+      let result: { error?: string; data?: {
+        order_no?: string;
+        order_date?: string;
+        delivery_deadline?: string;
+        delivery_date?: string;
+        customer_code?: string;
+        customer_name?: string;
+        items?: Array<{
+          code: string;
+          name: string;
+          quantity: number;
+          delivery_date: string;
+          material_code?: string;
+          material_name?: string;
+          unit?: string;
+        }>;
+      } };
       try {
         result = await res.json();
       } catch {
@@ -373,7 +389,7 @@ export default function OrdersPage() {
         return;
       }
 
-      const data = result.data;
+      const data = result.data!;
 
       // 检查订单号是否已存在
       if (data.order_no) {
@@ -446,15 +462,11 @@ export default function OrdersPage() {
         };
 
         const newItems = data.items
-          .filter((item: { material_code: string; quantity: number }) => item.material_code || item.quantity > 0)
-          .map((item: {
-          material_code: string;
-          material_name: string;
-          quantity: number;
-          unit: string;
-          delivery_date: string;
-        }) => {
-          const matchedProduct = matchProduct(item.material_code, item.material_name || '');
+          .filter((item) => (item.code || item.material_code) && item.quantity > 0)
+          .map((item) => {
+          const itemCode = item.code || item.material_code || '';
+          const itemName = item.name || item.material_name || '';
+          const matchedProduct = matchProduct(itemCode, itemName);
 
           // 交货日期生成排程
           const deliveryDate = item.delivery_date || data.delivery_deadline || '';
@@ -468,7 +480,7 @@ export default function OrdersPage() {
             quantity: item.quantity,
             unit_price: matchedProduct?.price || null,
             delivery_date: deliveryDate,
-            remark: matchedProduct ? '' : `${item.material_code} ${item.material_name}`,
+            remark: matchedProduct ? '' : `${itemCode} ${itemName}`,
             schedules,
           };
         });
@@ -490,11 +502,13 @@ export default function OrdersPage() {
         const newSearches: Record<number, string> = {};
         const newNameSearches: Record<number, string> = {};
         const startIndex = formItems.length;
-        data.items.forEach((item: { material_code: string; material_name: string }, idx: number) => {
-          const matchedProduct = matchProduct(item.material_code, item.material_name || '');
+        data.items.forEach((item, idx: number) => {
+          const itemCode = item.code || item.material_code || '';
+          const itemName = item.name || item.material_name || '';
+          const matchedProduct = matchProduct(itemCode, itemName);
           if (!matchedProduct) {
-            newSearches[startIndex + idx] = item.material_code;
-            newNameSearches[startIndex + idx] = item.material_name;
+            newSearches[startIndex + idx] = itemCode;
+            newNameSearches[startIndex + idx] = itemName;
           }
         });
         setItemSearches((prev) => ({ ...prev, ...newSearches }));
