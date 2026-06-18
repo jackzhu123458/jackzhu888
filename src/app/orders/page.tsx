@@ -1096,7 +1096,9 @@ export default function OrdersPage() {
                                 </td>
                                 {dateRange.map((date) => {
                                   const qty = getScheduleQty(item, date);
-                                  const isDeadlineDate = order.delivery_deadline === date;
+                                  // 用该物料行的排程日期高亮，而非订单级别交货期限
+                                  const itemScheduleDate = item.customer_order_schedules?.[0]?.schedule_date?.slice(0, 10);
+                                  const isDeadlineDate = (itemScheduleDate || order.delivery_deadline) === date;
                                   return (
                                     <td
                                       key={date}
@@ -1109,15 +1111,23 @@ export default function OrdersPage() {
                                   );
                                 })}
                                 <td className="px-3 py-2 text-xs sticky right-40 bg-white z-[5] max-w-[160px] truncate" title={item.remark || order.remark || ''}>
-                                  {order.delivery_deadline && (
-                                    <span className={`inline-block text-xs mr-1 px-1 rounded ${
-                                      isDeadlinePast ? 'bg-red-100 text-red-700' :
-                                      isDeadlineSoon ? 'bg-yellow-100 text-yellow-700' :
-                                      'bg-green-100 text-green-700'
-                                    }`}>
-                                      &larr;{formatDateShort(order.delivery_deadline)}前交货
-                                    </span>
-                                  )}
+                                  {(() => {
+                                    // 优先显示该物料行的排程日期，而非订单级别交货期限
+                                    const itemScheduleDate = item.customer_order_schedules?.[0]?.schedule_date?.slice(0, 10);
+                                    const displayDate = itemScheduleDate || order.delivery_deadline;
+                                    const isItemDatePast = displayDate && displayDate < today;
+                                    const isItemDateSoon = displayDate && !isItemDatePast &&
+                                      new Date(displayDate).getTime() - new Date(today).getTime() < 7 * 24 * 60 * 60 * 1000;
+                                    return displayDate ? (
+                                      <span className={`inline-block text-xs mr-1 px-1 rounded ${
+                                        isItemDatePast ? 'bg-red-100 text-red-700' :
+                                        isItemDateSoon ? 'bg-yellow-100 text-yellow-700' :
+                                        'bg-green-100 text-green-700'
+                                      }`}>
+                                        &larr;{formatDateShort(displayDate)}前交货
+                                      </span>
+                                    ) : null;
+                                  })()}
                                   {item.remark || ''}
                                 </td>
                                 <td className="px-3 py-2 text-center sticky right-16 bg-white z-[5]">

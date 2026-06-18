@@ -139,24 +139,40 @@ export async function POST(request: Request) {
 
     // 日志：每个物料行的交货日期
     if (parsed.items && parsed.items.length > 0) {
-      console.log('[OCR] Parsed items delivery dates:', parsed.items.map((item, i) => `#${i+1} ${item.code}: ${item.delivery_date}`).join(' | '));
+      console.log('[OCR] Parsed items delivery dates (before fill):', parsed.items.map((item, i) => `#${i+1} ${item.code}: ${item.delivery_date}`).join(' | '));
     }
+
+    // 智能填充：如果某行的交货日期为空，使用上一行的交货日期
+    // 采购订单表格中，同一交货日期的行通常只标注第一行
+    const orderDeliveryDate = parsed.delivery_date || '';
+    let lastKnownDate = orderDeliveryDate;
+    const filledItems = (parsed.items || []).map((item, index) => {
+      let itemDate = item.delivery_date || '';
+      if (itemDate) {
+        lastKnownDate = itemDate;
+      } else {
+        // 当前行为空，使用最近一个非空日期
+        itemDate = lastKnownDate;
+      }
+      console.log(`[OCR] Item #${index + 1} ${item.code}: date="${item.delivery_date}" → filled="${itemDate}"`);
+      return {
+        code: item.code || '',
+        name: item.name || '',
+        quantity: Number(item.quantity) || 0,
+        delivery_date: itemDate,
+      };
+    });
 
     return NextResponse.json({
       success: true,
       data: {
         order_no: parsed.order_no || '',
         order_date: parsed.order_date || '',
-        delivery_date: parsed.delivery_date || '',
-        delivery_deadline: parsed.delivery_date || '',  // 订单级别交货期限，前端使用此字段
+        delivery_date: orderDeliveryDate,
+        delivery_deadline: orderDeliveryDate,  // 订单级别交货期限
         customer_name: parsed.customer_name || '',
         customer_code: parsed.customer_code || '',
-        items: (parsed.items || []).map((item) => ({
-          code: item.code || '',
-          name: item.name || '',
-          quantity: Number(item.quantity) || 0,
-          delivery_date: item.delivery_date || '',
-        })),
+        items: filledItems,
       },
     });
   } catch (error) {
