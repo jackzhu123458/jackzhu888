@@ -412,19 +412,59 @@ export default function OrdersPage() {
         setFormDeliveryDeadline(data.delivery_deadline);
       }
 
-      // 自动匹配并填充客户
+      // 自动匹配并填充客户（增强模糊匹配）
       if (!formCustomerId && (data.customer_code || data.customer_name)) {
-        const matched = customers.find((c) => {
-          if (data.customer_code && c.code === data.customer_code) return true;
-          if (data.customer_name && c.name === data.customer_name) return true;
-          // 模糊匹配：客户编号或名称包含识别结果
-          if (data.customer_code && c.code.toLowerCase().includes(data.customer_code.toLowerCase())) return true;
-          if (data.customer_name && c.name.toLowerCase().includes(data.customer_name.toLowerCase())) return true;
-          return false;
-        });
-        if (matched) {
-          setFormCustomerId(matched.id);
-          setFormCustomerSearch(matched.code);
+        // 去掉常见后缀，提取核心关键词
+        const stripSuffix = (s: string) => s.replace(/(常州|有限公司|股份|有限责任公司|股份有限公司|公司|厂|电子|电器|电机|机械)/g, '').trim();
+        const getKeywords = (s: string) => {
+          const stripped = stripSuffix(s);
+          // 拆成2字一组的关键词
+          const keywords: string[] = [];
+          for (let i = 0; i < stripped.length - 1; i++) {
+            keywords.push(stripped.substring(i, i + 2));
+          }
+          return keywords.filter(k => k.length === 2);
+        };
+
+        const ocrCode = (data.customer_code || '').trim();
+        const ocrName = (data.customer_name || '').trim();
+        const ocrKeywords = getKeywords(ocrName);
+
+        // 评分匹配：给每个客户打分，取最高分
+        let bestMatch: { customer: typeof customers[0]; score: number } | null = null;
+
+        for (const c of customers) {
+          let score = 0;
+
+          // 编码精确匹配（最高优先）
+          if (ocrCode && c.code === ocrCode) score += 100;
+          // 编码包含匹配
+          if (ocrCode && (c.code.toLowerCase().includes(ocrCode.toLowerCase()) || ocrCode.toLowerCase().includes(c.code.toLowerCase()))) score += 50;
+
+          // 名称精确匹配
+          if (ocrName && c.name === ocrName) score += 100;
+          // 名称包含匹配
+          if (ocrName && (c.name.toLowerCase().includes(ocrName.toLowerCase()) || ocrName.toLowerCase().includes(c.name.toLowerCase()))) score += 60;
+
+          // 去后缀后匹配
+          const strippedOcr = stripSuffix(ocrName);
+          const strippedC = stripSuffix(c.name);
+          if (strippedOcr && strippedC && (strippedC.includes(strippedOcr) || strippedOcr.includes(strippedC))) score += 40;
+
+          // 关键词匹配：OCR关键词在客户名中出现的数量
+          if (ocrKeywords.length > 0) {
+            const matchedKeywords = ocrKeywords.filter(k => c.name.includes(k));
+            if (matchedKeywords.length >= 2) score += matchedKeywords.length * 15;
+          }
+
+          if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+            bestMatch = { customer: c, score };
+          }
+        }
+
+        if (bestMatch && bestMatch.score >= 30) {
+          setFormCustomerId(bestMatch.customer.id);
+          setFormCustomerSearch(bestMatch.customer.code);
         }
       }
 
