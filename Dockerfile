@@ -1,30 +1,31 @@
 # ====== 阶段1: 依赖安装 ======
 FROM node:22-alpine AS deps
 
-# 配置国内镜像源
-RUN npm config set registry https://registry.npmmirror.com && \
-    corepack enable && \
-    COREPACK_NPM_REGISTRY=https://registry.npmmirror.com corepack prepare pnpm@latest --activate && \
+# 直接安装 pnpm，跳过 corepack（避免 corepack 访问 npmjs.org 下载失败）
+RUN npm install -g pnpm@9 --registry https://registry.npmmirror.com && \
     pnpm config set registry https://registry.npmmirror.com
 
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml ./
+# 删除 packageManager 字段，防止 corepack 强制介入
+RUN sed -i '/"packageManager"/d' package.json
+
 RUN pnpm install --frozen-lockfile
 
 # ====== 阶段2: 构建 ======
 FROM node:22-alpine AS builder
 
-# 配置国内镜像源
-RUN npm config set registry https://registry.npmmirror.com && \
-    corepack enable && \
-    COREPACK_NPM_REGISTRY=https://registry.npmmirror.com corepack prepare pnpm@latest --activate && \
+# 直接安装 pnpm
+RUN npm install -g pnpm@9 --registry https://registry.npmmirror.com && \
     pnpm config set registry https://registry.npmmirror.com
 
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# 删除 packageManager 字段，防止 corepack 强制介入
+RUN sed -i '/"packageManager"/d' package.json
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV COZE_PROJECT_ENV=PROD
