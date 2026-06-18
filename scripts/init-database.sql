@@ -384,6 +384,9 @@ $$;
 -- 让 authenticator 能够切换为 anon
 GRANT anon TO authenticator;
 
+-- erp 用户也需要 anon 角色（PostgREST 直接用 erp 连接时需要 SET ROLE anon）
+GRANT anon TO erp;
+
 -- 授予 anon 角色对所有表的 SELECT/INSERT/UPDATE/DELETE 权限
 GRANT USAGE ON SCHEMA public TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO anon;
