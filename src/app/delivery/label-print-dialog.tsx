@@ -41,15 +41,22 @@ export default function LabelPrintDialog({
 
   // 初始化箱数分配
   const initBoxes = () => {
+    if (!items || items.length === 0) return [];
     return items.map(item => {
-      const qty = item.quantity;
-      const perBox = item.per_box_qty || qty;
-      const boxCount = perBox > 0 ? Math.ceil(qty / perBox) : 1;
+      const qty = Number(item.quantity) || 0;
+      const perBoxQty = Number(item.per_box_qty) || 0;
+      const perBox = perBoxQty > 0 ? perBoxQty : (qty > 0 ? qty : 1);
+      const boxCount = qty > 0 ? Math.ceil(qty / perBox) : 0;
       const boxes: number[] = [];
       let remaining = qty;
       for (let i = 0; i < boxCount; i++) {
-        boxes.push(Math.min(perBox, remaining));
-        remaining -= boxes[boxes.length - 1];
+        const boxQty = Math.min(perBox, remaining);
+        if (boxQty > 0) boxes.push(boxQty);
+        remaining -= boxQty;
+      }
+      // 防御：如果算出来为空但数量>0，兜底1箱
+      if (boxes.length === 0 && qty > 0) {
+        boxes.push(qty);
       }
       return boxes;
     });
