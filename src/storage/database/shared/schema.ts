@@ -1,4 +1,4 @@
-import { pgTable, serial, timestamp, varchar, integer, numeric, text, boolean, index } from "drizzle-orm/pg-core"
+import { pgTable, serial, timestamp, varchar, integer, numeric, text, boolean, date, time, index } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 // 系统表 - 必须保留
@@ -452,6 +452,95 @@ export const inspectionReports = pgTable(
     index("inspection_reports_delivery_note_id_idx").on(table.delivery_note_id),
     index("inspection_reports_product_id_idx").on(table.product_id),
     index("inspection_reports_report_no_idx").on(table.report_no),
+  ]
+);
+
+// 钉钉令牌缓存
+export const dingtalkTokenCache = pgTable("dingtalk_token_cache", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  access_token: text("access_token").notNull(),
+  expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// 钉钉员工缓存
+export const dingtalkEmployees = pgTable("dingtalk_employees", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  user_id: varchar("user_id", { length: 100 }).notNull().unique(),
+  user_name: varchar("user_name", { length: 100 }).notNull(),
+  department_id: varchar("department_id", { length: 100 }),
+  department_name: varchar("department_name", { length: 200 }),
+  position: varchar("position", { length: 100 }),
+  mobile: varchar("mobile", { length: 30 }),
+  job_number: varchar("job_number", { length: 50 }),
+  avatar: text("avatar"),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  hired_date: date("hired_date"),
+  synced_at: timestamp("synced_at", { withTimezone: true }).defaultNow().notNull(),
+},
+  (table) => [
+    index("dingtalk_employees_user_id_idx").on(table.user_id),
+    index("dingtalk_employees_department_idx").on(table.department_name),
+  ]
+);
+
+// 钉钉考勤记录缓存
+export const dingtalkAttendance = pgTable("dingtalk_attendance", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  user_id: varchar("user_id", { length: 100 }).notNull(),
+  user_name: varchar("user_name", { length: 100 }).notNull(),
+  work_date: date("work_date").notNull(),
+  clock_in: timestamp("clock_in", { withTimezone: true }),
+  clock_out: timestamp("clock_out", { withTimezone: true }),
+  work_duration: numeric("work_duration", { precision: 10, scale: 2 }).default("0"),
+  attendance_result: varchar("attendance_result", { length: 50 }).default("Normal"),
+  location_result: varchar("location_result", { length: 50 }),
+  source_type: varchar("source_type", { length: 50 }),
+  plan_id: varchar("plan_id", { length: 100 }),
+  group_id: varchar("group_id", { length: 100 }),
+  time_result: varchar("time_result", { length: 50 }),
+  is_legal: varchar("is_legal", { length: 10 }),
+  synced_at: timestamp("synced_at", { withTimezone: true }).defaultNow().notNull(),
+},
+  (table) => [
+    index("dingtalk_attendance_user_id_idx").on(table.user_id),
+    index("dingtalk_attendance_work_date_idx").on(table.work_date),
+    index("dingtalk_attendance_result_idx").on(table.attendance_result),
+  ]
+);
+
+// 请假记录表（HR模块）
+export const hrLeaveRequests = pgTable("hr_leave_requests", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  employee_id: varchar("employee_id", { length: 36 }).notNull().references(() => dingtalkEmployees.id),
+  leave_type: varchar("leave_type", { length: 30 }).notNull(),
+  start_date: date("start_date").notNull(),
+  end_date: date("end_date").notNull(),
+  days: numeric("days", { precision: 4, scale: 1 }).notNull(),
+  reason: text("reason"),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  approved_by: varchar("approved_by", { length: 100 }),
+  approved_at: timestamp("approved_at", { withTimezone: true }),
+  reject_reason: text("reject_reason"),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updated_at: timestamp("updated_at", { withTimezone: true }),
+},
+  (table) => [
+    index("hr_leave_requests_employee_id_idx").on(table.employee_id),
+    index("hr_leave_requests_status_idx").on(table.status),
+  ]
+);
+
+// 钉钉API调用量追踪
+export const dingtalkApiUsage = pgTable("dingtalk_api_usage", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  api_name: varchar("api_name", { length: 100 }).notNull(),
+  call_date: date("call_date").notNull(),
+  call_count: integer("call_count").notNull().default(1),
+  updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+},
+  (table) => [
+    index("dingtalk_api_usage_unique_idx").on(table.api_name, table.call_date),
   ]
 );
 
