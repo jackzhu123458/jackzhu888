@@ -32,6 +32,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
@@ -49,6 +50,13 @@ import {
   CalendarDays,
   TrendingUp,
   Loader2,
+  Settings,
+  Shield,
+  Wifi,
+  WifiOff,
+  Eye,
+  EyeOff,
+  Save,
 } from 'lucide-react';
 
 // ====== 类型定义 ======
@@ -211,6 +219,16 @@ export default function HRPage() {
   const [filterDept, setFilterDept] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterKeyword, setFilterKeyword] = useState('');
+
+  // 钉钉设置
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [dingtalkAppKey, setDingtalkAppKey] = useState('');
+  const [dingtalkAppSecret, setDingtalkAppSecret] = useState('');
+  const [showSecret, setShowSecret] = useState(false);
+  const [settingsForm, setSettingsForm] = useState({ appKey: '', appSecret: '' });
+  const [connectionStatus, setConnectionStatus] = useState<'unconfigured' | 'connected' | 'auth_failed' | 'network_error' | 'unknown'>('unconfigured');
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // 请假弹窗
   const [leaveOpen, setLeaveOpen] = useState(false);
@@ -397,6 +415,46 @@ export default function HRPage() {
   };
 
   // 初始加载
+  // 加载钉钉配置
+  const loadSettings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/hr/settings');
+      const data = await res.json();
+      if (data.success) {
+        setDingtalkAppKey(data.data.appKey);
+        setDingtalkAppSecret(data.data.appSecret);
+        setConnectionStatus(data.data.connectionStatus);
+        setSettingsForm({ appKey: data.data.appKey || '', appSecret: data.data.appSecret || '' });
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // 保存钉钉配置
+  const saveSettings = async () => {
+    setSavingSettings(true);
+    setSettingsMessage(null);
+    try {
+      const res = await fetch('/api/hr/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appKey: dingtalkAppKey, appSecret: dingtalkAppSecret }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setConnectionStatus(data.data.connectionStatus);
+        setSettingsMessage({ type: 'success', text: '配置保存成功' });
+      } else {
+        setSettingsMessage({ type: 'error', text: data.error || '保存失败' });
+      }
+    } catch {
+      setSettingsMessage({ type: 'error', text: '网络错误' });
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
   useEffect(() => {
     loadEmployees();
   }, [loadEmployees]);
@@ -442,6 +500,17 @@ export default function HRPage() {
           <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="h-4 w-4 mr-1" />
             导出Excel
+          </Button>
+          <Button
+            variant={connectionStatus === 'connected' ? 'outline' : 'destructive'}
+            size="sm"
+            onClick={() => { setSettingsOpen(true); loadSettings(); }}
+          >
+            <Settings className="h-4 w-4 mr-1" />
+            钉钉设置
+            {connectionStatus === 'connected' && <Wifi className="h-3 w-3 ml-1 text-green-500" />}
+            {connectionStatus === 'auth_failed' && <WifiOff className="h-3 w-3 ml-1 text-red-500" />}
+            {connectionStatus === 'network_error' && <WifiOff className="h-3 w-3 ml-1 text-yellow-500" />}
           </Button>
         </div>
       </div>
@@ -924,6 +993,114 @@ export default function HRPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* 钉钉设置弹窗 */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              钉钉开放平台配置
+            </DialogTitle>
+            <DialogDescription>
+              配置钉钉开放平台的应用凭证，用于同步员工和考勤数据。
+              凭证可在钉钉开发者后台获取。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {settingsMessage && (
+              <div className={`text-sm p-3 rounded-md ${
+                settingsMessage.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' :
+                settingsMessage.type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' :
+                'bg-blue-50 text-blue-700 border border-blue-200'
+              }`}>
+                {settingsMessage.text}
+              </div>
+            )}
+
+            {/* 连接状态 */}
+            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-md">
+              {connectionStatus === 'connected' && (
+                <>
+                  <div className="h-3 w-3 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-sm text-green-700 font-medium">已连接 - 钉钉API正常</span>
+                </>
+              )}
+              {connectionStatus === 'auth_failed' && (
+                <>
+                  <div className="h-3 w-3 rounded-full bg-red-500" />
+                  <span className="text-sm text-red-700 font-medium">认证失败 - 请检查App Key和Secret</span>
+                </>
+              )}
+              {connectionStatus === 'network_error' && (
+                <>
+                  <div className="h-3 w-3 rounded-full bg-yellow-500" />
+                  <span className="text-sm text-yellow-700 font-medium">网络异常 - 无法连接钉钉服务器</span>
+                </>
+              )}
+              {connectionStatus === 'unknown' && (
+                <>
+                  <div className="h-3 w-3 rounded-full bg-gray-400" />
+                  <span className="text-sm text-gray-600">未检测 - 保存配置后自动检测连接</span>
+                </>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="dingtalk-app-key">App Key *</Label>
+              <Input
+                id="dingtalk-app-key"
+                type="text"
+                placeholder="钉钉应用的 App Key"
+                value={settingsForm.appKey}
+                onChange={(e) => setSettingsForm(prev => ({ ...prev, appKey: e.target.value }))}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-gray-500">
+                在钉钉开发者后台 → 应用开发 → 企业内部应用 → 凭证与基础信息中获取
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="dingtalk-app-secret">App Secret *</Label>
+              <Input
+                id="dingtalk-app-secret"
+                type="password"
+                placeholder="钉钉应用的 App Secret"
+                value={settingsForm.appSecret}
+                onChange={(e) => setSettingsForm(prev => ({ ...prev, appSecret: e.target.value }))}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-gray-500">
+                请妥善保管，不会明文展示。留空则保留原有配置。
+              </p>
+            </div>
+
+            <div className="p-3 bg-blue-50 rounded-md border border-blue-200">
+              <p className="text-xs text-blue-700">
+                <strong>获取步骤：</strong><br />
+                1. 登录钉钉开发者后台 (open-dev.dingtalk.com)<br />
+                2. 创建或选择企业内部应用<br />
+                3. 在"凭证与基础信息"中复制 App Key 和 App Secret<br />
+                4. 确保应用已开通"考勤"和"通讯录"权限
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSettingsOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={saveSettings} disabled={savingSettings}>
+              {savingSettings ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                  保存中...
+                </>
+              ) : '保存并检测连接'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

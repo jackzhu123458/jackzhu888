@@ -71,12 +71,25 @@ export async function getAccessToken(): Promise<string> {
     return cached.access_token;
   }
 
-  // 请求新 token
-  const appKey = process.env.DINGTALK_APP_KEY;
-  const appSecret = process.env.DINGTALK_APP_SECRET;
+  // 从数据库获取配置（优先于环境变量）
+  let appKey = process.env.DINGTALK_APP_KEY;
+  let appSecret = process.env.DINGTALK_APP_SECRET;
+
+  // 优先从数据库读取配置
+  const { data: settings } = await supabase
+    .from('system_settings')
+    .select('key, value')
+    .in('key', ['dingtalk_app_key', 'dingtalk_app_secret']);
+
+  if (settings) {
+    for (const s of settings as { key: string; value: string }[]) {
+      if (s.key === 'dingtalk_app_key' && s.value) appKey = s.value;
+      if (s.key === 'dingtalk_app_secret' && s.value) appSecret = s.value;
+    }
+  }
 
   if (!appKey || !appSecret) {
-    throw new Error('钉钉配置缺失: DINGTALK_APP_KEY 或 DINGTALK_APP_SECRET 未设置');
+    throw new Error('钉钉配置缺失: 请在人事考勤设置页面配置 App Key 和 App Secret');
   }
 
   const resp = await fetch(
