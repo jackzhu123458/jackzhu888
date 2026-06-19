@@ -43,11 +43,13 @@ import {
   Tag,
   Minus,
   ArrowRight,
+  ClipboardCheck,
 } from 'lucide-react';
 
 // Extracted components
 import DeliveryPrintArea from './delivery-print';
 import LabelPrintDialog from './label-print-dialog';
+import InspectionReportPrintDialog from './inspection-report-print-dialog';
 import CategoryGroupDialog from './category-group-dialog';
 import OrderPickerDialog from './order-picker-dialog';
 import ShipDialog from './ship-dialog';
@@ -97,6 +99,7 @@ export default function DeliveryPage() {
 
   // Label printing
   const [labelOpen, setLabelOpen] = useState(false);
+  const [inspectionPrintOpen, setInspectionPrintOpen] = useState(false);
 
   // Order picker
   const [orderPickerOpen, setOrderPickerOpen] = useState(false);
@@ -558,6 +561,9 @@ export default function DeliveryPage() {
               <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => form.delivery_note_items.length > 0 && setLabelOpen(true)} disabled={form.delivery_note_items.length === 0}>
                 <Tag className="h-3.5 w-3.5" /> 打印标签
               </Button>
+              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => form.delivery_note_items.length > 0 && setInspectionPrintOpen(true)} disabled={form.delivery_note_items.length === 0}>
+                <ClipboardCheck className="h-3.5 w-3.5" /> 打印检验报告
+              </Button>
             </>
           ) : (
             <>
@@ -571,6 +577,9 @@ export default function DeliveryPage() {
               </Button>
               <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => form.delivery_note_items.length > 0 && setLabelOpen(true)} disabled={form.delivery_note_items.length === 0}>
                 <Tag className="h-3.5 w-3.5" /> 打印标签
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => form.delivery_note_items.length > 0 && setInspectionPrintOpen(true)} disabled={form.delivery_note_items.length === 0}>
+                <ClipboardCheck className="h-3.5 w-3.5" /> 打印检验报告
               </Button>
             </>
           )}
@@ -1086,6 +1095,16 @@ export default function DeliveryPage() {
         noteNo={form.note_no}
         customerName={form.customer_name}
         onSave={(updatedItems) => { setForm(prev => ({ ...prev, delivery_note_items: updatedItems })); }}
+      />
+
+      {/* ─── Inspection Report Print Dialog ─── */}
+      <InspectionReportPrintDialog
+        open={inspectionPrintOpen}
+        onOpenChange={setInspectionPrintOpen}
+        items={form.delivery_note_items}
+        noteNo={form.note_no}
+        customerName={form.customer_name}
+        deliveryDate={form.delivery_date}
       />
 
       {/* ─── Ship Dialog ─── */}

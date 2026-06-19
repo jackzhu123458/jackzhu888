@@ -23,6 +23,7 @@ export async function GET() {
     inProgressProduction,
     pendingProduction,
     ganttData,
+    qualityAlertsData,
   ] = await Promise.all([
     // total inventory (sum quantity + reserved_qty)
     client.from('inventory').select('quantity, reserved_qty'),
@@ -68,6 +69,9 @@ export async function GET() {
 
     // gantt: all active production orders with dates
     client.from('production_orders').select('id, order_no, status, quantity, due_date, created_at, products(id, code, name), customers(id, name)').in('status', ['pending', 'in_progress']).order('due_date', { ascending: true }),
+
+    // quality alerts (active only)
+    client.from('quality_alerts').select('id, title, severity, alert_type, status, product_id, description, created_at, products(id, code, name)').eq('status', 'active').order('created_at', { ascending: false }).limit(20),
   ]);
 
   // ── Compute aggregate values ──
@@ -235,5 +239,20 @@ export async function GET() {
     inProgressProduction: inProgressArr,
     pendingProduction: pendingArr,
     ganttOrders,
+    qualityAlerts: ((qualityAlertsData as { data: Record<string, unknown>[] } | null)?.data ?? []).map((a) => {
+      const p = a.products as Record<string, unknown> | Record<string, unknown>[] | null;
+      const prod = Array.isArray(p) ? p[0] : p;
+      return {
+        id: a.id as string,
+        title: a.title as string,
+        severity: a.severity as string,
+        alert_type: a.alert_type as string,
+        status: a.status as string,
+        product_id: a.product_id as string,
+        description: a.description as string | null,
+        created_at: a.created_at as string,
+        products: prod ? { code: String(prod.code || ''), name: String(prod.name || '') } : { code: '', name: '' },
+      };
+    }),
   });
 }

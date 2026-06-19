@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import {
   Package, Users, Truck, ArrowDownRight, ArrowUpRight,
-  Factory, FileText, TrendingUp, AlertTriangle, Clock
+  Factory, FileText, TrendingUp, AlertTriangle, Clock, ShieldAlert
 } from 'lucide-react';
 
 interface DashboardData {
@@ -83,6 +83,17 @@ interface DashboardData {
     product_name: string;
     customer_id: string;
     customer_name: string;
+  }>;
+  qualityAlerts: Array<{
+    id: string;
+    title: string;
+    severity: string;
+    alert_type: string;
+    status: string;
+    product_id: string;
+    description: string | null;
+    created_at: string;
+    products: { code: string; name: string } | { code: string; name: string }[];
   }>;
 }
 
@@ -204,6 +215,47 @@ export default function DashboardPage() {
           sub=""
         />
       </div>
+
+      {/* 质量警示滚动播放 */}
+      {data.qualityAlerts && data.qualityAlerts.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-lg overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2 border-b border-red-200 bg-red-100/50">
+            <ShieldAlert className="h-4 w-4 text-red-600 flex-shrink-0" />
+            <span className="text-sm font-medium text-red-700">质量警示</span>
+            <span className="text-xs text-red-500">({data.qualityAlerts.length}条)</span>
+          </div>
+          <div className="relative overflow-hidden" style={{ height: 36 }}>
+            <style>{`
+              @keyframes qualityMarquee {
+                0% { transform: translateX(0); }
+                100% { transform: translateX(-50%); }
+              }
+              .quality-marquee {
+                animation: qualityMarquee ${Math.max(data.qualityAlerts.length * 8, 20)}s linear infinite;
+              }
+              .quality-marquee:hover {
+                animation-play-state: paused;
+              }
+            `}</style>
+            <div className="quality-marquee flex items-center gap-8 whitespace-nowrap absolute" style={{ top: 6 }}>
+              {[...data.qualityAlerts, ...data.qualityAlerts].map((alert, i) => {
+                const severityIcon = alert.severity === 'critical' ? '🔴' : alert.severity === 'high' ? '🟠' : alert.severity === 'medium' ? '🟡' : '🔵';
+                const prod = Array.isArray(alert.products) ? alert.products[0] : alert.products;
+                const severityBg = alert.severity === 'critical' ? 'bg-red-600 text-white' : alert.severity === 'high' ? 'bg-orange-500 text-white' : alert.severity === 'medium' ? 'bg-yellow-400 text-gray-900' : 'bg-blue-400 text-white';
+                const severityLabel = alert.severity === 'critical' ? '严重' : alert.severity === 'high' ? '高' : alert.severity === 'medium' ? '中' : '低';
+                return (
+                  <span key={`${alert.id}-${i}`} className="inline-flex items-center gap-1.5 text-sm">
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${severityBg}`}>{severityLabel}</span>
+                    <span className="text-gray-900 font-medium">{alert.title}</span>
+                    {prod && <span className="text-gray-500">({prod.code} {prod.name})</span>}
+                    <span className="text-red-400">|</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 中间区域：生产计划甘特图 + 生产状态 */}
       <div className="grid grid-cols-3 gap-6">

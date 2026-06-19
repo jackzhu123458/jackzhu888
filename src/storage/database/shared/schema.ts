@@ -400,6 +400,61 @@ export const deliveryCategoryGroups = pgTable(
   }
 );
 
+// ========== 质量管理 ==========
+
+// 质量警示
+export const qualityAlerts = pgTable(
+  "quality_alerts",
+  {
+    id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+    product_id: varchar("product_id", { length: 36 }).notNull().references(() => products.id),
+    alert_type: varchar("alert_type", { length: 50 }).notNull().default("defect"), // defect=缺陷, nonconformity=不合格, complaint=客户投诉, recall=召回
+    severity: varchar("severity", { length: 20 }).notNull().default("medium"), // low=低, medium=中, high=高, critical=严重
+    title: varchar("title", { length: 200 }).notNull(),
+    description: text("description"),
+    status: varchar("status", { length: 20 }).notNull().default("active"), // active=活跃, resolved=已解决, closed=已关闭
+    resolved_at: timestamp("resolved_at", { withTimezone: true }),
+    resolved_by: varchar("resolved_by", { length: 100 }),
+    resolution: text("resolution"),
+    created_by: varchar("created_by", { length: 100 }),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("quality_alerts_product_id_idx").on(table.product_id),
+    index("quality_alerts_status_idx").on(table.status),
+    index("quality_alerts_severity_idx").on(table.severity),
+  ]
+);
+
+// 出厂检验报告
+export const inspectionReports = pgTable(
+  "inspection_reports",
+  {
+    id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+    report_no: varchar("report_no", { length: 50 }).notNull().unique(),
+    delivery_note_id: varchar("delivery_note_id", { length: 36 }).references(() => deliveryNotes.id),
+    product_id: varchar("product_id", { length: 36 }).notNull().references(() => products.id),
+    inspection_date: timestamp("inspection_date", { withTimezone: true }).defaultNow().notNull(),
+    result: varchar("result", { length: 20 }).notNull().default("passed"), // passed=合格, failed=不合格, conditional=有条件接收
+    inspector: varchar("inspector", { length: 100 }),
+    approved_by: varchar("approved_by", { length: 100 }),
+    batch_no: varchar("batch_no", { length: 100 }),
+    quantity: numeric("quantity", { precision: 12, scale: 2 }),
+    sample_quantity: numeric("sample_quantity", { precision: 12, scale: 2 }),
+    items: text("items"), // JSON: 检验项目明细 [{name, standard, result, passed}]
+    conclusion: text("conclusion"),
+    remark: text("remark"),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("inspection_reports_delivery_note_id_idx").on(table.delivery_note_id),
+    index("inspection_reports_product_id_idx").on(table.product_id),
+    index("inspection_reports_report_no_idx").on(table.report_no),
+  ]
+);
+
 // 用户-角色关联表
 export const userRoles = pgTable(
   "user_roles",

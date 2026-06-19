@@ -30,6 +30,7 @@ const navItems: NavItem[] = [
   { href: '/inbound', label: '入库单', icon: '↓', permission: 'inbound' },
   { href: '/inventory', label: '库存管理', icon: '▦', permission: 'inventory' },
   { href: '/delivery', label: '送货单', icon: '→', permission: 'delivery' },
+  { href: '/quality', label: '质量管理', icon: '!', permission: 'quality' },
   { href: '/reconciliation', label: '对账管理', icon: '▦', permission: 'reconciliation' },
   {
     label: '系统管理',

@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
-import { ChevronDown, ChevronRight, Plus, Play, CheckCircle2, XCircle, Eye, Search } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, Play, CheckCircle2, XCircle, Eye, Search, ShieldAlert } from 'lucide-react';
 import { translateUnit } from '@/lib/utils';
 
 /* ---------- 类型 ---------- */
@@ -73,6 +73,7 @@ export default function ProductionPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [qualityAlerts, setQualityAlerts] = useState<Array<{ product_id: string; severity: string; title: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [filterProductId, setFilterProductId] = useState('all');
   const [hideDelivered, setHideDelivered] = useState(true);
@@ -131,6 +132,7 @@ export default function ProductionPage() {
     fetch('/api/products').then(r => r.json()).then(d => setProducts(Array.isArray(d) ? d : d.products || [])).catch(() => {});
     fetch('/api/customers').then(r => r.json()).then(d => setCustomers(Array.isArray(d) ? d : d.customers || [])).catch(() => {});
     fetch('/api/warehouses').then(r => r.json()).then(d => setWarehouses(Array.isArray(d) ? d : d.warehouses || [])).catch(() => {});
+    fetch('/api/quality/alerts?status=active&limit=100').then(r => r.json()).then(d => setQualityAlerts(Array.isArray(d) ? d : d.alerts || [])).catch(() => {});
   }, [fetchOrders]);
 
   /* ---------- helpers ---------- */
@@ -534,7 +536,19 @@ export default function ProductionPage() {
             <div className="mt-6 space-y-4">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div><span className="text-gray-500">客户：</span>{detailOrder.customers?.name || '未分配'}</div>
-                <div><span className="text-gray-500">产品：</span>{detailOrder.products?.name}</div>
+                <div><span className="text-gray-500">产品：</span>{detailOrder.products?.name}
+                  {(() => {
+                    const pAlerts = qualityAlerts.filter(a => a.product_id === detailOrder.product_id);
+                    if (pAlerts.length === 0) return null;
+                    const isCritical = pAlerts.some(a => a.severity === 'critical' || a.severity === 'high');
+                    return (
+                      <span className="inline-flex items-center gap-1 ml-1" title={pAlerts.map(a => a.title).join('; ')}>
+                        <ShieldAlert className={`h-3.5 w-3.5 ${isCritical ? 'text-red-600' : 'text-yellow-600'}`} />
+                        <span className={`text-xs px-1 py-0.5 rounded ${isCritical ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{pAlerts.length}条警示</span>
+                      </span>
+                    );
+                  })()}
+                </div>
                 <div><span className="text-gray-500">数量：</span><span className="font-mono">{detailOrder.quantity} {translateUnit(detailOrder.products?.unit || '')}</span></div>
                 <div><span className="text-gray-500">状态：</span>
                   <Badge variant="outline" className={statusMap[detailOrder.status]?.color || ''}>
@@ -573,15 +587,37 @@ export default function ProductionPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(detailOrder.production_order_materials || []).map((m, i) => (
-                      <tr key={i} className="border-t border-gray-100">
-                        <td className="px-3 py-2 font-mono">{m.products?.code || '-'}</td>
-                        <td className="px-3 py-2">{m.products?.name || '-'}</td>
-                        <td className="px-3 py-2 text-right font-mono">{m.required_qty}</td>
-                        <td className="px-3 py-2 text-right font-mono">{m.prepared_qty}</td>
-                        <td className="px-3 py-2">{translateUnit(m.products?.unit || '-')}</td>
-                      </tr>
-                    ))}
+                    {(detailOrder.production_order_materials || []).map((m, i) => {
+                      const matAlerts = qualityAlerts.filter(a => a.product_id === m.product_id);
+                      const hasCriticalAlert = matAlerts.some(a => a.severity === 'critical' || a.severity === 'high');
+                      return (
+                        <tr key={i} className={`border-t border-gray-100 ${hasCriticalAlert ? 'bg-red-50' : matAlerts.length > 0 ? 'bg-yellow-50' : ''}`}>
+                          <td className="px-3 py-2 font-mono">
+                            <div className="flex items-center gap-1">
+                              {m.products?.code || '-'}
+                              {matAlerts.length > 0 && (
+                                <span title={matAlerts.map(a => a.title).join('; ')} className="inline-flex items-center">
+                                  <ShieldAlert className={`h-3.5 w-3.5 ${hasCriticalAlert ? 'text-red-600' : 'text-yellow-600'}`} />
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-1">
+                              {m.products?.name || '-'}
+                              {matAlerts.length > 0 && (
+                                <span className={`text-xs px-1 py-0.5 rounded ${hasCriticalAlert ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                  {matAlerts.length}条警示
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono">{m.required_qty}</td>
+                          <td className="px-3 py-2 text-right font-mono">{m.prepared_qty}</td>
+                          <td className="px-3 py-2">{translateUnit(m.products?.unit || '-')}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
