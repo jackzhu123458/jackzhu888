@@ -43,6 +43,7 @@ interface QualityAlert {
   resolved_by: string | null;
   resolution: string | null;
   created_by: string | null;
+  images: string[] | null;
   created_at: string;
   updated_at: string | null;
   products: Product | Product[];
@@ -132,7 +133,10 @@ export default function QualityPage() {
   const [formTitle, setFormTitle] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [formResolution, setFormResolution] = useState('');
+  const [formImages, setFormImages] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // Inspection form
   const [inspProductId, setInspProductId] = useState('');
@@ -179,6 +183,8 @@ export default function QualityPage() {
     setFormTitle('');
     setFormDescription('');
     setFormResolution('');
+    setFormImages([]);
+    setSaveError('');
     setProductSearch('');
     setAlertDialogOpen(true);
   };
@@ -191,45 +197,64 @@ export default function QualityPage() {
     setFormTitle(alert.title);
     setFormDescription(alert.description || '');
     setFormResolution(alert.resolution || '');
+    setFormImages(alert.images || []);
+    setSaveError('');
     setProductSearch('');
     setAlertDialogOpen(true);
   };
 
   const saveAlert = async () => {
     if (!formProductId || !formTitle) return;
-
-    if (editingAlert) {
-      // Update
-      const body: Record<string, unknown> = {
-        id: editingAlert.id,
-        severity: formSeverity,
-        title: formTitle,
-        description: formDescription,
-      };
-      if (formResolution) {
-        body.resolution = formResolution;
-        body.status = 'resolved';
-      }
-      await fetch('/api/quality/alerts', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-    } else {
-      await fetch('/api/quality/alerts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          product_id: formProductId,
-          alert_type: formAlertType,
+    setSaving(true);
+    setSaveError('');
+    try {
+      if (editingAlert) {
+        // Update
+        const body: Record<string, unknown> = {
+          id: editingAlert.id,
           severity: formSeverity,
           title: formTitle,
           description: formDescription,
-        }),
-      });
+          images: formImages,
+        };
+        if (formResolution) {
+          body.resolution = formResolution;
+          body.status = 'resolved';
+        }
+        const res = await fetch('/api/quality/alerts', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || '保存失败');
+        }
+      } else {
+        const res = await fetch('/api/quality/alerts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            product_id: formProductId,
+            alert_type: formAlertType,
+            severity: formSeverity,
+            title: formTitle,
+            description: formDescription,
+            images: formImages,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || '保存失败');
+        }
+      }
+      setAlertDialogOpen(false);
+      loadData();
+    } catch (e: unknown) {
+      setSaveError(e instanceof Error ? e.message : '保存失败');
+    } finally {
+      setSaving(false);
     }
-    setAlertDialogOpen(false);
-    loadData();
   };
 
   const resolveAlert = async (alert: QualityAlert) => {
@@ -488,6 +513,15 @@ export default function QualityPage() {
                         {alert.description && (
                           <div className="text-xs text-gray-600 mt-1">{alert.description}</div>
                         )}
+                        {alert.images && alert.images.length > 0 && (
+                          <div className="flex gap-1.5 mt-1.5">
+                            {alert.images.map((url, idx) => (
+                              <a key={idx} href={url} target="_blank" rel="noopener noreferrer">
+                                <img src={url} alt={`照片${idx + 1}`} className="w-12 h-12 object-cover rounded border hover:opacity-80 transition-opacity" />
+                              </a>
+                            ))}
+                          </div>
+                        )}
                         {alert.resolution && (
                           <div className="text-xs text-green-600 mt-1">
                             解决方案: {alert.resolution}
@@ -692,16 +726,57 @@ export default function QualityPage() {
               <label className="text-sm font-medium text-gray-700 mb-1 block">详细描述</label>
               <Textarea value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder="缺陷现象、影响范围、发现过程等" rows={3} />
             </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">现场照片</label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {formImages.map((url, idx) => (
+                  <div key={idx} className="relative w-20 h-20 border rounded overflow-hidden group">
+                    <img src={url} alt={`照片${idx + 1}`} className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setFormImages(prev => prev.filter((_, i) => i !== idx))}
+                      className="absolute top-0 right-0 bg-red-500 text-white w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                    >×</button>
+                  </div>
+                ))}
+                <label className="w-20 h-20 border-2 border-dashed border-gray-300 rounded flex items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 10 * 1024 * 1024) { alert('图片不能超过10MB'); return; }
+                      try {
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        const res = await fetch('/api/quality/upload', { method: 'POST', body: formData });
+                        if (!res.ok) throw new Error('上传失败');
+                        const data = await res.json();
+                        setFormImages(prev => [...prev, data.url]);
+                      } catch { alert('图片上传失败'); }
+                      e.target.value = '';
+                    }}
+                  />
+                  <span className="text-gray-400 text-2xl">+</span>
+                </label>
+              </div>
+              <p className="text-xs text-gray-400">支持 JPG/PNG，单张不超过10MB</p>
+            </div>
             {editingAlert && editingAlert.status === 'active' && (
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">解决方案（填写后自动标记为已解决）</label>
                 <Textarea value={formResolution} onChange={e => setFormResolution(e.target.value)} placeholder="解决措施、预防方案等" rows={2} />
               </div>
             )}
+            {saveError && <p className="text-sm text-red-600">{saveError}</p>}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAlertDialogOpen(false)}>取消</Button>
-            <Button onClick={saveAlert} disabled={!formProductId || !formTitle}>保存</Button>
+            <Button variant="outline" onClick={() => setAlertDialogOpen(false)} disabled={saving}>取消</Button>
+            <Button onClick={saveAlert} disabled={!formProductId || !formTitle || saving}>
+              {saving ? '保存中...' : '保存'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

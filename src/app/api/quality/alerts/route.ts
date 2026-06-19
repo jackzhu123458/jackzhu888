@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { product_id, alert_type, severity, title, description, created_by } = body;
+    const { product_id, alert_type, severity, title, description, images, created_by } = body;
 
     if (!product_id || !title) {
       return NextResponse.json({ error: '产品ID和标题为必填' }, { status: 400 });
@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
         severity: severity || 'medium',
         title,
         description: description || '',
+        images: images || [],
         status: 'active',
         created_by: created_by || '',
       }),
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, status, severity, title, description, resolution, resolved_by } = body;
+    const { id, status, severity, title, description, resolution, resolved_by, images } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID为必填' }, { status: 400 });
@@ -102,6 +103,7 @@ export async function PUT(request: NextRequest) {
     if (title !== undefined) updateData.title = title;
     if (description !== undefined) updateData.description = description;
     if (resolution !== undefined) updateData.resolution = resolution;
+    if (images !== undefined) updateData.images = images;
 
     const res = await fetch(`${getBaseUrl()}/quality_alerts?id=eq.${id}`, {
       method: 'PATCH',
