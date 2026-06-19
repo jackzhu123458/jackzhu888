@@ -103,11 +103,10 @@ export default function CategoryGroupDialog({
           {editingGroups.map((group, idx) => {
             const groupCats = parseCategories(group.categories);
             const isExpanded = expandedGroups.has(idx);
-            // 该组可选的类目：已分配给本组的 + 未分配给任何组的
+            // 该组可选的类目：已分配给本组的 + 未分配给任何组的（互斥：一个类目只能属于一个分组）
             const availableForGroup = availableCategories.filter((cat) => {
-              if (groupCats.includes(cat)) return true;
-              return !assignedCategories.has(cat) || 
-                editingGroups.some((g, gi) => gi !== idx && parseCategories(g.categories).includes(cat));
+              if (groupCats.includes(cat)) return true; // 本组已分配的
+              return !assignedCategories.has(cat); // 未被任何组分配的
             });
 
             return (
