@@ -1,27 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { S3Storage } from 'coze-coding-dev-sdk';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { uploadFile, deleteFile, getFileUrl } from '@/lib/storage';
 
 function getSupabase() {
   return getSupabaseClient();
 }
 
-let cachedStorage: S3Storage | null = null;
-function getStorage() {
-  if (!cachedStorage) {
-    cachedStorage = new S3Storage({
-      endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
-      accessKey: '',
-      secretKey: '',
-      bucketName: process.env.COZE_BUCKET_NAME,
-      region: 'cn-beijing',
-    });
-  }
-  return cachedStorage;
-}
-
 // GET /api/drawings?product_id=xxx — 获取产品的图纸列表
-// GET /api/drawings?file_key=xxx — 获取单个图纸的签名URL（用于预览/打印）
+// GET /api/drawings?file_key=xxx — 获取单个图纸的URL（用于预览/打印）
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -29,12 +15,9 @@ export async function GET(request: NextRequest) {
     const fileKey = searchParams.get('file_key');
     const keyword = searchParams.get('keyword');
 
-    // 单独获取签名URL（预览/打印用）
+    // 单独获取文件URL（预览/打印用）
     if (fileKey) {
-      const url = await getStorage().generatePresignedUrl({
-        key: fileKey,
-        expireTime: 3600,
-      });
+      const url = await getFileUrl(fileKey);
       return NextResponse.json({ url });
     }
 
@@ -68,20 +51,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // 为每个图纸生成签名URL
-    const drawingsWithUrl = await Promise.all(
-      (data || []).map(async (d: Record<string, unknown>) => {
-        try {
-          const url = await getStorage().generatePresignedUrl({
-            key: d.file_key as string,
-            expireTime: 3600,
-          });
-          return { ...d, url };
-        } catch {
-          return { ...d, url: null };
-        }
-      })
-    );
+    // 为每个图纸生成URL
+    const drawingsWithUrl = await Promise.all((data || []).map(async (d: Record<string, unknown>) => {
+      try {
+        const url = await getFileUrl(d.file_key as string);
+        return { ...d, url };
+      } catch {
+        return { ...d, url: null };
+      }
+    }));
 
     return NextResponse.json(drawingsWithUrl);
   } catch (err) {
@@ -102,21 +80,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '缺少文件或产品ID' }, { status: 400 });
     }
 
-    // 上传文件到对象存储
+    // 上传文件
     const buffer = Buffer.from(await file.arrayBuffer());
     const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const fileKey = await getStorage().uploadFile({
-      fileContent: buffer,
-      fileName: `drawings/${productId}/${sanitizedFileName}`,
-      contentType: file.type || 'application/octet-stream',
-    });
+    const result = await uploadFile(
+      buffer,
+      `drawings/${productId}/${sanitizedFileName}`,
+      file.type || 'application/octet-stream'
+    );
 
     // 保存图纸记录到数据库
     const { data, error } = await getSupabase()
       .from('product_drawings')
       .insert({
         product_id: productId,
-        file_key: fileKey,
+        file_key: result.fileKey,
         file_name: file.name,
         file_type: file.type,
         file_size: file.size,
@@ -127,15 +105,12 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       // 删除已上传的文件
-      await getStorage().deleteFile({ fileKey });
+      await deleteFile(result.fileKey);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // 生成签名URL
-    const url = await getStorage().generatePresignedUrl({
-      key: fileKey,
-      expireTime: 3600,
-    });
+    // 生成URL
+    const url = await getFileUrl(result.fileKey);
 
     return NextResponse.json({ ...data, url }, { status: 201 });
   } catch (err) {
@@ -165,8 +140,8 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: '图纸不存在' }, { status: 404 });
     }
 
-    // 删除对象存储中的文件
-    await getStorage().deleteFile({ fileKey: (drawing as Record<string, unknown>).file_key as string });
+    // 删除存储中的文件
+    await deleteFile((drawing as Record<string, unknown>).file_key as string);
 
     // 删除数据库记录
     const { error } = await getSupabase().from('product_drawings').delete().eq('id', id);

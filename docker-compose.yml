@@ -72,8 +72,13 @@ services:
       - COZE_WORKLOAD_IDENTITY_API_KEY=${COZE_WORKLOAD_IDENTITY_API_KEY:-}
       - COZE_BUCKET_ENDPOINT_URL=${COZE_BUCKET_ENDPOINT_URL:-}
       - COZE_BUCKET_NAME=${COZE_BUCKET_NAME:-}
+      - STORAGE_MODE=${STORAGE_MODE:-local}
+      - LOCAL_STORAGE_PATH=/app/uploads
+    volumes:
+      - erp-uploads:/app/uploads
     env_file:
       - .env
 
 volumes:
   erp-db-data:
+  erp-uploads:
