@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
 import { ChevronDown, ChevronRight, Plus, Play, CheckCircle2, XCircle, Eye, Search, ShieldAlert, Workflow } from 'lucide-react';
 import { translateUnit } from '@/lib/utils';
+import { ProductSearchInput } from '@/components/shared/product-search-input';
+import type { Product, Customer, Warehouse } from '@/types';
 import ProductionDetailDialog from './production-detail-dialog';
 
 /* ---------- 类型 ---------- */
@@ -38,20 +40,6 @@ export interface Order {
     products?: { id: string; code: string; name: string; unit?: string } | null;
   }>;
 }
-
-interface Product {
-  id: string;
-  code: string;
-  name: string;
-  spec?: string;
-  unit?: string;
-  type?: string;
-  category?: string;
-  price?: number;
-}
-
-interface Customer { id: string; name: string; code?: string }
-interface Warehouse { id: string; name: string }
 
 /* ---------- 状态配色 ---------- */
 const statusMap: Record<string, { label: string; color: string; bg: string }> = {
@@ -200,15 +188,12 @@ export default function ProductionPage() {
     setSheetOpen(true);
   };
 
-  const handleSelectProduct = (pid: string) => {
+  const handleSelectProduct = (product: Product) => {
+    const pid = product.id;
     setFormProductId(pid);
-    const prod = products.find((p) => p.id === pid);
-    if (prod) {
-      setProductSearch(`${prod.code} - ${prod.name}`);
-    }
+    setProductSearch(`${product.code} - ${product.name}`);
     // 自动从 BOM 加载子料
-    if (prod) {
-      fetch(`/api/bom?parent_id=${pid}`).then(r => r.json()).then((data: unknown) => {
+    fetch(`/api/bom?parent_id=${pid}`).then(r => r.json()).then((data: unknown) => {
         const bomList = Array.isArray(data) ? data : (data as { bom?: unknown[] }).bom || [];
         if (bomList.length > 0) {
           const mats = bomList.map((b: { child_product_id: string; quantity: number }) => ({
@@ -225,7 +210,6 @@ export default function ProductionPage() {
           setMaterialSearches(newSearches);
         }
       }).catch(() => {});
-    }
   };
 
   const addMaterialRow = () => setFormMaterials([...formMaterials, { product_id: '', required_qty: '' }]);
@@ -736,50 +720,15 @@ export default function ProductionPage() {
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700 mb-1.5 block">生产产品 *</label>
-            <div className="relative">
-              <Input
-                placeholder="输入编码或名称搜索产品"
-                value={formProductId ? productSearch : (productSearchFocused ? productSearch : '')}
-                onChange={(e) => {
-                  setProductSearch(e.target.value);
-                  setFormProductId('');
-                }}
-                onFocus={() => setProductSearchFocused(true)}
-                onBlur={() => setTimeout(() => setProductSearchFocused(false), 200)}
-              />
-              {formProductId && (
-                <button
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  onClick={() => { setFormProductId(''); setProductSearch(''); setFormMaterials([]); setMaterialSearches({}); }}
-                >✕</button>
-              )}
-              {productSearchFocused && !formProductId && productSearch && (
-                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
-                  {producibleProducts
-                    .filter((p) => {
-                      const q = productSearch.toLowerCase();
-                      return p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q);
-                    })
-                    .slice(0, 20)
-                    .map((p) => (
-                      <div
-                        key={p.id}
-                        className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm"
-                        onMouseDown={() => handleSelectProduct(p.id)}
-                      >
-                        <span className="font-mono text-gray-500">{p.code}</span>
-                        <span className="ml-2">{p.name}</span>
-                      </div>
-                    ))}
-                  {producibleProducts.filter((p) => {
-                    const q = productSearch.toLowerCase();
-                    return p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q);
-                  }).length === 0 && (
-                    <div className="px-3 py-2 text-sm text-gray-400">无匹配产品</div>
-                  )}
-                </div>
-              )}
-            </div>
+            <ProductSearchInput
+              products={producibleProducts}
+              value={productSearch}
+              onChange={setProductSearch}
+              selectedId={formProductId}
+              onSelect={handleSelectProduct}
+              onClear={() => { setFormProductId(''); setProductSearch(''); setFormMaterials([]); setMaterialSearches({}); }}
+              placeholder="输入编码或名称搜索产品"
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
