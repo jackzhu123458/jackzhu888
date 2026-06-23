@@ -39,10 +39,12 @@ function StepNameInput({
   value,
   onChange,
   templates,
+  onAddTemplate,
 }: {
   value: string;
   onChange: (val: string) => void;
   templates: string[];
+  onAddTemplate?: (name: string) => void;
 }) {
   const [focused, setFocused] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -61,6 +63,12 @@ function StepNameInput({
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  const handleAddNew = (name: string) => {
+    onChange(name);
+    onAddTemplate?.(name);
+    setFocused(false);
+  };
 
   return (
     <div ref={containerRef} className="relative flex-1 min-w-0">
@@ -81,7 +89,7 @@ function StepNameInput({
               className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 text-blue-600 flex items-center gap-1"
               onMouseDown={(e) => {
                 e.preventDefault();
-                setFocused(false);
+                handleAddNew(value.trim());
               }}
             >
               <Plus className="w-3 h-3" /> 新增工序 &ldquo;{value.trim()}&rdquo;
@@ -107,7 +115,7 @@ function StepNameInput({
               className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 text-blue-600 border-t border-gray-100 flex items-center gap-1"
               onMouseDown={(e) => {
                 e.preventDefault();
-                setFocused(false);
+                handleAddNew(value.trim());
               }}
             >
               <Plus className="w-3 h-3" /> 新增工序 &ldquo;{value.trim()}&rdquo;
@@ -345,6 +353,21 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
       setError('');
     }
   }, [open, productId, loadSteps, loadTemplates]);
+
+  /* 同步新工序名到模板库 */
+  const addTemplateIfNeeded = useCallback(async (name: string) => {
+    if (templates.some(t => t.step_name === name)) return;
+    try {
+      const res = await fetch('/api/process-step-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step_name: name }),
+      });
+      if (res.ok) {
+        loadTemplates(); // 刷新模板列表
+      }
+    } catch { /* ignore */ }
+  }, [templates, loadTemplates]);
 
   /* ---- 步骤操作 ---- */
 
@@ -584,6 +607,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
                             value={mainStep.step_name}
                             onChange={(val) => updateStep(idx, 'step_name', val)}
                             templates={allStepNames}
+                            onAddTemplate={addTemplateIfNeeded}
                           />
                           <div className="w-24">
                             <Input
@@ -631,6 +655,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
                             value={bs.step_name}
                             onChange={(val) => updateStep(idx, 'step_name', val)}
                             templates={allStepNames}
+                            onAddTemplate={addTemplateIfNeeded}
                           />
                           <div className="w-24">
                             <Input
