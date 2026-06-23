@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ChevronRight, ChevronDown, FileImage, Download, ZoomIn, ZoomOut, X, Check, Workflow, Image as ImageIcon } from 'lucide-react';
 
@@ -209,6 +209,7 @@ export default function ProductionDetailDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[100vw] w-[100vw] h-[100vh] p-0 gap-0 flex flex-col rounded-none border-0">
+        <DialogTitle className="sr-only">生产工单详情 - {order.order_no}</DialogTitle>
         {/* 顶部标题栏 */}
         <div className="flex items-center justify-between px-6 py-3 border-b bg-gray-50 flex-shrink-0">
           <div className="flex items-center gap-4">
