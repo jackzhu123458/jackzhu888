@@ -1,8 +1,15 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -22,7 +29,60 @@ import {
   AlertDialogAction,
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, Star, Edit, Search, GripVertical, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Star, Edit, Search, ChevronDown, ChevronRight } from 'lucide-react';
+
+/* ---------- 预定义工序名称列表 ---------- */
+const PREDEFINED_STEPS = [
+  '落料',
+  '冲孔',
+  '折弯',
+  '成型',
+  '焊接',
+  '铆接',
+  '攻牙',
+  '车削',
+  '铣削',
+  '磨削',
+  '钻削',
+  '拉削',
+  '抛光',
+  '清洗',
+  '热处理',
+  '表面处理',
+  '喷涂',
+  '电镀',
+  '氧化',
+  '装配',
+  '组装',
+  '放风轮合进风电机蜗壳',
+  '外观检查',
+  '尺寸检测',
+  '功能测试',
+  '气密测试',
+  '包装',
+  '装箱',
+  '入库',
+  '出库',
+  '剪切',
+  '拉伸',
+  '旋压',
+  '浇铸',
+  '压铸',
+  '锻造',
+  '注塑',
+  '挤出',
+  '烘烤',
+  '固化',
+  '涂装',
+  '丝印',
+  '激光切割',
+  '水刀切割',
+  '线切割',
+  '电火花',
+  '研磨',
+  '去毛刺',
+  '防锈处理',
+];
 
 /* ---------- 类型 ---------- */
 interface ProcessStep {
@@ -72,6 +132,15 @@ export default function ProcessFlowPage() {
 
   // 展开状态
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  /* ---------- 可选的工序名称（合并预定义 + 数据库已有的） ---------- */
+  const availableStepNames = useMemo(() => {
+    const dbNames = new Set<string>();
+    flows.forEach(f => f.steps.forEach(s => dbNames.add(s.step_name)));
+    // 合并：预定义 + 数据库已有，去重排序
+    const all = new Set([...PREDEFINED_STEPS, ...dbNames]);
+    return Array.from(all).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  }, [flows]);
 
   /* ---------- fetch ---------- */
   const fetchFlows = useCallback(async () => {
@@ -413,7 +482,7 @@ export default function ProcessFlowPage() {
           <DialogHeader>
             <DialogTitle>工艺流程 - {editProductName}</DialogTitle>
             <DialogDescription>
-              编辑该产品的生产工艺流程步骤，支持排序和关键工序标记
+              编辑该产品的生产工艺流程步骤，工序名称从现有工艺中选择
             </DialogDescription>
           </DialogHeader>
 
@@ -448,14 +517,21 @@ export default function ProcessFlowPage() {
                     >▼</button>
                   </div>
 
-                  {/* 工序名称 */}
+                  {/* 工序名称 - 下拉选择 */}
                   <div className="flex-1 min-w-0">
-                    <Input
+                    <Select
                       value={step.step_name}
-                      onChange={(e) => updateStep(idx, 'step_name', e.target.value)}
-                      placeholder="工序名称，如：落料、冲孔、折弯"
-                      className="h-8 text-sm"
-                    />
+                      onValueChange={(val) => updateStep(idx, 'step_name', val)}
+                    >
+                      <SelectTrigger className="h-8 text-sm">
+                        <SelectValue placeholder="选择工序" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableStepNames.map(name => (
+                          <SelectItem key={name} value={name}>{name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   {/* 预估工时 */}
