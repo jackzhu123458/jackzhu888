@@ -75,10 +75,31 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { materials, ...orderFields } = body;
 
+  // 生成生产订单号: PO + 年月日 + 4位序号
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+  const prefix = `PO${dateStr}`;
+
+  // 查找今天已有的最大序号
+  const { data: existingOrders } = await client
+    .from('production_orders')
+    .select('order_no')
+    .like('order_no', `${prefix}%`)
+    .order('order_no', { ascending: false })
+    .limit(1);
+
+  let nextSeq = 1;
+  if (existingOrders && existingOrders.length > 0) {
+    const lastNo = (existingOrders[0] as { order_no: string }).order_no;
+    const lastSeq = parseInt(lastNo.slice(prefix.length), 10);
+    if (!isNaN(lastSeq)) nextSeq = lastSeq + 1;
+  }
+  const orderNo = `${prefix}${String(nextSeq).padStart(4, '0')}`;
+
   // 创建订单
   const { data: order, error: oErr } = await client
     .from('production_orders')
-    .insert(orderFields)
+    .insert({ ...orderFields, order_no: orderNo, status: orderFields.status || 'pending' })
     .select()
     .maybeSingle();
   if (oErr) return NextResponse.json({ error: oErr.message }, { status: 500 });

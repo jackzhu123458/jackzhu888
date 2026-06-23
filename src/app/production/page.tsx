@@ -91,6 +91,7 @@ export default function ProductionPage() {
   const [formRemark, setFormRemark] = useState('');
   const [formMaterials, setFormMaterials] = useState<Array<{ product_id: string; required_qty: string }>>([]);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // 模糊搜索
   const [productSearch, setProductSearch] = useState('');
@@ -193,6 +194,7 @@ export default function ProductionPage() {
     setFormStartDate(''); setFormDueDate(''); setFormRemark('');
     setFormMaterials([]);
     setProductSearch(''); setMaterialSearches({});
+    setSaveError('');
     setSheetOpen(true);
   };
 
@@ -238,6 +240,7 @@ export default function ProductionPage() {
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveError('');
     const body = {
       customer_id: formCustomerId || null,
       product_id: formProductId,
@@ -251,15 +254,24 @@ export default function ProductionPage() {
       })),
     };
     try {
+      let res: Response;
       if (editOrder) {
-        await fetch('/api/production', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editOrder.id, ...body }) });
+        res = await fetch('/api/production', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editOrder.id, ...body }) });
       } else {
-        await fetch('/api/production', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        res = await fetch('/api/production', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      }
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setSaveError(data.error || '保存失败');
+        return;
       }
       setSheetOpen(false);
       fetchOrders();
-    } catch { /* ignore */ }
-    setSaving(false);
+    } catch (err) {
+      setSaveError('网络错误，请重试');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleStatusChange = async (id: string, status: string) => {
@@ -861,6 +873,9 @@ export default function ProductionPage() {
             </Button>
             <Button variant="outline" onClick={() => setSheetOpen(false)} className="flex-1">取消</Button>
           </div>
+          {saveError && (
+            <p className="text-sm text-red-600 mt-2">{saveError}</p>
+          )}
         </div>
       </DialogContent>
     </Dialog>
