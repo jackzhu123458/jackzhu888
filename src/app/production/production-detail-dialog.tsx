@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { ChevronRight, ChevronDown, FileImage, Download, ZoomIn, ZoomOut, X, Check, Workflow, Image as ImageIcon } from 'lucide-react';
+import { ChevronRight, ChevronDown, FileImage, FileText, Download, ZoomIn, ZoomOut, X, Check, Workflow, Image as ImageIcon, ArrowLeft } from 'lucide-react';
 
 interface ProcessStep {
   id?: string;
@@ -211,9 +211,19 @@ export default function ProductionDetailDialog({
       <DialogContent showCloseButton={false} className="!max-w-[100vw] w-[100vw] h-[100vh] !p-0 !gap-0 !translate-x-0 !translate-y-0 !top-0 !left-0 flex flex-col !rounded-none !border-0 !shadow-none">
         <DialogTitle className="sr-only">生产工单详情 - {order.order_no}</DialogTitle>
         {/* 顶部标题栏 */}
-        <div className="flex items-center justify-between px-6 py-3 border-b bg-gray-50 flex-shrink-0">
-          <div className="flex items-center gap-4">
-            <h2 className="text-lg font-semibold text-gray-900">生产工单详情</h2>
+        <div className="flex items-center justify-between px-4 py-2.5 border-b bg-gray-50 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-gray-600 hover:text-gray-900"
+              onClick={() => onOpenChange(false)}
+            >
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              返回
+            </Button>
+            <div className="h-5 w-px bg-gray-300" />
+            <h2 className="text-base font-semibold text-gray-900">生产工单详情</h2>
             <span className="font-mono text-sm text-gray-500">{order.order_no}</span>
             <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusColor[order.status] || 'bg-gray-100 text-gray-600'}`}>
               {statusLabel[order.status] || order.status}
@@ -363,16 +373,20 @@ export default function ProductionDetailDialog({
                 </span>
               </div>
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setZoom(z => Math.min(z + 0.25, 3))}>
-                  <ZoomIn className="w-3.5 h-3.5" />
-                </Button>
-                <span className="text-xs text-gray-500 w-12 text-center">{Math.round(zoom * 100)}%</span>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setZoom(z => Math.max(z - 0.25, 0.25))}>
-                  <ZoomOut className="w-3.5 h-3.5" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setZoom(1)}>
-                  <span className="text-xs">1:1</span>
-                </Button>
+                {selectedDrawing?.file_type !== 'application/pdf' && (
+                  <>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setZoom(z => Math.min(z + 0.25, 3))}>
+                      <ZoomIn className="w-3.5 h-3.5" />
+                    </Button>
+                    <span className="text-xs text-gray-500 w-12 text-center">{Math.round(zoom * 100)}%</span>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setZoom(z => Math.max(z - 0.25, 0.25))}>
+                      <ZoomOut className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setZoom(1)}>
+                      <span className="text-xs">1:1</span>
+                    </Button>
+                  </>
+                )}
                 {selectedDrawing && (
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDownload(selectedDrawing)}>
                     <Download className="w-3.5 h-3.5" />
@@ -401,12 +415,17 @@ export default function ProductionDetailDialog({
                         >
                           {/* 缩略图预览 */}
                           <div className="w-full aspect-[4/3] bg-gray-50 rounded mb-1.5 overflow-hidden flex items-center justify-center">
-                            {thumbUrl ? (
+                            {thumbUrl && d.file_type !== 'application/pdf' ? (
                               <img
                                 src={thumbUrl}
                                 alt={d.file_name}
                                 className="w-full h-full object-contain"
                               />
+                            ) : d.file_type === 'application/pdf' ? (
+                              <div className="flex flex-col items-center justify-center w-full h-full">
+                                <FileText className="w-8 h-8 text-red-400" />
+                                <span className="text-[10px] text-red-400 mt-1">PDF</span>
+                              </div>
                             ) : (
                               <FileImage className="w-6 h-6 text-gray-300" />
                             )}
@@ -437,12 +456,20 @@ export default function ProductionDetailDialog({
                     <p className="text-xs mt-1">请在BOM管理中上传图纸</p>
                   </div>
                 ) : drawingUrl ? (
-                  <img
-                    src={drawingUrl}
-                    alt={selectedDrawing?.file_name || '图纸'}
-                    className="max-w-full max-h-full object-contain transition-transform"
-                    style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}
-                  />
+                  selectedDrawing?.file_type === 'application/pdf' ? (
+                    <iframe
+                      src={drawingUrl}
+                      className="w-full h-full border-0"
+                      title={selectedDrawing?.file_name || 'PDF预览'}
+                    />
+                  ) : (
+                    <img
+                      src={drawingUrl}
+                      alt={selectedDrawing?.file_name || '图纸'}
+                      className="max-w-full max-h-full object-contain transition-transform"
+                      style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}
+                    />
+                  )
                 ) : (
                   <div className="text-gray-400 text-sm">加载中...</div>
                 )}
