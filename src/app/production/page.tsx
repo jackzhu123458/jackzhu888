@@ -92,6 +92,12 @@ export default function ProductionPage() {
   const [formMaterials, setFormMaterials] = useState<Array<{ product_id: string; required_qty: string }>>([]);
   const [saving, setSaving] = useState(false);
 
+  // 模糊搜索
+  const [productSearch, setProductSearch] = useState('');
+  const [productSearchFocused, setProductSearchFocused] = useState(false);
+  const [materialSearches, setMaterialSearches] = useState<Record<number, string>>({});
+  const [materialSearchFocused, setMaterialSearchFocused] = useState<Record<number, boolean>>({});
+
   // 删除
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -185,21 +191,33 @@ export default function ProductionPage() {
     setFormCustomerId(''); setFormProductId(''); setFormQuantity('');
     setFormStartDate(''); setFormDueDate(''); setFormRemark('');
     setFormMaterials([]);
+    setProductSearch(''); setMaterialSearches({});
     setSheetOpen(true);
   };
 
   const handleSelectProduct = (pid: string) => {
     setFormProductId(pid);
-    // 自动从 BOM 加载子料
     const prod = products.find((p) => p.id === pid);
     if (prod) {
-      fetch(`/api/bom?parent_id=${pid}`).then(r => r.json()).then(data => {
-        const bomList = Array.isArray(data) ? data : data.bom || [];
+      setProductSearch(`${prod.code} - ${prod.name}`);
+    }
+    // 自动从 BOM 加载子料
+    if (prod) {
+      fetch(`/api/bom?parent_id=${pid}`).then(r => r.json()).then((data: unknown) => {
+        const bomList = Array.isArray(data) ? data : (data as { bom?: unknown[] }).bom || [];
         if (bomList.length > 0) {
-          setFormMaterials(bomList.map((b: { child_product_id: string; quantity: number }) => ({
+          const mats = bomList.map((b: { child_product_id: string; quantity: number }) => ({
             product_id: b.child_product_id,
             required_qty: String(b.quantity),
-          })));
+          }));
+          setFormMaterials(mats);
+          // 自动填充物料搜索文本
+          const newSearches: Record<number, string> = {};
+          mats.forEach((m: { product_id: string }, idx: number) => {
+            const mp = products.find((p) => p.id === m.product_id);
+            if (mp) newSearches[idx] = `${mp.code} - ${mp.name}`;
+          });
+          setMaterialSearches(newSearches);
         }
       }).catch(() => {});
     }
@@ -211,6 +229,10 @@ export default function ProductionPage() {
     const updated = [...formMaterials];
     updated[idx] = { ...updated[idx], [field]: value };
     setFormMaterials(updated);
+    if (field === 'product_id') {
+      const mp = products.find((p) => p.id === value);
+      setMaterialSearches(prev => ({ ...prev, [idx]: mp ? `${mp.code} - ${mp.name}` : '' }));
+    }
   };
 
   const handleSave = async () => {
@@ -684,13 +706,13 @@ export default function ProductionPage() {
       </SheetContent>
     </Sheet>
 
-    {/* 新增/编辑 */}
-    <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-      <SheetContent className="w-[560px]">
-        <SheetHeader>
-          <SheetTitle>{editOrder ? '编辑生产订单' : '新建生产订单'}</SheetTitle>
-        </SheetHeader>
-        <div className="mt-6 space-y-4 px-1">
+    {/* 新增/编辑 - 居中弹窗 */}
+    <Dialog open={sheetOpen} onOpenChange={setSheetOpen}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{editOrder ? '编辑生产订单' : '新建生产订单'}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
           <div>
             <label className="text-sm font-medium text-gray-700 mb-1.5 block">客户</label>
             <Select value={formCustomerId} onValueChange={setFormCustomerId}>
@@ -704,14 +726,50 @@ export default function ProductionPage() {
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700 mb-1.5 block">生产产品 *</label>
-            <Select value={formProductId} onValueChange={handleSelectProduct}>
-              <SelectTrigger><SelectValue placeholder="选择成品" /></SelectTrigger>
-              <SelectContent>
-                {finishedProducts.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="relative">
+              <Input
+                placeholder="输入编码或名称搜索产品"
+                value={formProductId ? productSearch : (productSearchFocused ? productSearch : '')}
+                onChange={(e) => {
+                  setProductSearch(e.target.value);
+                  setFormProductId('');
+                }}
+                onFocus={() => setProductSearchFocused(true)}
+                onBlur={() => setTimeout(() => setProductSearchFocused(false), 200)}
+              />
+              {formProductId && (
+                <button
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  onClick={() => { setFormProductId(''); setProductSearch(''); setFormMaterials([]); setMaterialSearches({}); }}
+                >✕</button>
+              )}
+              {productSearchFocused && !formProductId && productSearch && (
+                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                  {finishedProducts
+                    .filter((p) => {
+                      const q = productSearch.toLowerCase();
+                      return p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q);
+                    })
+                    .slice(0, 20)
+                    .map((p) => (
+                      <div
+                        key={p.id}
+                        className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm"
+                        onMouseDown={() => handleSelectProduct(p.id)}
+                      >
+                        <span className="font-mono text-gray-500">{p.code}</span>
+                        <span className="ml-2">{p.name}</span>
+                      </div>
+                    ))}
+                  {finishedProducts.filter((p) => {
+                    const q = productSearch.toLowerCase();
+                    return p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q);
+                  }).length === 0 && (
+                    <div className="px-3 py-2 text-sm text-gray-400">无匹配产品</div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -746,14 +804,46 @@ export default function ProductionPage() {
             <div className="space-y-2 max-h-[240px] overflow-y-auto">
               {formMaterials.map((m, idx) => (
                 <div key={idx} className="flex items-center gap-2">
-                  <Select value={m.product_id} onValueChange={(v) => updateMaterialRow(idx, 'product_id', v)}>
-                    <SelectTrigger className="flex-1 h-9 text-xs"><SelectValue placeholder="选择物料" /></SelectTrigger>
-                    <SelectContent>
-                      {products.filter((p) => p.id !== formProductId).map((p) => (
-                        <SelectItem key={p.id} value={p.id} className="text-xs">{p.code} - {p.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="relative flex-1">
+                    <Input
+                      className="h-9 text-xs"
+                      placeholder="搜索物料编码或名称"
+                      value={m.product_id ? (materialSearches[idx] || '') : (materialSearchFocused[idx] ? (materialSearches[idx] || '') : '')}
+                      onChange={(e) => {
+                        setMaterialSearches(prev => ({ ...prev, [idx]: e.target.value }));
+                        updateMaterialRow(idx, 'product_id', '');
+                      }}
+                      onFocus={() => setMaterialSearchFocused(prev => ({ ...prev, [idx]: true }))}
+                      onBlur={() => setTimeout(() => setMaterialSearchFocused(prev => ({ ...prev, [idx]: false })), 200)}
+                    />
+                    {m.product_id && (
+                      <button
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                        onClick={() => { updateMaterialRow(idx, 'product_id', ''); setMaterialSearches(prev => ({ ...prev, [idx]: '' })); }}
+                      >✕</button>
+                    )}
+                    {materialSearchFocused[idx] && !m.product_id && materialSearches[idx] && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-36 overflow-y-auto">
+                        {products
+                          .filter((p) => p.id !== formProductId)
+                          .filter((p) => {
+                            const q = (materialSearches[idx] || '').toLowerCase();
+                            return p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q);
+                          })
+                          .slice(0, 15)
+                          .map((p) => (
+                            <div
+                              key={p.id}
+                              className="px-2 py-1.5 hover:bg-blue-50 cursor-pointer text-xs"
+                              onMouseDown={() => updateMaterialRow(idx, 'product_id', p.id)}
+                            >
+                              <span className="font-mono text-gray-500">{p.code}</span>
+                              <span className="ml-1">{p.name}</span>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
                   <Input value={m.required_qty} onChange={(e) => updateMaterialRow(idx, 'required_qty', e.target.value)} placeholder="用量" type="number" step="0.01" className="w-24 h-9 text-xs" />
                   <button onClick={() => removeMaterialRow(idx)} className="text-red-400 hover:text-red-600 text-sm">x</button>
                 </div>
@@ -771,8 +861,8 @@ export default function ProductionPage() {
             <Button variant="outline" onClick={() => setSheetOpen(false)} className="flex-1">取消</Button>
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
 
     {/* 删除确认 */}
     <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
