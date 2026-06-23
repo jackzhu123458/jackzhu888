@@ -208,7 +208,7 @@ export default function ProductionDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[100vw] w-[100vw] h-[100vh] p-0 gap-0 flex flex-col rounded-none border-0">
+      <DialogContent showCloseButton={false} className="!max-w-[100vw] w-[100vw] h-[100vh] !p-0 !gap-0 !translate-x-0 !translate-y-0 !top-0 !left-0 flex flex-col !rounded-none !border-0 !shadow-none">
         <DialogTitle className="sr-only">生产工单详情 - {order.order_no}</DialogTitle>
         {/* 顶部标题栏 */}
         <div className="flex items-center justify-between px-6 py-3 border-b bg-gray-50 flex-shrink-0">
@@ -440,7 +440,7 @@ export default function ProductionDetailDialog({
                   <img
                     src={drawingUrl}
                     alt={selectedDrawing?.file_name || '图纸'}
-                    className="max-w-none transition-transform"
+                    className="max-w-full max-h-full object-contain transition-transform"
                     style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}
                   />
                 ) : (
