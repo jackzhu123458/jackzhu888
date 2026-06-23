@@ -10,9 +10,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
 import { ChevronDown, ChevronRight, Plus, Play, CheckCircle2, XCircle, Eye, Search, ShieldAlert, Workflow } from 'lucide-react';
 import { translateUnit } from '@/lib/utils';
+import ProductionDetailDialog from './production-detail-dialog';
 
 /* ---------- 类型 ---------- */
-interface Order {
+export interface Order {
   id: string;
   order_no: string;
   customer_id: string | null;
@@ -93,6 +94,8 @@ export default function ProductionPage() {
   const [formMaterials, setFormMaterials] = useState<Array<{ product_id: string; required_qty: string }>>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [detailOrder, setDetailOrder] = useState<Order | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   // 模糊搜索
   const [productSearch, setProductSearch] = useState('');
@@ -108,8 +111,6 @@ export default function ProductionPage() {
   const [completing, setCompleting] = useState(false);
   const completeDialogRef = React.useRef<HTMLDivElement>(null);
 
-  // 详情
-  const [detailOrder, setDetailOrder] = useState<Order | null>(null);
   // 合并卡片展开状态
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
@@ -476,7 +477,9 @@ export default function ProductionPage() {
                   ? Math.ceil((new Date(order.due_date).getTime() - todayMs) / 86400000)
                   : 0;
                 return (
-                  <div key={order.id} className={`px-4 py-2.5 border-b border-gray-50 last:border-b-0 ${order.delivered && !hideDelivered ? 'bg-gray-100/50' : 'bg-gray-50/30'}`}>
+                  <div key={order.id} className={`px-4 py-2.5 border-b border-gray-50 last:border-b-0 cursor-pointer hover:bg-blue-50/50 transition-colors ${order.delivered && !hideDelivered ? 'bg-gray-100/50' : 'bg-gray-50/30'}`}
+	                    onClick={() => { setDetailOrder(order); setDetailOpen(true); }}
+	                  >
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-mono text-xs text-gray-500">{order.order_no}</span>
                       <div className="flex items-center gap-1.5">
@@ -712,220 +715,6 @@ export default function ProductionPage() {
       )}
     </div>
 
-    {/* 订单详情 */}
-    <Sheet open={!!detailOrder} onOpenChange={() => setDetailOrder(null)}>
-      <SheetContent className="w-[600px]">
-        {detailOrder && (
-          <>
-            <SheetHeader>
-              <SheetTitle>订单详情 - {detailOrder.order_no}</SheetTitle>
-            </SheetHeader>
-            <div className="mt-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div><span className="text-gray-500">客户：</span>{detailOrder.customers?.name || '未分配'}</div>
-                <div><span className="text-gray-500">产品：</span>{detailOrder.products?.name}
-                  {(() => {
-                    const pAlerts = qualityAlerts.filter(a => a.product_id === detailOrder.product_id);
-                    if (pAlerts.length === 0) return null;
-                    const isCritical = pAlerts.some(a => a.severity === 'critical' || a.severity === 'high');
-                    return (
-                      <span className="inline-flex items-center gap-1 ml-1" title={pAlerts.map(a => a.title).join('; ')}>
-                        <ShieldAlert className={`h-3.5 w-3.5 ${isCritical ? 'text-red-600' : 'text-yellow-600'}`} />
-                        <span className={`text-xs px-1 py-0.5 rounded ${isCritical ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{pAlerts.length}条警示</span>
-                      </span>
-                    );
-                  })()}
-                </div>
-                <div><span className="text-gray-500">数量：</span><span className="font-mono">{detailOrder.quantity} {translateUnit(detailOrder.products?.unit || '')}</span></div>
-                <div><span className="text-gray-500">状态：</span>
-                  <Badge variant="outline" className={statusMap[detailOrder.status]?.color || ''}>
-                    {statusMap[detailOrder.status]?.label || detailOrder.status}
-                  </Badge>
-                </div>
-                <div><span className="text-gray-500">计划开始：</span>{fmtDate(detailOrder.start_date)}</div>
-                <div><span className="text-gray-500">计划完成：</span>{fmtDate(detailOrder.due_date)}</div>
-                <div className="col-span-2"><span className="text-gray-500">备注：</span>{detailOrder.remark || '-'}</div>
-              </div>
-
-              {detailOrder.status !== 'completed' && detailOrder.status !== 'cancelled' && (
-                <div className="flex gap-2 pt-2">
-                  {detailOrder.status === 'pending' && (
-                    <Button size="sm" onClick={() => handleStatusChange(detailOrder.id, 'in_progress')}>开始生产</Button>
-                  )}
-                  {detailOrder.status === 'in_progress' && (
-                    <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => { setCompleteOrderId(detailOrder.id); }}>
-                      完成入库
-                    </Button>
-                  )}
-                  <Button size="sm" variant="outline" onClick={() => handleStatusChange(detailOrder.id, 'cancelled')}>取消订单</Button>
-                </div>
-              )}
-
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-2">用料清单</h3>
-                <table className="w-full text-sm border border-gray-200 rounded">
-                  <thead>
-                    <tr className="bg-gray-50">
-                      <th className="text-left px-3 py-2 font-medium text-gray-500">物料编码</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-500">物料名称</th>
-                      <th className="text-right px-3 py-2 font-medium text-gray-500">需求数量</th>
-                      <th className="text-right px-3 py-2 font-medium text-gray-500">已备料</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-500">单位</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(detailOrder.production_order_materials || []).map((m, i) => {
-                      const matAlerts = qualityAlerts.filter(a => a.product_id === m.product_id);
-                      const hasCriticalAlert = matAlerts.some(a => a.severity === 'critical' || a.severity === 'high');
-                      return (
-                        <tr key={i} className={`border-t border-gray-100 ${hasCriticalAlert ? 'bg-red-50' : matAlerts.length > 0 ? 'bg-yellow-50' : ''}`}>
-                          <td className="px-3 py-2 font-mono">
-                            <div className="flex items-center gap-1">
-                              {m.products?.code || '-'}
-                              {matAlerts.length > 0 && (
-                                <span title={matAlerts.map(a => a.title).join('; ')} className="inline-flex items-center">
-                                  <ShieldAlert className={`h-3.5 w-3.5 ${hasCriticalAlert ? 'text-red-600' : 'text-yellow-600'}`} />
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-center gap-1">
-                              {m.products?.name || '-'}
-                              {matAlerts.length > 0 && (
-                                <span className={`text-xs px-1 py-0.5 rounded ${hasCriticalAlert ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                                  {matAlerts.length}条警示
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono">{m.required_qty}</td>
-                          <td className="px-3 py-2 text-right font-mono">{m.prepared_qty}</td>
-                          <td className="px-3 py-2">{translateUnit(m.products?.unit || '-')}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* 工艺流程 */}
-              {detailOrder.product_id && processFlows[detailOrder.product_id] && processFlows[detailOrder.product_id].length > 0 && (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
-                      <Workflow className="w-4 h-4 text-indigo-500" />
-                      工艺流程
-                      <span className="text-xs text-gray-400 font-normal ml-1">
-                        ({detailOrder.current_step || 0}/{processFlows[detailOrder.product_id].length} 步)
-                      </span>
-                    </h3>
-                    {(detailOrder.status === 'pending' || detailOrder.status === 'in_progress') && (
-                      <div className="flex items-center gap-1.5">
-                        {(() => {
-                          const steps = processFlows[detailOrder.product_id];
-                          const cs = detailOrder.current_step || 0;
-                          if (cs < steps.length) {
-                            const nextStepName = steps[cs]?.step_name || '';
-                            const isLast = cs >= steps.length - 1;
-                            return (
-                              <Button
-                                size="sm"
-                                className={isLast ? 'bg-green-600 hover:bg-green-700' : 'bg-indigo-600 hover:bg-indigo-700'}
-                                onClick={() => handleAdvanceStep(detailOrder.id)}
-                              >
-                                {cs === 0 ? `开始: ${nextStepName}` : `→ ${nextStepName}`}
-                              </Button>
-                            );
-                          }
-                          return null;
-                        })()}
-                        {(detailOrder.current_step || 0) > 0 && (
-                          <Button size="sm" variant="outline" onClick={() => handleResetStep(detailOrder.id)}>
-                            重置进度
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-start gap-0 overflow-x-auto pb-2">
-                    {processFlows[detailOrder.product_id].map((step, idx) => {
-                      const cs = detailOrder.current_step || 0;
-                      const isCompleted = idx < cs;
-                      const isCurrent = idx === cs;
-                      const isPending = idx > cs;
-                      return (
-                        <React.Fragment key={idx}>
-                          <div className="flex flex-col items-center min-w-[72px] max-w-[100px]">
-                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                              isCompleted
-                                ? 'bg-green-500 text-white'
-                                : isCurrent
-                                  ? step.is_key_step
-                                    ? 'bg-amber-500 text-white ring-2 ring-amber-300 ring-offset-1'
-                                    : 'bg-indigo-500 text-white ring-2 ring-indigo-300 ring-offset-1'
-                                  : step.is_key_step
-                                    ? 'bg-amber-100 text-amber-700'
-                                    : 'bg-gray-100 text-gray-400'
-                            }`}>
-                              {isCompleted ? '✓' : step.step_order}
-                            </div>
-                            <div className={`mt-1 text-xs text-center leading-tight ${
-                              isCompleted
-                                ? 'text-green-700 line-through'
-                                : isCurrent
-                                  ? step.is_key_step ? 'font-bold text-amber-700' : 'font-bold text-indigo-700'
-                                  : step.is_key_step ? 'font-semibold text-amber-500' : 'text-gray-400'
-                            }`}>
-                              {step.step_name}
-                            </div>
-                            {step.estimated_minutes && (
-                              <div className={`text-[10px] mt-0.5 ${isCompleted ? 'text-green-400' : isCurrent ? 'text-indigo-400' : 'text-gray-300'}`}>
-                                {step.estimated_minutes}分钟
-                              </div>
-                            )}
-                            {isCurrent && (
-                              <div className="text-[9px] text-indigo-500 mt-0.5 font-medium">当前</div>
-                            )}
-                          </div>
-                          {idx < processFlows[detailOrder.product_id].length - 1 && (
-                            <div className="flex items-center pt-2.5 px-0.5">
-                              <div className={`w-4 h-0.5 ${isCompleted ? 'bg-green-400' : 'bg-gray-200'}`} />
-                              <div className={`text-xs ${isCompleted ? 'text-green-400' : 'text-gray-200'}`}>›</div>
-                            </div>
-                          )}
-                        </React.Fragment>
-                      );
-                    })}
-                  </div>
-                  {/* 进度条 */}
-                  {(() => {
-                    const steps = processFlows[detailOrder.product_id];
-                    const cs = detailOrder.current_step || 0;
-                    const pct = steps.length > 0 ? Math.round((cs / steps.length) * 100) : 0;
-                    return (
-                      <div className="mt-2">
-                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-300 ${pct >= 100 ? 'bg-green-500' : 'bg-indigo-500'}`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <div className="flex items-center justify-between mt-1 text-[10px] text-gray-400">
-                          <span>进度 {pct}%</span>
-                          {cs < steps.length && <span>剩余 {steps.length - cs} 步</span>}
-                          {cs >= steps.length && <span className="text-green-600">全部完成</span>}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </SheetContent>
-    </Sheet>
 
     {/* 新增/编辑 - 居中弹窗 */}
     <Dialog open={sheetOpen} onOpenChange={setSheetOpen}>
@@ -1133,6 +922,16 @@ export default function ProductionPage() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* 生产订单全屏详情弹窗 */}
+    <ProductionDetailDialog
+      order={detailOrder}
+      open={detailOpen}
+      onOpenChange={setDetailOpen}
+      processFlows={processFlows}
+      onAdvanceStep={handleAdvanceStep}
+      onResetStep={handleResetStep}
+    />
     </>
   );
 }
