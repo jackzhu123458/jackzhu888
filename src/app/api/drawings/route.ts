@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 
     let query = getSupabase()
       .from('product_drawings')
-      .select('*, products!product_drawings_product_id_products_id_fk(id, code, name, spec)')
+      .select('*, products(id, code, name, spec)')
       .order('created_at', { ascending: false });
 
     if (productId) {
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
         file_size: file.size,
         remark,
       })
-      .select('*, products!product_drawings_product_id_products_id_fk(id, code, name, spec)')
+      .select('*, products(id, code, name, spec)')
       .single();
 
     if (error) {
