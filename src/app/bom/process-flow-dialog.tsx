@@ -10,7 +10,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { Plus, Trash2, Save, Star, Settings2, X } from 'lucide-react';
+import { Plus, Trash2, Save, Star, Settings2, X, GitBranch, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface ProcessStep {
   id?: string;
@@ -19,6 +19,7 @@ interface ProcessStep {
   description: string | null;
   estimated_minutes: number | null;
   is_key_step: boolean;
+  branch: string | null; // null=主线, 'A'/'B'/...=并行分支
 }
 
 interface StepTemplate {
@@ -46,15 +47,11 @@ function StepNameInput({
   const [focused, setFocused] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 模糊过滤
   const filtered = value.trim()
     ? templates.filter(n => n.toLowerCase().includes(value.trim().toLowerCase()))
     : templates;
-
-  // 输入的文本是否精确匹配某个已有选项
   const exactMatch = templates.some(n => n === value.trim());
 
-  // 点击外部关闭下拉
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -105,7 +102,6 @@ function StepNameInput({
               {name}
             </button>
           ))}
-          {/* 如果输入不精确匹配且过滤结果不为空，追加"新增"选项 */}
           {value.trim() && !exactMatch && filtered.length > 0 && (
             <button
               className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 text-blue-600 border-t border-gray-100 flex items-center gap-1"
@@ -178,7 +174,6 @@ function TemplateManager({
   return (
     <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
       <div className="text-xs font-medium text-gray-500 mb-2">管理可选工序名称（增删后即时生效）</div>
-      {/* 新增输入 */}
       <div className="flex gap-2 mb-3">
         <Input
           value={newName}
@@ -198,7 +193,6 @@ function TemplateManager({
           {adding ? '...' : '添加'}
         </Button>
       </div>
-      {/* 模板列表 - 标签式展示，可删除 */}
       <div className="flex flex-wrap gap-1.5 max-h-[120px] overflow-y-auto">
         {templates.map(t => (
           <span
@@ -224,6 +218,89 @@ function TemplateManager({
   );
 }
 
+/* ---------- 可视化流程预览 ---------- */
+function FlowPreview({ steps }: { steps: ProcessStep[] }) {
+  if (steps.length === 0) return null;
+
+  // 按 step_order 分组
+  const groups: Map<number, ProcessStep[]> = new Map();
+  steps.forEach(s => {
+    const key = s.step_order;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(s);
+  });
+
+  const sortedOrders = Array.from(groups.keys()).sort((a, b) => a - b);
+
+  return (
+    <div className="border border-gray-200 rounded-lg p-3 bg-white mb-3">
+      <div className="text-xs font-medium text-gray-500 mb-2">流程预览</div>
+      <div className="flex flex-col items-center gap-1 overflow-x-auto">
+        {sortedOrders.map((order, oi) => {
+          const groupSteps = groups.get(order)!;
+          const isParallel = groupSteps.length > 1;
+          const mainStep = groupSteps.find(s => !s.branch);
+          const branchSteps = groupSteps.filter(s => s.branch);
+
+          return (
+            <div key={order} className="flex flex-col items-center">
+              {/* 连接线 */}
+              {oi > 0 && (
+                <div className="w-px h-3 bg-gray-300" />
+              )}
+
+              {isParallel ? (
+                /* 并行分支 */
+                <div className="flex items-start gap-2">
+                  {/* 分叉线 */}
+                  <div className="flex flex-col items-center">
+                    <div className="w-px h-2 bg-gray-300" />
+                    <div className="text-[10px] text-gray-400 font-medium">并行</div>
+                    <div className="w-px h-2 bg-gray-300" />
+                  </div>
+                  <div className="flex gap-2 items-start">
+                    {mainStep && (
+                      <StepBadge step={mainStep} />
+                    )}
+                    {branchSteps.map((bs, bi) => (
+                      <div key={bi} className="flex items-start gap-1">
+                        <span className="text-[10px] text-gray-400 mt-1 font-medium">{bs.branch}</span>
+                        <StepBadge step={bs} />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <div className="w-px h-2 bg-gray-300" />
+                    <div className="text-[10px] text-gray-400 font-medium">合并</div>
+                    <div className="w-px h-2 bg-gray-300" />
+                  </div>
+                </div>
+              ) : (
+                /* 单步 */
+                <StepBadge step={groupSteps[0]} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StepBadge({ step }: { step: ProcessStep }) {
+  return (
+    <span className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-medium whitespace-nowrap ${
+      step.is_key_step
+        ? 'bg-amber-100 text-amber-800 border border-amber-300'
+        : 'bg-gray-100 text-gray-700 border border-gray-200'
+    }`}>
+      {step.step_name}
+      {step.is_key_step && <span className="ml-0.5 text-amber-500">★</span>}
+      {step.estimated_minutes && <span className="ml-1 text-gray-400 text-[10px]">{step.estimated_minutes}min</span>}
+    </span>
+  );
+}
+
 /* ---------- 主弹窗组件 ---------- */
 export default function ProcessFlowDialog({ open, onOpenChange, productId, productName }: ProcessFlowDialogProps) {
   const [steps, setSteps] = useState<ProcessStep[]>([]);
@@ -232,12 +309,10 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
   const [error, setError] = useState('');
   const [templates, setTemplates] = useState<StepTemplate[]>([]);
   const [showTemplateManager, setShowTemplateManager] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
 
-  // 合并模板工序名 + 数据库已使用的工序名，去重排序
   const allStepNames = Array.from(
-    new Set([
-      ...templates.map(t => t.step_name),
-    ])
+    new Set([...templates.map(t => t.step_name)])
   ).sort((a, b) => a.localeCompare(b, 'zh-CN'));
 
   const loadTemplates = useCallback(async () => {
@@ -271,33 +346,98 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
     }
   }, [open, productId, loadSteps, loadTemplates]);
 
+  /* ---- 步骤操作 ---- */
+
+  // 计算下一个 step_order
+  const nextStepOrder = () => {
+    const maxOrder = steps.reduce((max, s) => Math.max(max, s.step_order), 0);
+    return maxOrder + 1;
+  };
+
+  // 添加主步骤
   const addStep = () => {
     setSteps(prev => [
       ...prev,
       {
-        step_order: prev.length + 1,
+        step_order: nextStepOrder(),
         step_name: '',
         description: null,
         estimated_minutes: null,
         is_key_step: false,
+        branch: null,
       },
     ]);
   };
 
+  // 给某步骤添加并行分支
+  const addBranch = (stepOrder: number) => {
+    const existingBranches = steps
+      .filter(s => s.step_order === stepOrder)
+      .map(s => s.branch || '');
+    const branchLetters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let newBranch = '';
+    for (const ch of branchLetters) {
+      if (!existingBranches.includes(ch)) {
+        newBranch = ch;
+        break;
+      }
+    }
+    if (!newBranch) return; // 最多26个分支
+
+    setSteps(prev => [
+      ...prev,
+      {
+        step_order: stepOrder,
+        step_name: '',
+        description: null,
+        estimated_minutes: null,
+        is_key_step: false,
+        branch: newBranch,
+      },
+    ]);
+  };
+
+  // 删除步骤
   const removeStep = (index: number) => {
-    setSteps(prev => prev.filter((_, i) => i !== index).map((s, i) => ({ ...s, step_order: i + 1 })));
+    const step = steps[index];
+    const newSteps = steps.filter((_, i) => i !== index);
+
+    // 如果删除的是某 step_order 下最后一个步骤，则后续 step_order 需要重排
+    const remainingInOrder = newSteps.filter(s => s.step_order === step.step_order);
+    if (remainingInOrder.length === 0) {
+      // 该步骤被全部删除，重排后续 step_order
+      const reordered = newSteps.map(s => {
+        if (s.step_order > step.step_order) {
+          return { ...s, step_order: s.step_order - 1 };
+        }
+        return s;
+      });
+      setSteps(reordered);
+    } else {
+      setSteps(newSteps);
+    }
   };
 
   const updateStep = (index: number, field: keyof ProcessStep, value: string | number | boolean | null) => {
     setSteps(prev => prev.map((s, i) => i === index ? { ...s, [field]: value } : s));
   };
 
-  const moveStep = (from: number, to: number) => {
-    if (to < 0 || to >= steps.length) return;
-    const newSteps = [...steps];
-    const [moved] = newSteps.splice(from, 1);
-    newSteps.splice(to, 0, moved);
-    setSteps(newSteps.map((s, i) => ({ ...s, step_order: i + 1 })));
+  const moveStepOrder = (fromOrder: number, toOrder: number) => {
+    if (toOrder < 1) return;
+    const maxOrder = steps.reduce((max, s) => Math.max(max, s.step_order), 0);
+    if (toOrder > maxOrder) return;
+    if (fromOrder === toOrder) return;
+
+    setSteps(prev => prev.map(s => {
+      if (s.step_order === fromOrder) return { ...s, step_order: toOrder };
+      if (fromOrder < toOrder && s.step_order > fromOrder && s.step_order <= toOrder) {
+        return { ...s, step_order: s.step_order - 1 };
+      }
+      if (fromOrder > toOrder && s.step_order >= toOrder && s.step_order < fromOrder) {
+        return { ...s, step_order: s.step_order + 1 };
+      }
+      return s;
+    }));
   };
 
   const handleSave = async () => {
@@ -324,12 +464,13 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
             description: s.description?.trim() || null,
             estimated_minutes: s.estimated_minutes || null,
             is_key_step: s.is_key_step,
+            branch: s.branch || null,
           })),
         }),
       });
 
       if (res.ok) {
-        // 保存成功后，将新输入的工序名称也同步到模板库
+        // 保存成功后同步新工序名到模板库
         const newNames = steps
           .map(s => s.step_name.trim())
           .filter(name => !templates.some(t => t.step_name === name));
@@ -354,93 +495,181 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
     }
   };
 
+  /* ---- 按 step_order 分组渲染 ---- */
+  const stepGroups: Map<number, ProcessStep[]> = new Map();
+  steps.forEach(s => {
+    if (!stepGroups.has(s.step_order)) stepGroups.set(s.step_order, []);
+    stepGroups.get(s.step_order)!.push(s);
+  });
+  const sortedOrders = Array.from(stepGroups.keys()).sort((a, b) => a - b);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>工艺流程 - {productName}</DialogTitle>
           <DialogDescription>
-            编辑该产品的生产工艺流程步骤，输入关键字搜索或直接输入新增工序
+            编辑该产品的生产工艺流程，支持并行分支（如A/B同时进行后合并）
           </DialogDescription>
         </DialogHeader>
+
+        {/* 流程预览 */}
+        {steps.length > 0 && (
+          <div>
+            <button
+              onClick={() => setShowPreview(!showPreview)}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 mb-1"
+            >
+              {showPreview ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+              流程预览
+            </button>
+            {showPreview && <FlowPreview steps={steps} />}
+          </div>
+        )}
 
         {loading ? (
           <div className="text-center py-8 text-gray-400">加载中...</div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {steps.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
                 <p>暂无工艺流程</p>
                 <p className="text-xs mt-1">点击下方"添加工序"开始编辑</p>
               </div>
             ) : (
-              steps.map((step, idx) => (
-                <div
-                  key={idx}
-                  className={`flex items-center gap-2 p-3 rounded-lg border ${
-                    step.is_key_step ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white'
-                  }`}
-                >
-                  {/* 序号 + 排序 */}
-                  <div className="flex flex-col items-center gap-0.5">
-                    <button
-                      onClick={() => moveStep(idx, idx - 1)}
-                      className="text-gray-300 hover:text-gray-600 disabled:opacity-30"
-                      disabled={idx === 0}
-                      title="上移"
-                    >
-                      ▲
-                    </button>
-                    <span className="text-sm font-bold text-gray-500 w-5 text-center">{idx + 1}</span>
-                    <button
-                      onClick={() => moveStep(idx, idx + 1)}
-                      className="text-gray-300 hover:text-gray-600 disabled:opacity-30"
-                      disabled={idx === steps.length - 1}
-                      title="下移"
-                    >
-                      ▼
-                    </button>
+              sortedOrders.map((order) => {
+                const group = stepGroups.get(order)!;
+                const isParallel = group.length > 1;
+                const mainStep = group.find(s => !s.branch);
+                const branchSteps = group.filter(s => s.branch).sort((a, b) => (a.branch || '').localeCompare(b.branch || ''));
+
+                return (
+                  <div key={order} className="border border-gray-200 rounded-lg overflow-hidden">
+                    {/* 步骤头部：序号 + 排序 + 并行按钮 */}
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border-b border-gray-200">
+                      <span className="text-sm font-bold text-gray-500">第 {order} 步</span>
+                      <div className="flex items-center gap-1 ml-auto">
+                        <button
+                          onClick={() => moveStepOrder(order, order - 1)}
+                          className="text-gray-300 hover:text-gray-600 disabled:opacity-30 text-xs"
+                          disabled={order <= 1}
+                          title="上移"
+                        >▲</button>
+                        <button
+                          onClick={() => moveStepOrder(order, order + 1)}
+                          className="text-gray-300 hover:text-gray-600 disabled:opacity-30 text-xs"
+                          disabled={order === sortedOrders.length}
+                          title="下移"
+                        >▼</button>
+                        <span className="text-gray-200 mx-1">|</span>
+                        <button
+                          onClick={() => addBranch(order)}
+                          className="flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700"
+                          title="添加并行分支"
+                        >
+                          <GitBranch className="w-3.5 h-3.5" />
+                          并行
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 主步骤 */}
+                    {mainStep && (() => {
+                      const idx = steps.indexOf(mainStep);
+                      return (
+                        <div className={`flex items-center gap-2 px-3 py-2 ${
+                          mainStep.is_key_step ? 'bg-amber-50' : ''
+                        }`}>
+                          <StepNameInput
+                            value={mainStep.step_name}
+                            onChange={(val) => updateStep(idx, 'step_name', val)}
+                            templates={allStepNames}
+                          />
+                          <div className="w-24">
+                            <Input
+                              type="number"
+                              value={mainStep.estimated_minutes ?? ''}
+                              onChange={(e) => updateStep(idx, 'estimated_minutes', e.target.value ? Number(e.target.value) : null)}
+                              placeholder="工时(分)"
+                              className="h-8 text-sm text-center"
+                            />
+                          </div>
+                          <button
+                            onClick={() => updateStep(idx, 'is_key_step', !mainStep!.is_key_step)}
+                            className={`p-1.5 rounded transition-colors ${
+                              mainStep.is_key_step ? 'text-amber-500 hover:text-amber-600' : 'text-gray-300 hover:text-amber-400'
+                            }`}
+                            title={mainStep.is_key_step ? '取消关键工序' : '标记为关键工序'}
+                          >
+                            <Star className="w-4 h-4" fill={mainStep.is_key_step ? 'currentColor' : 'none'} />
+                          </button>
+                          <button
+                            onClick={() => removeStep(idx)}
+                            className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
+                            title="删除工序"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    })()}
+
+                    {/* 并行分支 */}
+                    {branchSteps.map((bs) => {
+                      const idx = steps.indexOf(bs);
+                      return (
+                        <div
+                          key={bs.branch}
+                          className={`flex items-center gap-2 px-3 py-2 border-t border-dashed border-gray-200 ${
+                            bs.is_key_step ? 'bg-amber-50' : 'bg-blue-50/30'
+                          }`}
+                        >
+                          <span className="text-xs font-bold text-indigo-500 bg-indigo-100 px-1.5 py-0.5 rounded w-6 text-center shrink-0">
+                            {bs.branch}
+                          </span>
+                          <StepNameInput
+                            value={bs.step_name}
+                            onChange={(val) => updateStep(idx, 'step_name', val)}
+                            templates={allStepNames}
+                          />
+                          <div className="w-24">
+                            <Input
+                              type="number"
+                              value={bs.estimated_minutes ?? ''}
+                              onChange={(e) => updateStep(idx, 'estimated_minutes', e.target.value ? Number(e.target.value) : null)}
+                              placeholder="工时(分)"
+                              className="h-8 text-sm text-center"
+                            />
+                          </div>
+                          <button
+                            onClick={() => updateStep(idx, 'is_key_step', !bs.is_key_step)}
+                            className={`p-1.5 rounded transition-colors ${
+                              bs.is_key_step ? 'text-amber-500 hover:text-amber-600' : 'text-gray-300 hover:text-amber-400'
+                            }`}
+                            title={bs.is_key_step ? '取消关键工序' : '标记为关键工序'}
+                          >
+                            <Star className="w-4 h-4" fill={bs.is_key_step ? 'currentColor' : 'none'} />
+                          </button>
+                          <button
+                            onClick={() => removeStep(idx)}
+                            className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
+                            title="删除分支"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    })}
+
+                    {/* 并行合并提示 */}
+                    {isParallel && (
+                      <div className="px-3 py-1 bg-gray-50 border-t border-gray-200 text-center">
+                        <span className="text-[10px] text-gray-400">↕ 以上分支并行完成后合并进入下一步</span>
+                      </div>
+                    )}
                   </div>
-
-                  {/* 工序名称 - 模糊搜索+可新增 */}
-                  <StepNameInput
-                    value={step.step_name}
-                    onChange={(val) => updateStep(idx, 'step_name', val)}
-                    templates={allStepNames}
-                  />
-
-                  {/* 预估工时 */}
-                  <div className="w-24">
-                    <Input
-                      type="number"
-                      value={step.estimated_minutes ?? ''}
-                      onChange={(e) => updateStep(idx, 'estimated_minutes', e.target.value ? Number(e.target.value) : null)}
-                      placeholder="工时(分)"
-                      className="h-8 text-sm text-center"
-                    />
-                  </div>
-
-                  {/* 关键工序标记 */}
-                  <button
-                    onClick={() => updateStep(idx, 'is_key_step', !step.is_key_step)}
-                    className={`p-1.5 rounded transition-colors ${
-                      step.is_key_step ? 'text-amber-500 hover:text-amber-600' : 'text-gray-300 hover:text-amber-400'
-                    }`}
-                    title={step.is_key_step ? '取消关键工序' : '标记为关键工序'}
-                  >
-                    <Star className="w-4 h-4" fill={step.is_key_step ? 'currentColor' : 'none'} />
-                  </button>
-
-                  {/* 删除 */}
-                  <button
-                    onClick={() => removeStep(idx)}
-                    className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
-                    title="删除工序"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))
+                );
+              })
             )}
 
             {/* 添加按钮 */}
@@ -474,8 +703,9 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
             {/* 说明备注 */}
             {steps.length > 0 && (
               <div className="text-xs text-gray-400 mt-2 space-y-1">
-                <p>▲▼ 可调整工序顺序，★ 标记关键工序（高亮显示）</p>
-                <p>输入关键字可搜索已有工序，也可直接输入新增工序名称</p>
+                <p>点击「并行」按钮可为同一步骤添加A/B并行分支</p>
+                <p>并行分支完成后自动合并进入下一步</p>
+                <p>★ 标记关键工序（高亮显示），输入关键字可搜索已有工序</p>
               </div>
             )}
           </div>

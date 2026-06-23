@@ -10,7 +10,8 @@ export async function GET(req: NextRequest) {
     let query = sb
       .from('process_flows')
       .select('*')
-      .order('step_order', { ascending: true });
+      .order('step_order', { ascending: true })
+      .order('branch', { ascending: true, nullsFirst: true });
 
     if (productId) {
       query = query.eq('product_id', productId);
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { product_id, steps } = body as {
       product_id: string;
-      steps: { step_name: string; description?: string; estimated_minutes?: number; is_key_step?: boolean }[];
+      steps: { step_order?: number; step_name: string; description?: string; estimated_minutes?: number; is_key_step?: boolean; branch?: string | null }[];
     };
 
     if (!product_id) {
@@ -68,14 +69,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: delError.message }, { status: 500 });
     }
 
-    // Insert new steps
-    const rows = steps.map((s, i) => ({
+    // Insert new steps - preserve step_order and branch from client
+    const rows = steps.map((s) => ({
       product_id,
-      step_order: i + 1,
+      step_order: s.step_order ?? 0,
       step_name: s.step_name,
       description: s.description || null,
       estimated_minutes: s.estimated_minutes || null,
       is_key_step: s.is_key_step || false,
+      branch: s.branch || null,
     }));
 
     const { data, error: insError } = await sb

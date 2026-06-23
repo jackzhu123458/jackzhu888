@@ -12,6 +12,7 @@ interface ProcessStep {
   description: string | null;
   estimated_minutes: number | null;
   is_key_step: boolean;
+  branch: string | null;
 }
 
 interface Drawing {
@@ -203,8 +204,11 @@ export default function ProductionDetailDialog({
   if (!order || !product) return null;
 
   const totalSteps = steps.length;
+  // 计算不重复的 step_order 数量（并行步骤算一组）
+  const uniqueOrders = new Set(steps.map(s => s.step_order));
+  const totalPhases = uniqueOrders.size;
   const completedSteps = Math.min(currentStep, totalSteps);
-  const progressPercent = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+  const progressPercent = totalPhases > 0 ? Math.round((Math.min(currentStep, totalPhases) / totalPhases) * 100) : 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -273,56 +277,95 @@ export default function ProductionDetailDialog({
                 </div>
               ) : (
                 <div className="space-y-0">
-                  {steps.map((step, idx) => {
-                    const isCompleted = currentStep > step.step_order;
-                    const isCurrent = currentStep === step.step_order;
-                    const isPending = currentStep < step.step_order;
-                    const isFirstPending = currentStep === 0 && idx === 0;
+                  {(() => {
+                    const groups: Map<number, ProcessStep[]> = new Map();
+                    steps.forEach(s => {
+                      if (!groups.has(s.step_order)) groups.set(s.step_order, []);
+                      groups.get(s.step_order)!.push(s);
+                    });
+                    const orders = Array.from(groups.keys()).sort((a, b) => a - b);
 
-                    return (
-                      <div key={step.id || idx} className="flex items-start gap-3 relative">
-                        {/* 步骤指示器 */}
-                        <div className="flex flex-col items-center flex-shrink-0">
-                          <div
-                            className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all
+                    return orders.map((stepOrder, oi) => {
+                      const group = groups.get(stepOrder)!;
+                      const isParallel = group.length > 1;
+                      const isCompleted = currentStep > stepOrder;
+                      const isCurrent = currentStep === stepOrder;
+                      const isPending = currentStep < stepOrder;
+                      const isFirstPending = currentStep === 0 && oi === 0;
+
+                      return (
+                        <div key={stepOrder} className="flex items-start gap-3 relative">
+                          <div className="flex flex-col items-center flex-shrink-0">
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all
                               ${isCompleted ? 'bg-green-500 border-green-500 text-white' : ''}
                               ${isCurrent ? 'bg-blue-500 border-blue-500 text-white ring-4 ring-blue-100' : ''}
                               ${isPending && !isFirstPending ? 'bg-white border-gray-300 text-gray-400' : ''}
                               ${isFirstPending ? 'bg-amber-400 border-amber-400 text-white' : ''}
-                            `}
-                          >
-                            {isCompleted ? <Check className="w-3.5 h-3.5" /> : step.step_order}
+                            `}>
+                              {isCompleted ? <Check className="w-3.5 h-3.5" /> : stepOrder}
+                            </div>
+                            {oi < orders.length - 1 && (
+                              <div className={`w-0.5 h-6 ${isCompleted ? 'bg-green-400' : 'bg-gray-200'}`} />
+                            )}
                           </div>
-                          {idx < steps.length - 1 && (
-                            <div className={`w-0.5 h-6 ${isCompleted ? 'bg-green-400' : 'bg-gray-200'}`} />
-                          )}
-                        </div>
 
-                        {/* 步骤内容 */}
-                        <div className={`flex-1 pb-3 min-w-0 ${isPending && !isFirstPending ? 'opacity-50' : ''}`}>
-                          <div className="flex items-center gap-1.5">
-                            <span className={`text-sm font-medium ${isCompleted ? 'text-green-700 line-through' : ''} ${isCurrent ? 'text-blue-700' : ''} ${isFirstPending ? 'text-amber-700' : ''}`}>
-                              {step.step_name}
-                            </span>
-                            {step.is_key_step && (
-                              <span className="px-1 py-0.5 text-[10px] bg-orange-100 text-orange-700 rounded font-medium">关键</span>
+                          <div className={`flex-1 pb-3 min-w-0 ${isPending && !isFirstPending ? 'opacity-50' : ''}`}>
+                            {isParallel ? (
+                              <div>
+                                <div className="flex items-center gap-1 mb-1">
+                                  <span className={`text-xs font-medium ${isCurrent ? 'text-blue-600' : isCompleted ? 'text-green-600' : 'text-gray-500'}`}>
+                                    并行工序
+                                  </span>
+                                  {isCurrent && <span className="text-[10px] text-blue-400">进行中</span>}
+                                  {isCompleted && <span className="text-[10px] text-green-400">已完成</span>}
+                                </div>
+                                <div className="space-y-1 pl-1">
+                                  {group.map((step) => (
+                                    <div key={step.id || step.branch} className="flex items-center gap-1.5">
+                                      <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-1 py-0.5 rounded w-5 text-center">
+                                        {step.branch || '主'}
+                                      </span>
+                                      <span className={`text-sm font-medium ${isCompleted ? 'text-green-700 line-through' : ''} ${isCurrent ? 'text-blue-700' : ''}`}>
+                                        {step.step_name}
+                                      </span>
+                                      {step.is_key_step && (
+                                        <span className="px-1 py-0.5 text-[10px] bg-orange-100 text-orange-700 rounded font-medium">关键</span>
+                                      )}
+                                      {step.estimated_minutes && (
+                                        <span className="text-xs text-gray-400">{step.estimated_minutes}min</span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`text-sm font-medium ${isCompleted ? 'text-green-700 line-through' : ''} ${isCurrent ? 'text-blue-700' : ''} ${isFirstPending ? 'text-amber-700' : ''}`}>
+                                    {group[0].step_name}
+                                  </span>
+                                  {group[0].is_key_step && (
+                                    <span className="px-1 py-0.5 text-[10px] bg-orange-100 text-orange-700 rounded font-medium">关键</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  {group[0].estimated_minutes && (
+                                    <span className="text-xs text-gray-400">{group[0].estimated_minutes}min</span>
+                                  )}
+                                  {isCompleted && <span className="text-xs text-green-500">已完成</span>}
+                                  {isCurrent && <span className="text-xs text-blue-500">当前工序</span>}
+                                  {isFirstPending && <span className="text-xs text-amber-500">待开始</span>}
+                                </div>
+                                {group[0].description && (
+                                  <p className="text-xs text-gray-400 mt-0.5 truncate">{group[0].description}</p>
+                                )}
+                              </div>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            {step.estimated_minutes && (
-                              <span className="text-xs text-gray-400">{step.estimated_minutes}min</span>
-                            )}
-                            {isCompleted && <span className="text-xs text-green-500">已完成</span>}
-                            {isCurrent && <span className="text-xs text-blue-500">当前工序</span>}
-                            {isFirstPending && <span className="text-xs text-amber-500">待开始</span>}
-                          </div>
-                          {step.description && (
-                            <p className="text-xs text-gray-400 mt-0.5 truncate">{step.description}</p>
-                          )}
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    });
+                  })()}
                 </div>
               )}
             </div>

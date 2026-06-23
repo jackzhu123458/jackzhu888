@@ -244,7 +244,7 @@ export default function BomPage() {
   const [processFlowProductName, setProcessFlowProductName] = useState('');
 
   // 工艺流程数据（展开行时显示）
-  const [processFlows, setProcessFlows] = useState<Array<{ product_id: string; step_order: number; step_name: string; is_key_step: boolean; estimated_minutes: number | null }>>([]);
+  const [processFlows, setProcessFlows] = useState<Array<{ product_id: string; step_order: number; step_name: string; is_key_step: boolean; estimated_minutes: number | null; branch?: string }>>([]);
   const processFlowsMap = useMemo(() => {
     const map = new Map<string, typeof processFlows>();
     for (const pf of processFlows) {
@@ -1143,27 +1143,59 @@ export default function BomPage() {
                           {(() => {
                             const steps = processFlowsMap.get(product.id) || [];
                             if (steps.length > 0) {
-                              const sorted = [...steps].sort((a, b) => a.step_order - b.step_order);
+                              const sorted = [...steps].sort((a, b) => a.step_order - b.step_order || (a.branch || '').localeCompare(b.branch || ''));
+                              // 按 step_order 分组
+                              const groups: Map<number, typeof sorted> = new Map();
+                              sorted.forEach(s => {
+                                if (!groups.has(s.step_order)) groups.set(s.step_order, []);
+                                groups.get(s.step_order)!.push(s);
+                              });
+                              const orders = Array.from(groups.keys()).sort((a, b) => a - b);
+
                               return (
                                 <div className="mb-3">
                                   <div className="text-xs font-semibold text-gray-600 mb-1.5">工艺流程</div>
                                   <div className="flex flex-wrap items-center gap-1">
-                                    {sorted.map((step, si) => (
-                                      <div key={si} className="flex items-center">
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                                          step.is_key_step
-                                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                                            : 'bg-white text-gray-700 border border-gray-200'
-                                        }`}>
-                                          {step.step_order}. {step.step_name}
-                                          {step.is_key_step && <span className="ml-0.5 text-amber-500">★</span>}
-                                          {step.estimated_minutes && <span className="ml-1 text-gray-400 text-[10px]">{step.estimated_minutes}min</span>}
-                                        </span>
-                                        {si < sorted.length - 1 && (
-                                          <svg className="w-3 h-3 text-gray-300 mx-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                                        )}
-                                      </div>
-                                    ))}
+                                    {orders.map((order, oi) => {
+                                      const g = groups.get(order)!;
+                                      const isParallel = g.length > 1;
+                                      return (
+                                        <div key={order} className="flex items-center gap-1">
+                                          {oi > 0 && (
+                                            <svg className="w-3 h-3 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                          )}
+                                          {isParallel ? (
+                                            <span className="flex items-center gap-0.5 px-1 py-0.5 rounded border border-indigo-200 bg-indigo-50">
+                                              {g.map((step, si) => (
+                                                <span key={si} className="flex items-center gap-0.5">
+                                                  {step.branch && <span className="text-[9px] text-indigo-400 font-bold">{step.branch}</span>}
+                                                  <span className={`inline-flex items-center px-1.5 py-0 rounded text-xs font-medium ${
+                                                    step.is_key_step
+                                                      ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                                      : 'bg-white text-gray-700 border border-gray-200'
+                                                  }`}>
+                                                    {step.step_name}
+                                                    {step.is_key_step && <span className="ml-0.5 text-amber-500">★</span>}
+                                                    {step.estimated_minutes && <span className="ml-0.5 text-gray-400 text-[10px]">{step.estimated_minutes}m</span>}
+                                                  </span>
+                                                  {si < g.length - 1 && <span className="text-gray-300 text-xs">|</span>}
+                                                </span>
+                                              ))}
+                                            </span>
+                                          ) : (
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                              g[0].is_key_step
+                                                ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                                : 'bg-white text-gray-700 border border-gray-200'
+                                            }`}>
+                                              {g[0].step_name}
+                                              {g[0].is_key_step && <span className="ml-0.5 text-amber-500">★</span>}
+                                              {g[0].estimated_minutes && <span className="ml-1 text-gray-400 text-[10px]">{g[0].estimated_minutes}min</span>}
+                                            </span>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               );

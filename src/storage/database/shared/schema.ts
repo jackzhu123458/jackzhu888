@@ -466,6 +466,7 @@ export const processFlows = pgTable("process_flows", {
   description: text("description"),
   estimated_minutes: integer("estimated_minutes"),
   is_key_step: boolean("is_key_step").default(false),
+  branch: varchar("branch", { length: 20 }),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updated_at: timestamp("updated_at", { withTimezone: true }),
 }, (table) => [

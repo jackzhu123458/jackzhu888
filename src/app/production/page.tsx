@@ -64,7 +64,7 @@ export default function ProductionPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [qualityAlerts, setQualityAlerts] = useState<Array<{ product_id: string; severity: string; title: string }>>([]);
-  const [processFlows, setProcessFlows] = useState<Record<string, Array<{ id?: string; step_order: number; step_name: string; description: string | null; estimated_minutes: number | null; is_key_step: boolean }>>>({});
+  const [processFlows, setProcessFlows] = useState<Record<string, Array<{ id?: string; step_order: number; step_name: string; description: string | null; estimated_minutes: number | null; is_key_step: boolean; branch: string | null }>>>({});
   const [loading, setLoading] = useState(true);
   const [filterProductId, setFilterProductId] = useState('all');
   const [hideDelivered, setHideDelivered] = useState(true);
@@ -134,8 +134,8 @@ export default function ProductionPage() {
     // 加载所有工艺流程（按产品分组）
     fetch('/api/process-flows').then(r => r.json()).then(d => {
       if (Array.isArray(d)) {
-        const map: Record<string, Array<{ step_order: number; step_name: string; description: string | null; estimated_minutes: number | null; is_key_step: boolean }>> = {};
-        d.forEach((s: { product_id: string; step_order: number; step_name: string; description: string | null; estimated_minutes: number | null; is_key_step: boolean }) => {
+        const map: Record<string, Array<{ step_order: number; step_name: string; description: string | null; estimated_minutes: number | null; is_key_step: boolean; branch: string | null }>> = {};
+        d.forEach((s: { product_id: string; step_order: number; step_name: string; description: string | null; estimated_minutes: number | null; is_key_step: boolean; branch: string | null }) => {
           if (!map[s.product_id]) map[s.product_id] = [];
           map[s.product_id].push(s);
         });
@@ -411,25 +411,41 @@ export default function ProductionPage() {
                 const completedColor = 'bg-emerald-500';
                 const currentColor = 'bg-blue-500';
                 const pendingColor = 'bg-gray-200';
+                // Group by step_order for parallel display
+                const stepGroups = new Map<number, typeof steps>();
+                steps.forEach(s => {
+                  if (!stepGroups.has(s.step_order)) stepGroups.set(s.step_order, []);
+                  stepGroups.get(s.step_order)!.push(s);
+                });
+                const sortedOrders = Array.from(stepGroups.keys()).sort((a, b) => a - b);
+                const stepLabels = sortedOrders.map(order => {
+                  const g = stepGroups.get(order)!;
+                  return g.length > 1 ? `${g.map(s => s.step_name).join('/')}` : g[0].step_name;
+                });
                 return (
-                  <div className="flex items-center gap-0.5 mt-0.5" title={`工艺: ${steps.map(s => s.step_name).join(' → ')}`}>
+                  <div className="flex items-center gap-0.5 mt-0.5" title={`工艺: ${stepLabels.join(' → ')}`}>
                     <Workflow className="w-3 h-3 text-indigo-400 shrink-0" />
                     <div className="flex items-center gap-[2px]">
-                      {steps.map((step, idx) => {
-                        const stepNum = idx + 1;
-                        const isCompleted = maxStep >= stepNum;
-                        const isCurrent = maxStep === idx;
+                      {sortedOrders.map((stepOrder, idx) => {
+                        const group = stepGroups.get(stepOrder)!;
+                        const isParallel = group.length > 1;
+                        const isCompleted = maxStep > stepOrder;
+                        const isCurrent = maxStep === stepOrder;
                         return (
-                          <div
-                            key={step.id || idx}
-                            className={`h-1.5 rounded-full ${isCompleted ? completedColor : isCurrent ? currentColor : pendingColor} ${step.is_key_step ? 'w-3' : 'w-2'}`}
-                            title={`${stepNum}. ${step.step_name}${step.is_key_step ? ' [关键]' : ''}`}
-                          />
+                          <div key={stepOrder} className="flex items-center gap-[1px]">
+                            {group.map((step) => (
+                              <div
+                                key={step.id || step.branch}
+                                className={`h-1.5 rounded-full ${isCompleted ? completedColor : isCurrent ? currentColor : pendingColor} ${step.is_key_step ? 'w-3' : isParallel ? 'w-1.5' : 'w-2'}`}
+                                title={`${stepOrder}. ${step.step_name}${step.branch ? ` [${step.branch}]` : ''}${step.is_key_step ? ' [关键]' : ''}`}
+                              />
+                            ))}
+                          </div>
                         );
                       })}
                     </div>
                     <span className="text-[10px] text-gray-400 ml-0.5">
-                      {maxStep >= steps.length ? '完成' : `${maxStep}/${steps.length}`}
+                      {maxStep > Math.max(...sortedOrders) ? '完成' : `${maxStep}/${sortedOrders.length}步`}
                     </span>
                   </div>
                 );
@@ -488,15 +504,22 @@ export default function ProductionPage() {
                     {processFlows[productId] && processFlows[productId].length > 0 && (() => {
                       const steps = processFlows[productId];
                       const cs = order.current_step || 0;
+                      // Group by step_order for parallel
+                      const stepGroups = new Map<number, typeof steps>();
+                      steps.forEach(s => {
+                        if (!stepGroups.has(s.step_order)) stepGroups.set(s.step_order, []);
+                        stepGroups.get(s.step_order)!.push(s);
+                      });
+                      const sortedOrders = Array.from(stepGroups.keys()).sort((a, b) => a - b);
                       return (
                         <div className="flex items-center gap-0.5 mt-1.5 flex-wrap">
-                          {steps.map((step, idx) => {
-                            const stepNum = idx + 1;
-                            const isCompleted = cs >= stepNum;
-                            const isCurrent = cs === stepNum - 1 && cs < steps.length; // 当前正在进行的步骤（current_step指向下一步，所以cs===idx表示当前在idx步完成前）
-                            const isNext = cs === stepNum - 1 && cs > 0; // 即将进行的下一步
-                            const isKey = step.is_key_step;
-                            let bgColor = 'bg-gray-100'; // 未开始
+                          {sortedOrders.map((stepOrder, oi) => {
+                            const group = stepGroups.get(stepOrder)!;
+                            const isParallel = group.length > 1;
+                            const isCompleted = cs > stepOrder;
+                            const isCurrent = cs === stepOrder;
+                            const isKey = group.some(s => s.is_key_step);
+                            let bgColor = 'bg-gray-100';
                             let textColor = 'text-gray-400';
                             let borderColor = 'border-gray-200';
                             let fontWeight = 'font-normal';
@@ -505,39 +528,38 @@ export default function ProductionPage() {
                               textColor = 'text-white';
                               borderColor = 'border-emerald-500';
                               fontWeight = 'font-medium';
-                            } else if (cs === 0 && idx === 0) {
-                              // 还没开始，第一步标记为待开始
+                            } else if (cs === 0 && oi === 0) {
                               bgColor = 'bg-amber-50';
                               textColor = 'text-amber-700';
                               borderColor = 'border-amber-300';
                               fontWeight = 'font-medium';
-                            } else if (idx === cs) {
-                              // 当前步骤（下一步要推进到的）
+                            } else if (isCurrent) {
                               bgColor = 'bg-blue-500';
                               textColor = 'text-white';
                               borderColor = 'border-blue-500';
                               fontWeight = 'font-semibold';
                             }
+                            const label = isParallel ? group.map(s => s.step_name).join('/') : group[0].step_name;
                             return (
-                              <React.Fragment key={step.id || idx}>
-                                {idx > 0 && (
+                              <React.Fragment key={stepOrder}>
+                                {oi > 0 && (
                                   <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0">
-                                    <path d="M2 6 L10 6" stroke={isCompleted || idx < cs ? '#10b981' : '#d1d5db'} strokeWidth="1.5" fill="none" />
-                                    <path d="M8 3 L11 6 L8 9" fill={isCompleted || idx < cs ? '#10b981' : '#d1d5db'} />
+                                    <path d="M2 6 L10 6" stroke={isCompleted || stepOrder < cs ? '#10b981' : '#d1d5db'} strokeWidth="1.5" fill="none" />
+                                    <path d="M8 3 L11 6 L8 9" fill={isCompleted || stepOrder < cs ? '#10b981' : '#d1d5db'} />
                                   </svg>
                                 )}
                                 <span
                                   className={`inline-flex items-center gap-0.5 text-[10px] px-1 py-0 rounded border ${bgColor} ${textColor} ${borderColor} ${fontWeight} ${isKey ? 'ring-1 ring-orange-300' : ''} whitespace-nowrap`}
-                                  title={`${stepNum}. ${step.step_name}${step.estimated_minutes ? ` (${step.estimated_minutes}分钟)` : ''}${isKey ? ' [关键工序]' : ''}`}
+                                  title={`${stepOrder}. ${label}${group.some(s => s.estimated_minutes) ? ` (${group.filter(s => s.estimated_minutes).map(s => `${s.step_name}:${s.estimated_minutes}min`).join(', ')})` : ''}${isKey ? ' [含关键工序]' : ''}`}
                                 >
                                   {isCompleted && <span>✓</span>}
                                   {isKey && !isCompleted && <span className="text-[8px]">★</span>}
-                                  <span>{step.step_name}</span>
+                                  <span>{label}</span>
                                 </span>
                               </React.Fragment>
                             );
                           })}
-                          {cs >= steps.length && (
+                          {cs > Math.max(...sortedOrders) && (
                             <span className="text-[10px] text-emerald-600 font-medium ml-1">全部完成</span>
                           )}
                         </div>
