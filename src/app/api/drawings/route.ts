@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     );
 
     // 保存图纸记录到数据库
-    const { data, error } = await getSupabase()
+    const { data: drawingData, error: insertError } = await getSupabase()
       .from('product_drawings')
       .insert({
         product_id: productId,
@@ -115,14 +115,26 @@ export async function POST(request: NextRequest) {
         file_size: file.size,
         remark,
       })
-      .select('*, products(id, code, name, spec)')
+      .select('*')
       .single();
 
-    if (error) {
+    if (insertError) {
       // 删除已上传的文件
       await deleteFile(result.fileKey);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: insertError.message }, { status: 500 });
     }
+
+    // 单独查询产品信息（避免PostgREST join依赖）
+    const { data: productData } = await getSupabase()
+      .from('products')
+      .select('id, code, name, spec')
+      .eq('id', productId)
+      .single();
+
+    const data = {
+      ...drawingData,
+      products: productData,
+    };
 
     // 生成URL
     const url = await getFileUrl(result.fileKey);
