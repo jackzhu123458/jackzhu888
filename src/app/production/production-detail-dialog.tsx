@@ -64,6 +64,7 @@ export default function ProductionDetailDialog({
   const [zoom, setZoom] = useState(1);
   const [loadingDrawings, setLoadingDrawings] = useState(false);
   const [materialsDrawings, setMaterialsDrawings] = useState<Record<string, Drawing[]>>({});
+  const [drawingUrlsCache, setDrawingUrlsCache] = useState<Record<string, string>>({});
 
   const product = order?.products;
   const steps = product ? (processFlows[product.id] || []) : [];
@@ -109,33 +110,66 @@ export default function ProductionDetailDialog({
     setMaterialsDrawings(result);
   }, []);
 
+  // 批量加载图纸缩略图 URL
+  const loadAllDrawingUrls = useCallback(async (drawingList: Drawing[], matDrawings: Record<string, Drawing[]>) => {
+    const allDrawings = [...drawingList];
+    Object.values(matDrawings).forEach(d => allDrawings.push(...d));
+    const cache: Record<string, string> = {};
+    await Promise.all(allDrawings.map(async (d) => {
+      try {
+        const res = await fetch(`/api/drawings?file_key=${encodeURIComponent(d.file_key)}`);
+        if (res.ok) {
+          const data = await res.json();
+          cache[d.file_key] = data.url;
+        }
+      } catch { /* skip */ }
+    }));
+    setDrawingUrlsCache(prev => ({ ...prev, ...cache }));
+  }, []);
+
   // 加载图纸 URL
   const loadDrawingUrl = useCallback(async (fileKey: string) => {
+    // 优先使用缓存
+    if (drawingUrlsCache[fileKey]) {
+      setDrawingUrl(drawingUrlsCache[fileKey]);
+      return;
+    }
     try {
       const res = await fetch(`/api/drawings?file_key=${encodeURIComponent(fileKey)}`);
       if (res.ok) {
         const data = await res.json();
         setDrawingUrl(data.url);
+        setDrawingUrlsCache(prev => ({ ...prev, [fileKey]: data.url }));
       }
     } catch (e) {
       console.error('加载图纸URL失败:', e);
     }
-  }, []);
+  }, [drawingUrlsCache]);
 
   // 当订单变化时加载数据
+  const [prevOpen, setPrevOpen] = useState(false);
   useEffect(() => {
-    if (open && order?.product_id) {
+    if (open && !prevOpen && order?.product_id) {
       setDrawings([]);
       setSelectedDrawing(null);
       setDrawingUrl(null);
       setZoom(1);
       setMaterialsDrawings({});
+      setDrawingUrlsCache({});
       loadDrawings(order.product_id);
       if (order.production_order_materials && order.production_order_materials.length > 0) {
         loadMaterialDrawings(order.production_order_materials);
       }
     }
-  }, [open, order?.product_id, loadDrawings, loadMaterialDrawings]);
+    setPrevOpen(open);
+  }, [open, order?.product_id, prevOpen, loadDrawings, loadMaterialDrawings]);
+
+  // 图纸和物料图纸加载完后，批量加载缩略图 URL
+  useEffect(() => {
+    if (drawings.length > 0 || Object.keys(materialsDrawings).length > 0) {
+      loadAllDrawingUrls(drawings, materialsDrawings);
+    }
+  }, [drawings, materialsDrawings, loadAllDrawingUrls]);
 
   // 选中图纸时加载 URL
   useEffect(() => {
@@ -174,7 +208,7 @@ export default function ProductionDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] w-[95vw] h-[92vh] p-0 gap-0 flex flex-col">
+      <DialogContent className="max-w-[100vw] w-[100vw] h-[100vh] p-0 gap-0 flex flex-col rounded-none border-0">
         {/* 顶部标题栏 */}
         <div className="flex items-center justify-between px-6 py-3 border-b bg-gray-50 flex-shrink-0">
           <div className="flex items-center gap-4">
@@ -350,29 +384,43 @@ export default function ProductionDetailDialog({
             <div className="flex-1 flex min-h-0">
               {/* 图纸列表侧栏 */}
               {drawings.length > 0 && (
-                <div className="w-[160px] flex-shrink-0 border-r bg-white overflow-y-auto">
+                <div className="w-[200px] flex-shrink-0 border-r bg-white overflow-y-auto">
                   <div className="p-2 space-y-2">
-                    {drawings.map((d) => (
-                      <div
-                        key={d.id}
-                        className={`p-2 rounded border cursor-pointer text-xs transition-colors ${
-                          selectedDrawing?.id === d.id
-                            ? 'border-blue-400 bg-blue-50'
-                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                        }`}
-                        onClick={() => { setSelectedDrawing(d); setZoom(1); }}
-                      >
-                        <FileImage className="w-5 h-5 text-gray-400 mx-auto mb-1" />
-                        <div className="text-center text-gray-600 truncate" title={d.file_name}>
-                          {d.file_name}
-                        </div>
-                        {d.description && (
-                          <div className="text-center text-gray-400 truncate mt-0.5" title={d.description}>
-                            {d.description}
+                    {drawings.map((d) => {
+                      const thumbUrl = drawingUrlsCache[d.file_key];
+                      return (
+                        <div
+                          key={d.id}
+                          className={`p-1.5 rounded border cursor-pointer text-xs transition-colors ${
+                            selectedDrawing?.id === d.id
+                              ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-200'
+                              : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                          }`}
+                          onClick={() => { setSelectedDrawing(d); setZoom(1); }}
+                        >
+                          {/* 缩略图预览 */}
+                          <div className="w-full aspect-[4/3] bg-gray-50 rounded mb-1.5 overflow-hidden flex items-center justify-center">
+                            {thumbUrl ? (
+                              <img
+                                src={thumbUrl}
+                                alt={d.file_name}
+                                className="w-full h-full object-contain"
+                              />
+                            ) : (
+                              <FileImage className="w-6 h-6 text-gray-300" />
+                            )}
                           </div>
-                        )}
-                      </div>
-                    ))}
+                          <div className="text-center text-gray-600 truncate" title={d.file_name}>
+                            {d.file_name}
+                          </div>
+                          {d.description && (
+                            <div className="text-center text-gray-400 truncate mt-0.5" title={d.description}>
+                              {d.description}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
