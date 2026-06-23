@@ -23,7 +23,6 @@ const navItems: NavItem[] = [
       { href: '/customers', label: '客户管理', icon: '◉', permission: 'customers' },
       { href: '/bom', label: '商品资料', icon: '☰', permission: 'products' },
       { href: '/drawings', label: '图纸管理', icon: '⊞', permission: 'drawings' },
-      { href: '/process-flow', label: '工艺流程', icon: '⚙', permission: 'process-flow' },
     ],
   },
   { href: '/orders', label: '客户订单', icon: '▤', permission: 'orders' },

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -10,7 +10,19 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { Plus, Trash2, GripVertical, Save, Star } from 'lucide-react';
+import { Plus, Trash2, Save, Star } from 'lucide-react';
+
+/* ---------- 预定义工序名称（作为推荐选项） ---------- */
+const PREDEFINED_STEPS = [
+  '落料', '冲孔', '折弯', '成型', '焊接', '铆接', '攻牙',
+  '车削', '铣削', '磨削', '钻削', '拉削', '抛光', '清洗',
+  '热处理', '表面处理', '喷涂', '电镀', '氧化', '装配', '组装',
+  '放风轮合进风电机蜗壳', '外观检查', '尺寸检测', '功能测试',
+  '气密测试', '包装', '装箱', '入库', '出库', '剪切', '拉伸',
+  '旋压', '浇铸', '压铸', '锻造', '注塑', '挤出', '烘烤', '固化',
+  '涂装', '丝印', '激光切割', '水刀切割', '线切割', '电火花',
+  '研磨', '去毛刺', '防锈处理',
+];
 
 interface ProcessStep {
   id?: string;
@@ -28,23 +40,127 @@ interface ProcessFlowDialogProps {
   productName: string;
 }
 
+/* ---------- 工序名称模糊搜索输入框 ---------- */
+function StepNameInput({
+  value,
+  onChange,
+  existingNames,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  existingNames: string[];
+}) {
+  const [focused, setFocused] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // 合并预定义 + 数据库已有的工序名，去重排序
+  const allNames = Array.from(new Set([...PREDEFINED_STEPS, ...existingNames])).sort(
+    (a, b) => a.localeCompare(b, 'zh-CN')
+  );
+
+  // 模糊过滤
+  const filtered = value.trim()
+    ? allNames.filter(n => n.toLowerCase().includes(value.trim().toLowerCase()))
+    : allNames;
+
+  // 输入的文本是否精确匹配某个已有选项
+  const exactMatch = allNames.some(n => n === value.trim());
+
+  // 点击外部关闭下拉
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setFocused(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative flex-1 min-w-0">
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+ onFocus={() => setFocused(true)}
+        placeholder="输入或选择工序名称"
+        className="h-8 text-sm"
+      />
+      {focused && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-[200px] overflow-y-auto">
+          {filtered.length === 0 && !value.trim() && (
+            <div className="px-3 py-2 text-xs text-gray-400">输入关键字搜索工序</div>
+          )}
+          {filtered.length === 0 && value.trim() && (
+            <button
+              className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 text-blue-600 flex items-center gap-1"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                // 保留用户输入的值，不做任何操作（值已经在输入框里了）
+                setFocused(false);
+              }}
+            >
+              <Plus className="w-3 h-3" /> 新增工序 &ldquo;{value.trim()}&rdquo;
+            </button>
+          )}
+          {filtered.map(name => (
+            <button
+              key={name}
+              className={`w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 ${
+                name === value ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+              }`}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onChange(name);
+                setFocused(false);
+              }}
+            >
+              {name}
+            </button>
+          ))}
+          {/* 如果输入不精确匹配且过滤结果不为空，追加"新增"选项 */}
+          {value.trim() && !exactMatch && filtered.length > 0 && (
+            <button
+              className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 text-blue-600 border-t border-gray-100 flex items-center gap-1"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setFocused(false);
+              }}
+            >
+              <Plus className="w-3 h-3" /> 新增工序 &ldquo;{value.trim()}&rdquo;
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- 主弹窗组件 ---------- */
 export default function ProcessFlowDialog({ open, onOpenChange, productId, productName }: ProcessFlowDialogProps) {
   const [steps, setSteps] = useState<ProcessStep[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [existingStepNames, setExistingStepNames] = useState<string[]>([]);
 
   const loadSteps = useCallback(async () => {
     if (!productId) return;
     setLoading(true);
     try {
+      // 加载当前产品的工艺流程
       const res = await fetch(`/api/process-flows?product_id=${productId}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.steps && data.steps.length > 0) {
-          setSteps(data.steps);
-        } else {
-          setSteps([]);
+        setSteps(data.steps && data.steps.length > 0 ? data.steps : []);
+      }
+      // 加载所有已有的工序名称（用于模糊搜索推荐）
+      const allRes = await fetch('/api/process-flows');
+      if (allRes.ok) {
+        const allData = await allRes.json();
+        if (Array.isArray(allData)) {
+          const names = Array.from(new Set(allData.map((s: { step_name: string }) => s.step_name)));
+          setExistingStepNames(names);
         }
       }
     } catch { /* ignore */ }
@@ -134,7 +250,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
         <DialogHeader>
           <DialogTitle>工艺流程 - {productName}</DialogTitle>
           <DialogDescription>
-            编辑该产品的生产工艺流程步骤，支持排序和关键工序标记
+            编辑该产品的生产工艺流程步骤，输入关键字搜索或直接输入新增工序
           </DialogDescription>
         </DialogHeader>
 
@@ -176,15 +292,12 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
                     </button>
                   </div>
 
-                  {/* 工序名称 */}
-                  <div className="flex-1 min-w-0">
-                    <Input
-                      value={step.step_name}
-                      onChange={(e) => updateStep(idx, 'step_name', e.target.value)}
-                      placeholder="工序名称，如：落料、冲孔、折弯"
-                      className="h-8 text-sm"
-                    />
-                  </div>
+                  {/* 工序名称 - 模糊搜索+可新增 */}
+                  <StepNameInput
+                    value={step.step_name}
+                    onChange={(val) => updateStep(idx, 'step_name', val)}
+                    existingNames={existingStepNames}
+                  />
 
                   {/* 预估工时 */}
                   <div className="w-24">
@@ -233,7 +346,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
             {steps.length > 0 && (
               <div className="text-xs text-gray-400 mt-2 space-y-1">
                 <p>▲▼ 可调整工序顺序，★ 标记关键工序（高亮显示）</p>
-                <p>点击工序名称输入框可编辑备注说明</p>
+                <p>输入关键字可搜索已有工序，也可直接输入新增工序名称</p>
               </div>
             )}
           </div>
@@ -248,7 +361,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             取消
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button onClick={handleSave} disabled={saving} className="bg-blue-800 hover:bg-blue-900">
             <Save className="w-4 h-4 mr-1" />
             {saving ? '保存中...' : '保存'}
           </Button>
