@@ -34,6 +34,7 @@
 │   │   │   ├── orders/          # 客户订单 CRUD
 │   │   │   └── orders/push-down/ # 订单下推逻辑
 │   │   ├── bom/            # BOM 管理页（树状展示）
+│   │   ├── process-flow/   # 工艺流程管理页（集中管理所有工艺）
 │   │   ├── customers/      # 客户管理页
 │   │   ├── orders/         # 客户订单页（排程表格）
 │   │   ├── production/     # 生产订单页（按客户分组）
@@ -83,6 +84,7 @@
 | /api/products | GET/POST | 产品列表 / 创建产品 |
 | /api/bom | GET/POST/PUT/DELETE | BOM 列表 / 创建 / 更新 / 删除 |
 | /api/bom/import | POST | BOM Excel批量导入 (GBK编码修复) |
+| /api/process-flows | GET/POST/DELETE | 工艺流程 CRUD（按产品分组管理） |
 | /api/customers | GET/POST/PUT/DELETE | 客户 CRUD |
 | /api/orders | GET/POST/PUT/DELETE | 客户订单 CRUD |
 | /api/orders/push-down | POST | 订单下推：检查BOM/库存→生成生产订单或预扣 |
@@ -115,6 +117,7 @@
 
 - **GBK编码修复**: xlsx库在Next.js ESM运行时codepage选项不生效，用iconv-lite实现`latin1→Buffer→GBK decode`链路
 - **BOM组名**: 使用extractCommonPrefix提取组内公共名称（如"蜗壳"、"支架"）
+- **工艺流程管理**: 集中在/process-flow页面管理，BOM和生产页面只读引用，不能自由编辑。新增/编辑/删除统一在管理页操作
 - **标签打印箱数分配**: 支持不固定每箱数量，如100个5箱=4×8+1×68
 - **打印**: CSS @media print + window.print()，`.no-print`类标记打印时隐藏元素
 - **全局布局**: AppShell在layout.tsx中包裹，侧边栏全局可用

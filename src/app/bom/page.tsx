@@ -35,7 +35,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import ProcessFlowDialog from './process-flow-dialog';
+import ProcessFlowViewDialog from './process-flow-view-dialog';
 
 interface Product {
   id: string;
@@ -1108,7 +1108,7 @@ export default function BomPage() {
                               setProcessFlowOpen(true);
                             }}
                             className="text-indigo-600 hover:text-indigo-800 hover:underline"
-                            title="编辑工艺流程"
+                            title="查看工艺流程"
                           >
                             工艺
                           </button>
@@ -1173,7 +1173,7 @@ export default function BomPage() {
                                   setProcessFlowOpen(true);
                                 }}
                                 className="text-indigo-500 hover:text-indigo-700 hover:underline"
-                                title="编辑工艺流程"
+                                title="查看工艺流程"
                               >工艺</button>
                             </div>
                             <div className="px-1 py-2 text-xs text-center flex items-center justify-center gap-1">
@@ -1829,7 +1829,7 @@ export default function BomPage() {
       </Dialog>
 
       {/* 工艺流程弹窗 */}
-      <ProcessFlowDialog
+      <ProcessFlowViewDialog
         open={processFlowOpen}
         onOpenChange={setProcessFlowOpen}
         productId={processFlowProductId}
