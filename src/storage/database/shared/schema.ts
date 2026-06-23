@@ -472,6 +472,13 @@ export const processFlows = pgTable("process_flows", {
   index("process_flows_product_id_idx").on(table.product_id),
 ]);
 
+// 工序模板（可自定义的工序名称列表）
+export const processStepTemplates = pgTable("process_step_templates", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  step_name: varchar("step_name", { length: 100 }).notNull().unique(),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // 钉钉令牌缓存
 export const dingtalkTokenCache = pgTable("dingtalk_token_cache", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),

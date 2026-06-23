@@ -10,19 +10,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { Plus, Trash2, Save, Star } from 'lucide-react';
-
-/* ---------- 预定义工序名称（作为推荐选项） ---------- */
-const PREDEFINED_STEPS = [
-  '落料', '冲孔', '折弯', '成型', '焊接', '铆接', '攻牙',
-  '车削', '铣削', '磨削', '钻削', '拉削', '抛光', '清洗',
-  '热处理', '表面处理', '喷涂', '电镀', '氧化', '装配', '组装',
-  '放风轮合进风电机蜗壳', '外观检查', '尺寸检测', '功能测试',
-  '气密测试', '包装', '装箱', '入库', '出库', '剪切', '拉伸',
-  '旋压', '浇铸', '压铸', '锻造', '注塑', '挤出', '烘烤', '固化',
-  '涂装', '丝印', '激光切割', '水刀切割', '线切割', '电火花',
-  '研磨', '去毛刺', '防锈处理',
-];
+import { Plus, Trash2, Save, Star, Settings2, X } from 'lucide-react';
 
 interface ProcessStep {
   id?: string;
@@ -31,6 +19,11 @@ interface ProcessStep {
   description: string | null;
   estimated_minutes: number | null;
   is_key_step: boolean;
+}
+
+interface StepTemplate {
+  id: string;
+  step_name: string;
 }
 
 interface ProcessFlowDialogProps {
@@ -44,27 +37,22 @@ interface ProcessFlowDialogProps {
 function StepNameInput({
   value,
   onChange,
-  existingNames,
+  templates,
 }: {
   value: string;
   onChange: (val: string) => void;
-  existingNames: string[];
+  templates: string[];
 }) {
   const [focused, setFocused] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 合并预定义 + 数据库已有的工序名，去重排序
-  const allNames = Array.from(new Set([...PREDEFINED_STEPS, ...existingNames])).sort(
-    (a, b) => a.localeCompare(b, 'zh-CN')
-  );
-
   // 模糊过滤
   const filtered = value.trim()
-    ? allNames.filter(n => n.toLowerCase().includes(value.trim().toLowerCase()))
-    : allNames;
+    ? templates.filter(n => n.toLowerCase().includes(value.trim().toLowerCase()))
+    : templates;
 
   // 输入的文本是否精确匹配某个已有选项
-  const exactMatch = allNames.some(n => n === value.trim());
+  const exactMatch = templates.some(n => n === value.trim());
 
   // 点击外部关闭下拉
   useEffect(() => {
@@ -82,7 +70,7 @@ function StepNameInput({
       <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
- onFocus={() => setFocused(true)}
+        onFocus={() => setFocused(true)}
         placeholder="输入或选择工序名称"
         className="h-8 text-sm"
       />
@@ -96,7 +84,6 @@ function StepNameInput({
               className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 text-blue-600 flex items-center gap-1"
               onMouseDown={(e) => {
                 e.preventDefault();
-                // 保留用户输入的值，不做任何操作（值已经在输入框里了）
                 setFocused(false);
               }}
             >
@@ -136,32 +123,141 @@ function StepNameInput({
   );
 }
 
+/* ---------- 工序模板管理面板 ---------- */
+function TemplateManager({
+  templates,
+  onRefresh,
+}: {
+  templates: StepTemplate[];
+  onRefresh: () => void;
+}) {
+  const [newName, setNewName] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleAdd = async () => {
+    if (!newName.trim()) return;
+    setAdding(true);
+    try {
+      const res = await fetch('/api/process-step-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step_name: newName.trim() }),
+      });
+      if (res.ok) {
+        setNewName('');
+        onRefresh();
+      } else {
+        const err = await res.json();
+        alert(err.error || '添加失败');
+      }
+    } catch {
+      alert('网络错误');
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/process-step-templates?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        onRefresh();
+      } else {
+        const err = await res.json();
+        alert(err.error || '删除失败');
+      }
+    } catch {
+      alert('网络错误');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+      <div className="text-xs font-medium text-gray-500 mb-2">管理可选工序名称（增删后即时生效）</div>
+      {/* 新增输入 */}
+      <div className="flex gap-2 mb-3">
+        <Input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="输入新工序名称"
+          className="h-7 text-xs flex-1"
+          onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleAdd}
+          disabled={adding || !newName.trim()}
+          className="h-7 text-xs px-2"
+        >
+          <Plus className="w-3 h-3 mr-1" />
+          {adding ? '...' : '添加'}
+        </Button>
+      </div>
+      {/* 模板列表 - 标签式展示，可删除 */}
+      <div className="flex flex-wrap gap-1.5 max-h-[120px] overflow-y-auto">
+        {templates.map(t => (
+          <span
+            key={t.id}
+            className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-700 group"
+          >
+            {t.step_name}
+            <button
+              onClick={() => handleDelete(t.id)}
+              disabled={deletingId === t.id}
+              className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+              title="删除此工序"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </span>
+        ))}
+        {templates.length === 0 && (
+          <span className="text-xs text-gray-400">暂无工序模板</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- 主弹窗组件 ---------- */
 export default function ProcessFlowDialog({ open, onOpenChange, productId, productName }: ProcessFlowDialogProps) {
   const [steps, setSteps] = useState<ProcessStep[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [existingStepNames, setExistingStepNames] = useState<string[]>([]);
+  const [templates, setTemplates] = useState<StepTemplate[]>([]);
+  const [showTemplateManager, setShowTemplateManager] = useState(false);
+
+  // 合并模板工序名 + 数据库已使用的工序名，去重排序
+  const allStepNames = Array.from(
+    new Set([
+      ...templates.map(t => t.step_name),
+    ])
+  ).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+
+  const loadTemplates = useCallback(async () => {
+    try {
+      const res = await fetch('/api/process-step-templates');
+      if (res.ok) {
+        const data = await res.json();
+        setTemplates(Array.isArray(data) ? data : []);
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   const loadSteps = useCallback(async () => {
     if (!productId) return;
     setLoading(true);
     try {
-      // 加载当前产品的工艺流程
       const res = await fetch(`/api/process-flows?product_id=${productId}`);
       if (res.ok) {
         const data = await res.json();
         setSteps(data.steps && data.steps.length > 0 ? data.steps : []);
-      }
-      // 加载所有已有的工序名称（用于模糊搜索推荐）
-      const allRes = await fetch('/api/process-flows');
-      if (allRes.ok) {
-        const allData = await allRes.json();
-        if (Array.isArray(allData)) {
-          const names = Array.from(new Set(allData.map((s: { step_name: string }) => s.step_name)));
-          setExistingStepNames(names);
-        }
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
@@ -170,9 +266,10 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
   useEffect(() => {
     if (open && productId) {
       loadSteps();
+      loadTemplates();
       setError('');
     }
-  }, [open, productId, loadSteps]);
+  }, [open, productId, loadSteps, loadTemplates]);
 
   const addStep = () => {
     setSteps(prev => [
@@ -232,6 +329,19 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
       });
 
       if (res.ok) {
+        // 保存成功后，将新输入的工序名称也同步到模板库
+        const newNames = steps
+          .map(s => s.step_name.trim())
+          .filter(name => !templates.some(t => t.step_name === name));
+        await Promise.all(
+          newNames.map(name =>
+            fetch('/api/process-step-templates', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ step_name: name }),
+            }).catch(() => {})
+          )
+        );
         onOpenChange(false);
       } else {
         const err = await res.json();
@@ -296,7 +406,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
                   <StepNameInput
                     value={step.step_name}
                     onChange={(val) => updateStep(idx, 'step_name', val)}
-                    existingNames={existingStepNames}
+                    templates={allStepNames}
                   />
 
                   {/* 预估工时 */}
@@ -341,6 +451,25 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
               <Plus className="w-4 h-4" />
               添加工序
             </button>
+
+            {/* 管理工序模板折叠面板 */}
+            <div className="pt-2">
+              <button
+                onClick={() => setShowTemplateManager(!showTemplateManager)}
+                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-blue-600 transition-colors"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+                {showTemplateManager ? '收起工序模板管理' : '管理可选工序名称'}
+              </button>
+              {showTemplateManager && (
+                <div className="mt-2">
+                  <TemplateManager
+                    templates={templates}
+                    onRefresh={loadTemplates}
+                  />
+                </div>
+              )}
+            </div>
 
             {/* 说明备注 */}
             {steps.length > 0 && (
