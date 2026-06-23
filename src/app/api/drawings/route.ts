@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 
     let query = getSupabase()
       .from('product_drawings')
-      .select('*, products(id, code, name, spec)')
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (productId) {
@@ -51,13 +51,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // 为每个图纸生成URL
+    // 单独查询关联的产品信息（避免依赖PostgREST join语法）
+    const productIds = [...new Set((data || []).map((d: Record<string, unknown>) => d.product_id as string))];
+    const productsMap: Record<string, { id: string; code: string; name: string; spec: string | null }> = {};
+    if (productIds.length > 0) {
+      const { data: products } = await getSupabase()
+        .from('products')
+        .select('id, code, name, spec')
+        .in('id', productIds);
+      (products || []).forEach((p: { id: string; code: string; name: string; spec: string | null }) => {
+        productsMap[p.id] = p;
+      });
+    }
+
+    // 为每个图纸生成URL并附加产品信息
     const drawingsWithUrl = await Promise.all((data || []).map(async (d: Record<string, unknown>) => {
       try {
         const url = await getFileUrl(d.file_key as string);
-        return { ...d, url };
+        const product = productsMap[d.product_id as string] || null;
+        return { ...d, url, products: product };
       } catch {
-        return { ...d, url: null };
+        const product = productsMap[d.product_id as string] || null;
+        return { ...d, url: null, products: product };
       }
     }));
 
