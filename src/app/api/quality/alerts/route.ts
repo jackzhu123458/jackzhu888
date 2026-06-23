@@ -1,17 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getSupabaseClient } from '@/storage/database/supabase-client';
 
-const getBaseUrl = () => {
-  const url = process.env.POSTGREST_URL || process.env.COZE_SUPABASE_URL;
-  if (!url) throw new Error('Database URL not configured');
-  return url.replace(/\/$/, '');
-};
+export const dynamic = 'force-dynamic';
 
-const getHeaders = () => ({
-  'Content-Type': 'application/json',
-  'Authorization': `Bearer ${process.env.COZE_SUPABASE_ANON_KEY || ''}`,
-  'apikey': process.env.COZE_SUPABASE_ANON_KEY || '',
-  'Prefer': 'return=representation',
-});
+function getSupabase() {
+  return getSupabaseClient();
+}
 
 // GET /api/quality/alerts - 查询质量警示
 export async function GET(request: NextRequest) {
@@ -23,20 +17,48 @@ export async function GET(request: NextRequest) {
     const alertType = searchParams.get('alert_type');
     const activeOnly = searchParams.get('active_only') === 'true';
 
-    let query = `${getBaseUrl()}/quality_alerts?select=*,products(id,code,name,spec,unit,category,type)&order=created_at.desc&limit=200`;
+    const client = getSupabase();
 
-    if (productId) query += `&product_id=eq.${productId}`;
-    if (status) query += `&status=eq.${status}`;
-    if (activeOnly) query += `&status=eq.active`;
-    if (severity) query += `&severity=eq.${severity}`;
-    if (alertType) query += `&alert_type=eq.${alertType}`;
+    // 查询质量警示
+    let query = client
+      .from('quality_alerts')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(200);
 
-    const res = await fetch(query, { headers: getHeaders() });
-    if (!res.ok) {
-      const err = await res.text();
-      return NextResponse.json({ error: err }, { status: res.status });
+    if (productId) query = query.eq('product_id', productId);
+    if (status) query = query.eq('status', status);
+    if (activeOnly) query = query.eq('status', 'active');
+    if (severity) query = query.eq('severity', severity);
+    if (alertType) query = query.eq('alert_type', alertType);
+
+    const { data: alerts, error: alertError } = await query;
+    if (alertError) {
+      return NextResponse.json({ error: alertError.message }, { status: 500 });
     }
-    const data = await res.json();
+
+    // 独立查询产品信息
+    const productIds = [...new Set((alerts || []).map((a: { product_id: string }) => a.product_id).filter(Boolean))];
+    const productMap = new Map<string, { id: string; code: string; name: string; spec: string; unit: string; category: string; type: string }>();
+
+    if (productIds.length > 0) {
+      const { data: products } = await client
+        .from('products')
+        .select('id,code,name,spec,unit,category,type')
+        .in('id', productIds);
+      if (products) {
+        for (const p of products) {
+          productMap.set(p.id, p);
+        }
+      }
+    }
+
+    // 合并数据
+    const data = (alerts || []).map((alert: Record<string, unknown>) => ({
+      ...alert,
+      products: productMap.get(alert.product_id as string) || null,
+    }));
+
     return NextResponse.json(data);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -48,16 +70,24 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { product_id, alert_type, severity, title, description, images, created_by } = body;
+    const { product_id, alert_type, severity, title, description, images, created_by } = body as {
+      product_id?: string;
+      alert_type?: string;
+      severity?: string;
+      title?: string;
+      description?: string;
+      images?: string[];
+      created_by?: string;
+    };
 
     if (!product_id || !title) {
       return NextResponse.json({ error: '产品ID和标题为必填' }, { status: 400 });
     }
 
-    const res = await fetch(`${getBaseUrl()}/quality_alerts`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({
+    const client = getSupabase();
+    const { data, error } = await client
+      .from('quality_alerts')
+      .insert({
         product_id,
         alert_type: alert_type || 'defect',
         severity: severity || 'medium',
@@ -66,15 +96,15 @@ export async function POST(request: NextRequest) {
         images: images || [],
         status: 'active',
         created_by: created_by || '',
-      }),
-    });
+      })
+      .select()
+      .single();
 
-    if (!res.ok) {
-      const err = await res.text();
-      return NextResponse.json({ error: err }, { status: res.status });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
-    const data = await res.json();
-    return NextResponse.json(data[0] || data);
+
+    return NextResponse.json(data);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });
@@ -85,7 +115,16 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, status, severity, title, description, resolution, resolved_by, images } = body;
+    const { id, status, severity, title, description, resolution, resolved_by, images } = body as {
+      id?: string;
+      status?: string;
+      severity?: string;
+      title?: string;
+      description?: string;
+      resolution?: string;
+      resolved_by?: string;
+      images?: string[];
+    };
 
     if (!id) {
       return NextResponse.json({ error: 'ID为必填' }, { status: 400 });
@@ -105,18 +144,19 @@ export async function PUT(request: NextRequest) {
     if (resolution !== undefined) updateData.resolution = resolution;
     if (images !== undefined) updateData.images = images;
 
-    const res = await fetch(`${getBaseUrl()}/quality_alerts?id=eq.${id}`, {
-      method: 'PATCH',
-      headers: getHeaders(),
-      body: JSON.stringify(updateData),
-    });
+    const client = getSupabase();
+    const { data, error } = await client
+      .from('quality_alerts')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
 
-    if (!res.ok) {
-      const err = await res.text();
-      return NextResponse.json({ error: err }, { status: res.status });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
-    const data = await res.json();
-    return NextResponse.json(data[0] || data);
+
+    return NextResponse.json(data);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });
@@ -133,15 +173,16 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'ID为必填' }, { status: 400 });
     }
 
-    const res = await fetch(`${getBaseUrl()}/quality_alerts?id=eq.${id}`, {
-      method: 'DELETE',
-      headers: getHeaders(),
-    });
+    const client = getSupabase();
+    const { error } = await client
+      .from('quality_alerts')
+      .delete()
+      .eq('id', id);
 
-    if (!res.ok) {
-      const err = await res.text();
-      return NextResponse.json({ error: err }, { status: res.status });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';

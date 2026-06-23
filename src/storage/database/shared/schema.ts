@@ -417,6 +417,7 @@ export const qualityAlerts = pgTable(
     resolved_by: varchar("resolved_by", { length: 100 }),
     resolution: text("resolution"),
     created_by: varchar("created_by", { length: 100 }),
+    images: text("images"), // JSON: 图片URL数组
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp("updated_at", { withTimezone: true }),
   },

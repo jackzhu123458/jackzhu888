@@ -149,6 +149,7 @@ export default function QualityPage() {
   const [inspSampleQty, setInspSampleQty] = useState('');
   const [inspConclusion, setInspConclusion] = useState('');
   const [inspRemark, setInspRemark] = useState('');
+  const [inspSaveError, setInspSaveError] = useState('');
   const [inspItems, setInspItems] = useState<Array<{ name: string; standard: string; result: string; passed: boolean }>>([
     { name: '外观检查', standard: '无毛刺、划伤、变形', result: '', passed: true },
     { name: '尺寸检查', standard: '符合图纸公差要求', result: '', passed: true },
@@ -204,7 +205,14 @@ export default function QualityPage() {
   };
 
   const saveAlert = async () => {
-    if (!formProductId || !formTitle) return;
+    if (!formProductId) {
+      setSaveError('请选择产品');
+      return;
+    }
+    if (!formTitle) {
+      setSaveError('请填写标题');
+      return;
+    }
     setSaving(true);
     setSaveError('');
     try {
@@ -306,6 +314,7 @@ export default function QualityPage() {
       { name: '性能测试', standard: '满足技术参数', result: '', passed: true },
       { name: '包装检查', standard: '包装完好、标识清晰', result: '', passed: true },
     ]);
+    setInspSaveError('');
     setProductSearch('');
     setReportDialogOpen(true);
   };
@@ -328,51 +337,67 @@ export default function QualityPage() {
     } catch {
       setInspItems([]);
     }
+    setInspSaveError('');
     setProductSearch('');
     setReportDialogOpen(true);
   };
 
   const saveReport = async () => {
-    if (!inspProductId) return;
-
-    if (editingReport) {
-      await fetch('/api/quality/inspection', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: editingReport.id,
-          result: inspResult,
-          inspector: inspInspector,
-          approved_by: inspApprovedBy,
-          batch_no: inspBatchNo,
-          quantity: inspQuantity,
-          sample_quantity: inspSampleQty,
-          items: inspItems,
-          conclusion: inspConclusion,
-          remark: inspRemark,
-        }),
-      });
-    } else {
-      await fetch('/api/quality/inspection', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          product_id: inspProductId,
-          delivery_note_id: inspDeliveryNoteId || null,
-          result: inspResult,
-          inspector: inspInspector,
-          approved_by: inspApprovedBy,
-          batch_no: inspBatchNo,
-          quantity: inspQuantity,
-          sample_quantity: inspSampleQty,
-          items: inspItems,
-          conclusion: inspConclusion,
-          remark: inspRemark,
-        }),
-      });
+    if (!inspProductId) {
+      setInspSaveError('请选择产品');
+      return;
     }
-    setReportDialogOpen(false);
-    loadData();
+    setInspSaveError('');
+    try {
+      if (editingReport) {
+        const res = await fetch('/api/quality/inspection', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: editingReport.id,
+            result: inspResult,
+            inspector: inspInspector,
+            approved_by: inspApprovedBy,
+            batch_no: inspBatchNo,
+            quantity: inspQuantity,
+            sample_quantity: inspSampleQty,
+            items: inspItems,
+            conclusion: inspConclusion,
+            remark: inspRemark,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || '保存失败');
+        }
+      } else {
+        const res = await fetch('/api/quality/inspection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            product_id: inspProductId,
+            delivery_note_id: inspDeliveryNoteId || null,
+            result: inspResult,
+            inspector: inspInspector,
+            approved_by: inspApprovedBy,
+            batch_no: inspBatchNo,
+            quantity: inspQuantity,
+            sample_quantity: inspSampleQty,
+            items: inspItems,
+            conclusion: inspConclusion,
+            remark: inspRemark,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || '保存失败');
+        }
+      }
+      setReportDialogOpen(false);
+      loadData();
+    } catch (e: unknown) {
+      setInspSaveError(e instanceof Error ? e.message : '保存失败');
+    }
   };
 
   const doDeleteReport = async () => {
@@ -774,7 +799,7 @@ export default function QualityPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAlertDialogOpen(false)} disabled={saving}>取消</Button>
-            <Button onClick={saveAlert} disabled={!formProductId || !formTitle || saving}>
+            <Button onClick={saveAlert} disabled={saving}>
               {saving ? '保存中...' : '保存'}
             </Button>
           </DialogFooter>
@@ -930,10 +955,11 @@ export default function QualityPage() {
               <label className="text-sm font-medium text-gray-700 mb-1 block">备注</label>
               <Textarea value={inspRemark} onChange={e => setInspRemark(e.target.value)} rows={2} />
             </div>
+            {inspSaveError && <p className="text-sm text-red-600">{inspSaveError}</p>}
           </div>
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={() => setReportDialogOpen(false)}>取消</Button>
-            <Button onClick={saveReport} disabled={!inspProductId}>保存</Button>
+            <Button onClick={saveReport}>保存</Button>
           </div>
         </SheetContent>
       </Sheet>
