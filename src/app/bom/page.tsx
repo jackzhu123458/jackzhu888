@@ -243,6 +243,17 @@ export default function BomPage() {
   const [processFlowProductId, setProcessFlowProductId] = useState('');
   const [processFlowProductName, setProcessFlowProductName] = useState('');
 
+  // 工艺流程数据（展开行时显示）
+  const [processFlows, setProcessFlows] = useState<Array<{ product_id: string; step_order: number; step_name: string; is_key_step: boolean; estimated_minutes: number | null }>>([]);
+  const processFlowsMap = useMemo(() => {
+    const map = new Map<string, typeof processFlows>();
+    for (const pf of processFlows) {
+      if (!map.has(pf.product_id)) map.set(pf.product_id, []);
+      map.get(pf.product_id)!.push(pf);
+    }
+    return map;
+  }, [processFlows]);
+
   // 类别编辑对话框
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [categoryDialogMode, setCategoryDialogMode] = useState<'add' | 'edit'>('add');
@@ -355,14 +366,17 @@ export default function BomPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [bomRes, prodRes] = await Promise.all([
+      const [bomRes, prodRes, pfRes] = await Promise.all([
         fetch('/api/bom'),
         fetch('/api/products'),
+        fetch('/api/process-flows'),
       ]);
       const bomData = await bomRes.json();
       const prodData = await prodRes.json();
+      const pfData = await pfRes.json();
       if (Array.isArray(bomData)) setBomList(bomData);
       if (Array.isArray(prodData)) setProducts(prodData);
+      if (Array.isArray(pfData)) setProcessFlows(pfData);
     } catch (err) {
       console.error('Failed to load data:', err);
     } finally {
@@ -1016,7 +1030,10 @@ export default function BomPage() {
                               ? 'bg-white hover:bg-blue-50/50'
                               : 'bg-[#F9FAFB] hover:bg-blue-50/50'
                         }`}
-                        onClick={() => setSelectedProductId(product.id)}
+                        onClick={() => {
+                          setSelectedProductId(product.id);
+                          if (bomCount > 0) toggleNodeExpand(product.id);
+                        }}
                         onDoubleClick={() => handleEditProduct(product)}
                       >
                         <div className="px-2 py-2.5 text-xs text-gray-500 text-center font-mono border-r border-gray-100">
@@ -1119,78 +1136,93 @@ export default function BomPage() {
                         </div>
                       </div>
 
-                      {/* 子物料行（展开时显示） */}
-                      {isExpanded && children.length > 0 && children.map((bom) => {
-                        const child = bom.child_product;
-                        const typeLabel = child.type === 'raw_material' ? '原材料' : child.type === 'semi_finished' ? '半成品' : child.type === 'finished_product' ? '成品' : '其他';
-                        return (
-                          <div
-                            key={bom.id}
-                            className="grid grid-cols-[50px_80px_120px_1fr_50px_80px_80px_80px_1fr_80px_60px_60px_50px] items-center border-b border-gray-100 bg-amber-50/50"
-                          >
-                            <div className="px-2 py-2 text-xs text-gray-400 text-center border-r border-gray-100" />
-                            <div className="px-2 py-2 text-xs text-gray-400 text-center border-r border-gray-100">
-                              <span className="text-[10px] px-1 py-0.5 rounded bg-gray-100 text-gray-500">{typeLabel}</span>
+                      {/* 子物料展开区域 */}
+                      {isExpanded && (
+                        <div className="border-b border-gray-200 bg-gray-50/80 px-4 py-3">
+                          {/* 工艺流程 */}
+                          {(() => {
+                            const steps = processFlowsMap.get(product.id) || [];
+                            if (steps.length > 0) {
+                              const sorted = [...steps].sort((a, b) => a.step_order - b.step_order);
+                              return (
+                                <div className="mb-3">
+                                  <div className="text-xs font-semibold text-gray-600 mb-1.5">工艺流程</div>
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    {sorted.map((step, si) => (
+                                      <div key={si} className="flex items-center">
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                          step.is_key_step
+                                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                            : 'bg-white text-gray-700 border border-gray-200'
+                                        }`}>
+                                          {step.step_order}. {step.step_name}
+                                          {step.is_key_step && <span className="ml-0.5 text-amber-500">★</span>}
+                                          {step.estimated_minutes && <span className="ml-1 text-gray-400 text-[10px]">{step.estimated_minutes}min</span>}
+                                        </span>
+                                        {si < sorted.length - 1 && (
+                                          <svg className="w-3 h-3 text-gray-300 mx-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+
+                          {/* 子物料卡片 */}
+                          {children.length > 0 ? (
+                            <div>
+                              <div className="text-xs font-semibold text-gray-600 mb-1.5">子物料 ({children.length})</div>
+                              <div className="grid grid-cols-1 gap-1.5">
+                                {children.map((bom) => {
+                                  const child = bom.child_product;
+                                  const typeLabel = child.type === 'raw_material' ? '原材料' : child.type === 'semi_finished' ? '半成品' : child.type === 'finished_product' ? '成品' : '其他';
+                                  const childSteps = processFlowsMap.get(child.id) || [];
+                                  return (
+                                    <div
+                                      key={bom.id}
+                                      className="flex items-center gap-3 px-3 py-2 bg-white rounded border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-colors"
+                                    >
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 shrink-0">{typeLabel}</span>
+                                      <span className="font-mono text-xs text-gray-600 shrink-0 w-[80px]">{child.code}</span>
+                                      <span className="text-sm text-gray-900 flex-1 truncate">{child.name}</span>
+                                      <span className="text-xs px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 shrink-0">x{bom.quantity}</span>
+                                      <span className="text-xs text-gray-400 shrink-0">{translateUnit(child.unit)}</span>
+                                      {childSteps.length > 0 && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 shrink-0">{childSteps.length}道工序</span>
+                                      )}
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); openDrawingDialog(child.id, child.name); }}
+                                        className="p-1 text-gray-300 hover:text-blue-600 shrink-0"
+                                        title="查看图纸"
+                                      ><Paperclip className="w-3.5 h-3.5" /></button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setProcessFlowProductId(child.id); setProcessFlowProductName(child.name); setProcessFlowOpen(true); }}
+                                        className="p-1 text-gray-300 hover:text-indigo-600 shrink-0"
+                                        title="编辑工艺流程"
+                                      ><Workflow className="w-3.5 h-3.5" /></button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setEditQtyBomId(bom.id); setEditQtyValue(bom.quantity); setEditQtyOpen(true); }}
+                                        className="p-1 text-gray-300 hover:text-blue-600 shrink-0"
+                                        title="编辑用量"
+                                      >✎</button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleDeleteBom(bom.id); }}
+                                        className="p-1 text-gray-300 hover:text-red-600 shrink-0"
+                                        title="移除子物料"
+                                      >✕</button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
-                            <div className="px-2 py-2 text-xs text-gray-700 font-mono border-r border-gray-100 pl-6 truncate">
-                              {child.code}
-                            </div>
-                            <div className="px-2 py-2 text-sm text-gray-800 border-r border-gray-100 pl-6 truncate">
-                              {child.name}
-                              <span className="ml-1.5 text-[10px] px-1 py-0 rounded bg-orange-100 text-orange-700">x{bom.quantity}</span>
-                            </div>
-                            <div className="px-2 py-2 text-xs text-gray-600 text-center border-r border-gray-100">
-                              {translateUnit(child.unit)}
-                            </div>
-                            <div className="px-2 py-2 text-xs text-gray-700 text-right font-mono border-r border-gray-100">
-                              {Number(child.cost_price || 0).toFixed(2)}
-                            </div>
-                            <div className="px-2 py-2 text-xs text-gray-700 text-right font-mono border-r border-gray-100">
-                              {(Number(child.price || 0) / 1.13).toFixed(4)}
-                            </div>
-                            <div className="px-2 py-2 text-xs text-gray-700 text-right font-mono border-r border-gray-100">
-                              {Number(child.price || 0).toFixed(2)}
-                            </div>
-                            <div className="px-2 py-2 text-xs text-gray-500 truncate border-r border-gray-100">
-                              {child.spec || child.remark || '-'}
-                            </div>
-                            <div className="px-1 py-2 text-center border-r border-gray-100">
-                              <span className="text-xs text-gray-300">-</span>
-                            </div>
-                            <div className="px-2 py-2 text-xs text-center">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); openDrawingDialog(child.id, child.name); }}
-                                className="text-blue-500 hover:text-blue-700 hover:underline"
-                                title="查看图纸"
-                              >图纸</button>
-                            </div>
-                            <div className="px-2 py-2 text-xs text-center">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setProcessFlowProductId(child.id);
-                                  setProcessFlowProductName(child.name);
-                                  setProcessFlowOpen(true);
-                                }}
-                                className="text-indigo-500 hover:text-indigo-700 hover:underline"
-                                title="编辑工艺流程"
-                              >工艺</button>
-                            </div>
-                            <div className="px-1 py-2 text-xs text-center flex items-center justify-center gap-1">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); setEditQtyBomId(bom.id); setEditQtyValue(bom.quantity); setEditQtyOpen(true); }}
-                                className="p-1 text-gray-400 hover:text-blue-600"
-                                title="编辑用量"
-                              >✎</button>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleDeleteBom(bom.id); }}
-                                className="p-1 text-gray-400 hover:text-red-600"
-                                title="移除子物料"
-                              >✕</button>
-                            </div>
-                          </div>
-                        );
-                      })}
+                          ) : (
+                            <div className="text-xs text-gray-400 text-center py-2">暂无子物料，点击「+子」添加</div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })
