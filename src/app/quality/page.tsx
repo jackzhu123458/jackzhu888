@@ -695,7 +695,8 @@ export default function QualityPage() {
               <Input
                 placeholder="搜索产品编码/名称..."
                 value={productSearch}
-                onChange={e => setProductSearch(e.target.value)}
+                onChange={e => { setProductSearch(e.target.value); if (formProductId) setFormProductId(''); }}
+                onFocus={() => { if (formProductId) setProductSearch(''); }}
                 className="h-9 mb-2"
               />
               {formProductId && (
@@ -707,7 +708,7 @@ export default function QualityPage() {
                 {filteredProducts.map(p => (
                   <button
                     key={p.id}
-                    onClick={() => { setFormProductId(p.id); setProductSearch(''); }}
+                    onClick={() => { setFormProductId(p.id); setProductSearch(`${p.code} - ${p.name}`); }}
                     className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 transition-colors ${
                       formProductId === p.id ? 'bg-blue-50 text-blue-700' : ''
                     }`}
@@ -819,7 +820,8 @@ export default function QualityPage() {
               <Input
                 placeholder="搜索产品编码/名称..."
                 value={productSearch}
-                onChange={e => setProductSearch(e.target.value)}
+                onChange={e => { setProductSearch(e.target.value); if (inspProductId) setInspProductId(''); }}
+                onFocus={() => { if (inspProductId) setProductSearch(''); }}
                 className="h-9 mb-2"
               />
               {inspProductId && (
@@ -831,7 +833,7 @@ export default function QualityPage() {
                 {filteredProducts.map(p => (
                   <button
                     key={p.id}
-                    onClick={() => { setInspProductId(p.id); setProductSearch(''); }}
+                    onClick={() => { setInspProductId(p.id); setProductSearch(`${p.code} - ${p.name}`); }}
                     className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 transition-colors ${
                       inspProductId === p.id ? 'bg-blue-50 text-blue-700' : ''
                     }`}

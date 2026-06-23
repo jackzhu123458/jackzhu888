@@ -856,16 +856,14 @@ export default function OrdersPage() {
         unit_price: product.price ?? null,
       };
       setFormItems(updated);
-      setItemSearches((prev) => {
-        const next = { ...prev };
-        delete next[itemIdx];
-        return next;
-      });
-      setItemNameSearches((prev) => {
-        const next = { ...prev };
-        delete next[itemIdx];
-        return next;
-      });
+      setItemSearches((prev) => ({
+        ...prev,
+        [itemIdx]: product.code,
+      }));
+      setItemNameSearches((prev) => ({
+        ...prev,
+        [itemIdx]: `${product.code} - ${product.name}`,
+      }));
     }
   };
 
@@ -1341,9 +1339,11 @@ export default function OrdersPage() {
                   <div className="relative">
                     <Input
                       placeholder="输入编码搜索"
-                      value={item.product_id
-                        ? (products.find((p) => p.id === item.product_id)?.code || '')
-                        : (itemSearches[itemIdx] || '')
+                      value={itemSearches[itemIdx] !== undefined
+                        ? itemSearches[itemIdx]
+                        : (item.product_id
+                          ? (products.find((p) => p.id === item.product_id)?.code || '')
+                          : '')
                       }
                       onChange={(e) => {
                         setItemSearches((prev) => ({ ...prev, [itemIdx]: e.target.value }));
@@ -1354,12 +1354,9 @@ export default function OrdersPage() {
                         }
                       }}
                       onFocus={() => {
-                        // 聚焦时将当前产品编码填入搜索框，同时显示下拉列表方便重新选择
+                        // 聚焦时清空搜索框，方便重新搜索
                         if (item.product_id) {
-                          const p = products.find((p) => p.id === item.product_id);
-                          if (p) {
-                            setItemSearches((prev) => ({ ...prev, [itemIdx]: p.code }));
-                          }
+                          setItemSearches((prev) => ({ ...prev, [itemIdx]: '' }));
                         }
                       }}
                       onBlur={() => {
@@ -1404,9 +1401,11 @@ export default function OrdersPage() {
                   <div className="relative">
                     <Input
                       placeholder="输入名称搜索"
-                      value={item.product_id
-                        ? (products.find((p) => p.id === item.product_id)?.name || '')
-                        : (itemNameSearches[itemIdx] || '')
+                      value={itemNameSearches[itemIdx] !== undefined
+                        ? itemNameSearches[itemIdx]
+                        : (item.product_id
+                          ? `${products.find((p) => p.id === item.product_id)?.code || ''} - ${products.find((p) => p.id === item.product_id)?.name || ''}`
+                          : '')
                       }
                       onChange={(e) => {
                         setItemNameSearches((prev) => ({ ...prev, [itemIdx]: e.target.value }));
@@ -1417,12 +1416,9 @@ export default function OrdersPage() {
                         }
                       }}
                       onFocus={() => {
-                        // 聚焦时将当前产品名称填入搜索框，方便重新搜索
+                        // 聚焦时清空搜索框，方便重新搜索
                         if (item.product_id) {
-                          const p = products.find((p) => p.id === item.product_id);
-                          if (p) {
-                            setItemNameSearches((prev) => ({ ...prev, [itemIdx]: p.name }));
-                          }
+                          setItemNameSearches((prev) => ({ ...prev, [itemIdx]: '' }));
                         }
                       }}
                       onBlur={() => {

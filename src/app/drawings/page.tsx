@@ -309,7 +309,8 @@ export default function DrawingsPage() {
               <Input
                 placeholder="搜索产品编码或名称..."
                 value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
+                onChange={(e) => { setProductSearch(e.target.value); if (uploadProductId) { setUploadProductId(''); setUploadProductName(''); } }}
+                onFocus={() => { if (uploadProductId) setProductSearch(''); }}
                 className="h-9 text-sm mb-2"
               />
               <div className="max-h-[200px] overflow-y-auto border border-gray-200 rounded">
@@ -317,7 +318,7 @@ export default function DrawingsPage() {
                   <div
                     key={p.id}
                     className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-0 ${uploadProductId === p.id ? 'bg-blue-50 text-blue-700 font-medium' : ''}`}
-                    onClick={() => { setUploadProductId(p.id); setUploadProductName(p.name); }}
+                    onClick={() => { setUploadProductId(p.id); setUploadProductName(p.name); setProductSearch(`${p.code} - ${p.name}`); }}
                   >
                     <span className="font-mono text-gray-600 mr-2">{p.code}</span>
                     <span>{p.name}</span>

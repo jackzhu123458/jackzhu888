@@ -443,7 +443,7 @@ export default function DeliveryPage() {
       items[idx] = { ...items[idx], product_id: p.id, product: p, per_box_qty: items[idx].quantity || 0 };
       return { ...prev, delivery_note_items: items };
     });
-    setItemSearches(prev => { const next = { ...prev }; delete next[idx]; return next; });
+    setItemSearches(prev => { const next = { ...prev }; next[idx] = `${p.code} - ${p.name}`; return next; });
     setIsFormDirty(true);
   };
 
@@ -936,7 +936,7 @@ export default function DeliveryPage() {
                           <Input
                             className="h-6 text-xs font-mono"
                             placeholder="搜索编号/名称"
-                            value={item.product_id ? (item.product?.code || '') : (itemSearches[idx] || '')}
+                            value={itemSearches[idx] !== undefined ? itemSearches[idx] : (item.product_id ? `${item.product?.code || ''} - ${item.product?.name || ''}` : '')}
                             onChange={(e) => {
                               setItemSearches(prev => ({ ...prev, [idx]: e.target.value }));
                               if (item.product_id) {
@@ -950,18 +950,12 @@ export default function DeliveryPage() {
                             }}
                             onFocus={() => {
                               if (item.product_id) {
-                                setForm(prev => {
-                                  const items = [...prev.delivery_note_items];
-                                  items[idx] = { ...items[idx], product_id: '', product: undefined };
-                                  return { ...prev, delivery_note_items: items };
-                                });
                                 setItemSearches(prev => ({ ...prev, [idx]: '' }));
-                                setIsFormDirty(true);
                               }
                             }}
                             onBlur={() => setTimeout(() => { setItemSearches(prev => { const next = { ...prev }; delete next[idx]; return next; }); }, 200)}
                           />
-                          {itemSearches[idx] && !item.product_id && <ProductSearchDropdown query={itemSearches[idx]} onSelect={(p) => selectProductForItem(idx, p)} />}
+                          {itemSearches[idx] !== undefined && !item.product_id && <ProductSearchDropdown query={itemSearches[idx]} onSelect={(p) => selectProductForItem(idx, p)} />}
                         </div>
                       ) : (
                         <span className="font-mono text-[#111827]">{item.product?.code || '-'}</span>

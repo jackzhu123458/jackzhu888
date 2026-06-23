@@ -1836,7 +1836,8 @@ export default function BomPage() {
                   <label className="text-sm font-medium text-gray-700 mb-1.5 block">搜索产品</label>
                   <Input
                     value={addChildSearch}
-                    onChange={(e) => setAddChildSearch(e.target.value)}
+                    onChange={(e) => { setAddChildSearch(e.target.value); if (addChildSelectedId) setAddChildSelectedId(''); }}
+                    onFocus={() => { if (addChildSelectedId) setAddChildSearch(''); }}
                     placeholder="输入编号或名称搜索..."
                   />
                 </div>
@@ -1850,7 +1851,7 @@ export default function BomPage() {
                         className={`px-3 py-2 cursor-pointer text-sm border-b border-gray-50 flex items-center gap-2 ${
                           addChildSelectedId === p.id ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50'
                         }`}
-                        onClick={() => setAddChildSelectedId(p.id)}
+                        onClick={() => { setAddChildSelectedId(p.id); setAddChildSearch(`${p.code} - ${p.name}`); }}
                       >
                         <span className="font-mono text-xs text-gray-500 w-[100px] shrink-0">{p.code}</span>
                         <span className="flex-1 truncate">{p.name}</span>
