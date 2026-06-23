@@ -75,7 +75,7 @@ export default function ProductionPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [qualityAlerts, setQualityAlerts] = useState<Array<{ product_id: string; severity: string; title: string }>>([]);
-  const [processFlows, setProcessFlows] = useState<Record<string, Array<{ step_order: number; step_name: string; description: string | null; estimated_minutes: number | null; is_key_step: boolean }>>>({});
+  const [processFlows, setProcessFlows] = useState<Record<string, Array<{ id?: string; step_order: number; step_name: string; description: string | null; estimated_minutes: number | null; is_key_step: boolean }>>>({});
   const [loading, setLoading] = useState(true);
   const [filterProductId, setFilterProductId] = useState('all');
   const [hideDelivered, setHideDelivered] = useState(true);
@@ -419,21 +419,36 @@ export default function ProductionPage() {
             <div className="flex items-center justify-between mb-1">
               <div className="text-sm font-medium text-gray-900 truncate flex items-center gap-1.5" title={prod?.name}>
                 {prod?.name || '未知物料'}
-                {processFlows[productId] && processFlows[productId].length > 0 && (
-                  <span className="inline-flex items-center gap-0.5 shrink-0" title={`工艺: ${processFlows[productId].map(s => s.step_name).join(' → ')}`}>
-                    <Workflow className="w-3 h-3 text-indigo-400" />
-                    <span className="text-[10px] text-indigo-400">
-                      {(() => {
-                        const steps = processFlows[productId];
-                        const maxStep = Math.max(0, ...groupOrders.map(o => o.current_step || 0));
-                        if (maxStep === 0) return `${steps.length}步`;
-                        if (maxStep >= steps.length) return `全部完成`;
-                        return `${maxStep}/${steps.length}步`;
-                      })()}
-                    </span>
-                  </span>
-                )}
               </div>
+              {processFlows[productId] && processFlows[productId].length > 0 && (() => {
+                const steps = processFlows[productId];
+                const maxStep = Math.max(0, ...groupOrders.map(o => o.current_step || 0));
+                const completedColor = 'bg-emerald-500';
+                const currentColor = 'bg-blue-500';
+                const pendingColor = 'bg-gray-200';
+                return (
+                  <div className="flex items-center gap-0.5 mt-0.5" title={`工艺: ${steps.map(s => s.step_name).join(' → ')}`}>
+                    <Workflow className="w-3 h-3 text-indigo-400 shrink-0" />
+                    <div className="flex items-center gap-[2px]">
+                      {steps.map((step, idx) => {
+                        const stepNum = idx + 1;
+                        const isCompleted = maxStep >= stepNum;
+                        const isCurrent = maxStep === idx;
+                        return (
+                          <div
+                            key={step.id || idx}
+                            className={`h-1.5 rounded-full ${isCompleted ? completedColor : isCurrent ? currentColor : pendingColor} ${step.is_key_step ? 'w-3' : 'w-2'}`}
+                            title={`${stepNum}. ${step.step_name}${step.is_key_step ? ' [关键]' : ''}`}
+                          />
+                        );
+                      })}
+                    </div>
+                    <span className="text-[10px] text-gray-400 ml-0.5">
+                      {maxStep >= steps.length ? '完成' : `${maxStep}/${steps.length}`}
+                    </span>
+                  </div>
+                );
+              })()}
               <div className="flex items-center gap-2 shrink-0 ml-2">
                 <span className="text-xs text-gray-400">{groupOrders.length}单</span>
                 <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
@@ -465,26 +480,6 @@ export default function ProductionPage() {
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-mono text-xs text-gray-500">{order.order_no}</span>
                       <div className="flex items-center gap-1.5">
-                        {/* 工艺进度指示 */}
-                        {processFlows[productId] && processFlows[productId].length > 0 && (() => {
-                          const steps = processFlows[productId];
-                          const cs = order.current_step || 0;
-                          if (cs > 0 && cs <= steps.length) {
-                            const stepName = steps[cs - 1]?.step_name || '';
-                            return (
-                              <span className="text-[10px] px-1.5 py-0 rounded bg-indigo-50 text-indigo-600 border border-indigo-200 max-w-[120px] truncate" title={`${cs}/${steps.length} ${stepName}`}>
-                                {cs}/{steps.length} {stepName}
-                              </span>
-                            );
-                          } else if (cs >= steps.length) {
-                            return (
-                              <span className="text-[10px] px-1.5 py-0 rounded bg-green-50 text-green-600 border border-green-200">
-                                工艺完成
-                              </span>
-                            );
-                          }
-                          return null;
-                        })()}
                         {order.delivered && !hideDelivered && (
                           <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-gray-500 border-gray-300 bg-gray-50">已送货</Badge>
                         )}
@@ -502,6 +497,65 @@ export default function ProductionPage() {
                          fmtDate(order.due_date)}
                       </span>
                     </div>
+                    {/* 工艺流程进度条 */}
+                    {processFlows[productId] && processFlows[productId].length > 0 && (() => {
+                      const steps = processFlows[productId];
+                      const cs = order.current_step || 0;
+                      return (
+                        <div className="flex items-center gap-0.5 mt-1.5 flex-wrap">
+                          {steps.map((step, idx) => {
+                            const stepNum = idx + 1;
+                            const isCompleted = cs >= stepNum;
+                            const isCurrent = cs === stepNum - 1 && cs < steps.length; // 当前正在进行的步骤（current_step指向下一步，所以cs===idx表示当前在idx步完成前）
+                            const isNext = cs === stepNum - 1 && cs > 0; // 即将进行的下一步
+                            const isKey = step.is_key_step;
+                            let bgColor = 'bg-gray-100'; // 未开始
+                            let textColor = 'text-gray-400';
+                            let borderColor = 'border-gray-200';
+                            let fontWeight = 'font-normal';
+                            if (isCompleted) {
+                              bgColor = 'bg-emerald-500';
+                              textColor = 'text-white';
+                              borderColor = 'border-emerald-500';
+                              fontWeight = 'font-medium';
+                            } else if (cs === 0 && idx === 0) {
+                              // 还没开始，第一步标记为待开始
+                              bgColor = 'bg-amber-50';
+                              textColor = 'text-amber-700';
+                              borderColor = 'border-amber-300';
+                              fontWeight = 'font-medium';
+                            } else if (idx === cs) {
+                              // 当前步骤（下一步要推进到的）
+                              bgColor = 'bg-blue-500';
+                              textColor = 'text-white';
+                              borderColor = 'border-blue-500';
+                              fontWeight = 'font-semibold';
+                            }
+                            return (
+                              <React.Fragment key={step.id || idx}>
+                                {idx > 0 && (
+                                  <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0">
+                                    <path d="M2 6 L10 6" stroke={isCompleted || idx < cs ? '#10b981' : '#d1d5db'} strokeWidth="1.5" fill="none" />
+                                    <path d="M8 3 L11 6 L8 9" fill={isCompleted || idx < cs ? '#10b981' : '#d1d5db'} />
+                                  </svg>
+                                )}
+                                <span
+                                  className={`inline-flex items-center gap-0.5 text-[10px] px-1 py-0 rounded border ${bgColor} ${textColor} ${borderColor} ${fontWeight} ${isKey ? 'ring-1 ring-orange-300' : ''} whitespace-nowrap`}
+                                  title={`${stepNum}. ${step.step_name}${step.estimated_minutes ? ` (${step.estimated_minutes}分钟)` : ''}${isKey ? ' [关键工序]' : ''}`}
+                                >
+                                  {isCompleted && <span>✓</span>}
+                                  {isKey && !isCompleted && <span className="text-[8px]">★</span>}
+                                  <span>{step.step_name}</span>
+                                </span>
+                              </React.Fragment>
+                            );
+                          })}
+                          {cs >= steps.length && (
+                            <span className="text-[10px] text-emerald-600 font-medium ml-1">全部完成</span>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {order.customer_order && (
                       <div className="text-[10px] text-gray-400 mt-0.5">客户单号: {order.customer_order.order_no}</div>
                     )}
