@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Upload, FileText, Eye, Printer, Trash2, Paperclip } from 'lucide-react';
+import { Upload, FileText, Eye, Printer, Trash2, Paperclip, Workflow } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -35,6 +35,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import ProcessFlowDialog from './process-flow-dialog';
 
 interface Product {
   id: string;
@@ -236,6 +237,11 @@ export default function BomPage() {
   // 删除确认
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleteType, setDeleteType] = useState<'product' | 'category'>('product');
+
+  // 工艺流程对话框
+  const [processFlowOpen, setProcessFlowOpen] = useState(false);
+  const [processFlowProductId, setProcessFlowProductId] = useState('');
+  const [processFlowProductName, setProcessFlowProductName] = useState('');
 
   // 类别编辑对话框
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
@@ -969,7 +975,7 @@ export default function BomPage() {
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
             <div className="flex-1 overflow-y-auto">
               {/* 表头 - sticky固定 */}
-              <div className="grid grid-cols-[50px_80px_120px_1fr_50px_80px_80px_80px_1fr_80px_60px_50px] bg-[#E8EBF0] border-b border-gray-300 sticky top-0 z-10">
+              <div className="grid grid-cols-[50px_80px_120px_1fr_50px_80px_80px_80px_1fr_80px_60px_60px_50px] bg-[#E8EBF0] border-b border-gray-300 sticky top-0 z-10">
                 <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">序号</div>
                 <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品类别</div>
                 <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品编号</div>
@@ -981,6 +987,7 @@ export default function BomPage() {
                 <div className="px-2 py-2 text-xs font-semibold text-gray-700 border-r border-gray-300">商品描述</div>
                 <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">库位号</div>
                 <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">图纸</div>
+                <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center border-r border-gray-300">工艺</div>
                 <div className="px-2 py-2 text-xs font-semibold text-gray-700 text-center">操作</div>
               </div>
 
@@ -1002,7 +1009,7 @@ export default function BomPage() {
                     <div key={product.id}>
                       {/* 成品/父级行 */}
                       <div
-                        className={`grid grid-cols-[50px_80px_120px_1fr_50px_80px_80px_80px_1fr_80px_60px_50px] items-center border-b border-gray-200 cursor-pointer transition-colors ${
+                        className={`grid grid-cols-[50px_80px_120px_1fr_50px_80px_80px_80px_1fr_80px_60px_60px_50px] items-center border-b border-gray-200 cursor-pointer transition-colors ${
                           isSelected
                             ? 'bg-[#1E40AF]/10 border-l-2 border-l-[#1E40AF]'
                             : idx % 2 === 0
@@ -1092,6 +1099,20 @@ export default function BomPage() {
                             图纸
                           </button>
                         </div>
+                        <div className="px-2 py-2.5 text-xs text-center">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setProcessFlowProductId(product.id);
+                              setProcessFlowProductName(product.name);
+                              setProcessFlowOpen(true);
+                            }}
+                            className="text-indigo-600 hover:text-indigo-800 hover:underline"
+                            title="编辑工艺流程"
+                          >
+                            工艺
+                          </button>
+                        </div>
                         <div className="px-1 py-2.5 text-xs text-center flex items-center justify-center gap-1">
                           <button onClick={(e) => { e.stopPropagation(); handleEditProduct(product); }} className="p-1 text-gray-400 hover:text-blue-600" title="编辑">✎</button>
                           <button onClick={(e) => { e.stopPropagation(); setDeleteType('product'); setDeleteId(product.id); }} className="p-1 text-gray-400 hover:text-red-600" title="删除">✕</button>
@@ -1105,7 +1126,7 @@ export default function BomPage() {
                         return (
                           <div
                             key={bom.id}
-                            className="grid grid-cols-[50px_80px_120px_1fr_50px_80px_80px_80px_1fr_80px_60px_50px] items-center border-b border-gray-100 bg-amber-50/50"
+                            className="grid grid-cols-[50px_80px_120px_1fr_50px_80px_80px_80px_1fr_80px_60px_60px_50px] items-center border-b border-gray-100 bg-amber-50/50"
                           >
                             <div className="px-2 py-2 text-xs text-gray-400 text-center border-r border-gray-100" />
                             <div className="px-2 py-2 text-xs text-gray-400 text-center border-r border-gray-100">
@@ -1142,6 +1163,18 @@ export default function BomPage() {
                                 className="text-blue-500 hover:text-blue-700 hover:underline"
                                 title="查看图纸"
                               >图纸</button>
+                            </div>
+                            <div className="px-2 py-2 text-xs text-center">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setProcessFlowProductId(child.id);
+                                  setProcessFlowProductName(child.name);
+                                  setProcessFlowOpen(true);
+                                }}
+                                className="text-indigo-500 hover:text-indigo-700 hover:underline"
+                                title="编辑工艺流程"
+                              >工艺</button>
                             </div>
                             <div className="px-1 py-2 text-xs text-center flex items-center justify-center gap-1">
                               <button
@@ -1794,6 +1827,14 @@ export default function BomPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* 工艺流程弹窗 */}
+      <ProcessFlowDialog
+        open={processFlowOpen}
+        onOpenChange={setProcessFlowOpen}
+        productId={processFlowProductId}
+        productName={processFlowProductName}
+      />
 
       {/* 添加子物料弹窗 */}
       <Dialog open={addChildOpen} onOpenChange={setAddChildOpen}>

@@ -456,6 +456,21 @@ export const inspectionReports = pgTable(
   ]
 );
 
+// 工艺流程
+export const processFlows = pgTable("process_flows", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  product_id: varchar("product_id", { length: 36 }).notNull().references(() => products.id, { onDelete: "cascade" }),
+  step_order: integer("step_order").notNull(),
+  step_name: varchar("step_name", { length: 100 }).notNull(),
+  description: text("description"),
+  estimated_minutes: integer("estimated_minutes"),
+  is_key_step: boolean("is_key_step").default(false),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updated_at: timestamp("updated_at", { withTimezone: true }),
+}, (table) => [
+  index("process_flows_product_id_idx").on(table.product_id),
+]);
+
 // 钉钉令牌缓存
 export const dingtalkTokenCache = pgTable("dingtalk_token_cache", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),

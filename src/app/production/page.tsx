@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
-import { ChevronDown, ChevronRight, Plus, Play, CheckCircle2, XCircle, Eye, Search, ShieldAlert } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, Play, CheckCircle2, XCircle, Eye, Search, ShieldAlert, Workflow } from 'lucide-react';
 import { translateUnit } from '@/lib/utils';
 
 /* ---------- 类型 ---------- */
@@ -74,6 +74,7 @@ export default function ProductionPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [qualityAlerts, setQualityAlerts] = useState<Array<{ product_id: string; severity: string; title: string }>>([]);
+  const [processFlows, setProcessFlows] = useState<Record<string, Array<{ step_order: number; step_name: string; description: string | null; estimated_minutes: number | null; is_key_step: boolean }>>>({});
   const [loading, setLoading] = useState(true);
   const [filterProductId, setFilterProductId] = useState('all');
   const [hideDelivered, setHideDelivered] = useState(true);
@@ -133,6 +134,17 @@ export default function ProductionPage() {
     fetch('/api/customers').then(r => r.json()).then(d => setCustomers(Array.isArray(d) ? d : d.customers || [])).catch(() => {});
     fetch('/api/warehouses').then(r => r.json()).then(d => setWarehouses(Array.isArray(d) ? d : d.warehouses || [])).catch(() => {});
     fetch('/api/quality/alerts?status=active&limit=100').then(r => r.json()).then(d => setQualityAlerts(Array.isArray(d) ? d : d.alerts || [])).catch(() => {});
+    // 加载所有工艺流程（按产品分组）
+    fetch('/api/process-flows').then(r => r.json()).then(d => {
+      if (Array.isArray(d)) {
+        const map: Record<string, Array<{ step_order: number; step_name: string; description: string | null; estimated_minutes: number | null; is_key_step: boolean }>> = {};
+        d.forEach((s: { product_id: string; step_order: number; step_name: string; description: string | null; estimated_minutes: number | null; is_key_step: boolean }) => {
+          if (!map[s.product_id]) map[s.product_id] = [];
+          map[s.product_id].push(s);
+        });
+        setProcessFlows(map);
+      }
+    }).catch(() => {});
   }, [fetchOrders]);
 
   /* ---------- helpers ---------- */
@@ -335,8 +347,14 @@ export default function ProductionPage() {
             className={`w-full text-left px-4 py-3 ${urgency !== 'normal' ? 'pt-2' : ''} hover:bg-gray-50/50 transition-colors`}
           >
             <div className="flex items-center justify-between mb-1">
-              <div className="text-sm font-medium text-gray-900 truncate" title={prod?.name}>
+              <div className="text-sm font-medium text-gray-900 truncate flex items-center gap-1.5" title={prod?.name}>
                 {prod?.name || '未知物料'}
+                {processFlows[productId] && processFlows[productId].length > 0 && (
+                  <span className="inline-flex items-center gap-0.5 shrink-0" title={`工艺: ${processFlows[productId].map(s => s.step_name).join(' → ')}`}>
+                    <Workflow className="w-3 h-3 text-indigo-400" />
+                    <span className="text-[10px] text-indigo-400">{processFlows[productId].length}步</span>
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2 shrink-0 ml-2">
                 <span className="text-xs text-gray-400">{groupOrders.length}单</span>
@@ -621,6 +639,45 @@ export default function ProductionPage() {
                   </tbody>
                 </table>
               </div>
+
+              {/* 工艺流程 */}
+              {detailOrder.product_id && processFlows[detailOrder.product_id] && processFlows[detailOrder.product_id].length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+                    <Workflow className="w-4 h-4 text-indigo-500" />
+                    工艺流程
+                  </h3>
+                  <div className="flex items-start gap-0 overflow-x-auto pb-2">
+                    {processFlows[detailOrder.product_id].map((step, idx) => (
+                      <React.Fragment key={idx}>
+                        <div className={`flex flex-col items-center min-w-[72px] max-w-[100px] ${step.is_key_step ? '' : ''}`}>
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                            step.is_key_step
+                              ? 'bg-amber-500 text-white'
+                              : 'bg-indigo-100 text-indigo-700'
+                          }`}>
+                            {step.step_order}
+                          </div>
+                          <div className={`mt-1 text-xs text-center leading-tight ${
+                            step.is_key_step ? 'font-semibold text-amber-700' : 'text-gray-600'
+                          }`}>
+                            {step.step_name}
+                          </div>
+                          {step.estimated_minutes && (
+                            <div className="text-[10px] text-gray-400 mt-0.5">{step.estimated_minutes}分钟</div>
+                          )}
+                        </div>
+                        {idx < processFlows[detailOrder.product_id].length - 1 && (
+                          <div className="flex items-center pt-2.5 px-0.5">
+                            <div className="w-4 h-0.5 bg-gray-300" />
+                            <div className="text-gray-300 text-xs">›</div>
+                          </div>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </>
         )}
