@@ -75,10 +75,9 @@ services:
       - STORAGE_MODE=${STORAGE_MODE:-local}
       - LOCAL_STORAGE_PATH=/app/uploads
     volumes:
-      - erp-uploads:/app/uploads
+      - ./uploads:/app/uploads
     env_file:
       - .env
 
 volumes:
   erp-db-data:
-  erp-uploads:

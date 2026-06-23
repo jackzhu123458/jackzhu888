@@ -9,7 +9,7 @@ import { existsSync } from 'fs';
 import path from 'path';
 import { NextRequest, NextResponse } from 'next/server';
 
-const UPLOAD_DIR = process.env.LOCAL_UPLOAD_DIR || '/app/uploads';
+const UPLOAD_DIR = process.env.LOCAL_STORAGE_PATH || process.env.LOCAL_UPLOAD_DIR || '/app/uploads';
 
 export interface StorageResult {
   fileKey: string;

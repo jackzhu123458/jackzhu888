@@ -160,3 +160,5 @@ Desktop.ini
 # Misc
 .coze-logs
 assets/
+uploads/
+!uploads/.gitkeep

@@ -64,4 +64,4 @@ USER nextjs
 
 EXPOSE 5000
 
-CMD ["node", "dist/server.js"]
+CMD ["sh", "-c", "mkdir -p ${LOCAL_STORAGE_PATH:-/app/uploads} && node dist/server.js"]
