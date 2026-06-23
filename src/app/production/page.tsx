@@ -22,6 +22,7 @@ interface Order {
   due_date: string | null;
   start_date: string | null;
   remark: string | null;
+  current_step?: number;
   customer_order_id: string | null;
   delivered?: boolean;
   created_at?: string;
@@ -279,6 +280,40 @@ export default function ProductionPage() {
     fetchOrders();
   };
 
+  const handleAdvanceStep = async (id: string) => {
+    try {
+      const res = await fetch('/api/production', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action: 'advance_step' }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error || '推进工序失败');
+      }
+    } catch {
+      alert('推进工序失败');
+    }
+    fetchOrders();
+  };
+
+  const handleResetStep = async (id: string) => {
+    try {
+      const res = await fetch('/api/production', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action: 'reset_step' }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error || '重置工序失败');
+      }
+    } catch {
+      alert('重置工序失败');
+    }
+    fetchOrders();
+  };
+
   const handleDelete = async () => {
     if (!deleteId) return;
     await fetch(`/api/production?id=${deleteId}`, { method: 'DELETE' });
@@ -387,7 +422,15 @@ export default function ProductionPage() {
                 {processFlows[productId] && processFlows[productId].length > 0 && (
                   <span className="inline-flex items-center gap-0.5 shrink-0" title={`工艺: ${processFlows[productId].map(s => s.step_name).join(' → ')}`}>
                     <Workflow className="w-3 h-3 text-indigo-400" />
-                    <span className="text-[10px] text-indigo-400">{processFlows[productId].length}步</span>
+                    <span className="text-[10px] text-indigo-400">
+                      {(() => {
+                        const steps = processFlows[productId];
+                        const maxStep = Math.max(0, ...groupOrders.map(o => o.current_step || 0));
+                        if (maxStep === 0) return `${steps.length}步`;
+                        if (maxStep >= steps.length) return `全部完成`;
+                        return `${maxStep}/${steps.length}步`;
+                      })()}
+                    </span>
                   </span>
                 )}
               </div>
@@ -422,6 +465,26 @@ export default function ProductionPage() {
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-mono text-xs text-gray-500">{order.order_no}</span>
                       <div className="flex items-center gap-1.5">
+                        {/* 工艺进度指示 */}
+                        {processFlows[productId] && processFlows[productId].length > 0 && (() => {
+                          const steps = processFlows[productId];
+                          const cs = order.current_step || 0;
+                          if (cs > 0 && cs <= steps.length) {
+                            const stepName = steps[cs - 1]?.step_name || '';
+                            return (
+                              <span className="text-[10px] px-1.5 py-0 rounded bg-indigo-50 text-indigo-600 border border-indigo-200 max-w-[120px] truncate" title={`${cs}/${steps.length} ${stepName}`}>
+                                {cs}/{steps.length} {stepName}
+                              </span>
+                            );
+                          } else if (cs >= steps.length) {
+                            return (
+                              <span className="text-[10px] px-1.5 py-0 rounded bg-green-50 text-green-600 border border-green-200">
+                                工艺完成
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
                         {order.delivered && !hideDelivered && (
                           <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-gray-500 border-gray-300 bg-gray-50">已送货</Badge>
                         )}
@@ -444,12 +507,29 @@ export default function ProductionPage() {
                     )}
                     {/* 子订单操作按钮 */}
                     <div className="mt-1.5 flex items-center gap-1.5">
-                      {order.status === 'pending' && (
+                      {/* 推进工序按钮 */}
+                      {processFlows[productId] && processFlows[productId].length > 0 && (order.status === 'pending' || order.status === 'in_progress') && (() => {
+                        const steps = processFlows[productId];
+                        const cs = order.current_step || 0;
+                        const nextStepName = cs < steps.length ? steps[cs]?.step_name : '';
+                        const isLastStep = cs >= steps.length - 1;
+                        if (cs >= steps.length) return null; // 已完成所有工序
+                        return (
+                          <button
+                            onClick={() => handleAdvanceStep(order.id)}
+                            className={`text-[11px] px-2 py-0.5 rounded transition-colors ${isLastStep ? 'bg-green-500 text-white hover:bg-green-600' : 'bg-indigo-500 text-white hover:bg-indigo-600'}`}
+                            title={isLastStep ? `完成最后工序: ${nextStepName}` : `推进到: ${nextStepName}`}
+                          >
+                            {cs === 0 ? `开始: ${nextStepName}` : `→ ${nextStepName}`}
+                          </button>
+                        );
+                      })()}
+                      {order.status === 'pending' && !processFlows[productId]?.length && (
                         <button onClick={() => handleStatusChange(order.id, 'in_progress')} className="text-[11px] px-2 py-0.5 rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors">
                           开始生产
                         </button>
                       )}
-                      {order.status === 'in_progress' && (
+                      {order.status === 'in_progress' && !processFlows[productId]?.length && (
                         <button onClick={() => { setCompleteOrderId(order.id); }} className="text-[11px] px-2 py-0.5 rounded bg-green-600 text-white hover:bg-green-700 transition-colors">
                           完成入库
                         </button>
@@ -678,39 +758,113 @@ export default function ProductionPage() {
               {/* 工艺流程 */}
               {detailOrder.product_id && processFlows[detailOrder.product_id] && processFlows[detailOrder.product_id].length > 0 && (
                 <div>
-                  <h3 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
-                    <Workflow className="w-4 h-4 text-indigo-500" />
-                    工艺流程
-                  </h3>
-                  <div className="flex items-start gap-0 overflow-x-auto pb-2">
-                    {processFlows[detailOrder.product_id].map((step, idx) => (
-                      <React.Fragment key={idx}>
-                        <div className={`flex flex-col items-center min-w-[72px] max-w-[100px] ${step.is_key_step ? '' : ''}`}>
-                          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                            step.is_key_step
-                              ? 'bg-amber-500 text-white'
-                              : 'bg-indigo-100 text-indigo-700'
-                          }`}>
-                            {step.step_order}
-                          </div>
-                          <div className={`mt-1 text-xs text-center leading-tight ${
-                            step.is_key_step ? 'font-semibold text-amber-700' : 'text-gray-600'
-                          }`}>
-                            {step.step_name}
-                          </div>
-                          {step.estimated_minutes && (
-                            <div className="text-[10px] text-gray-400 mt-0.5">{step.estimated_minutes}分钟</div>
-                          )}
-                        </div>
-                        {idx < processFlows[detailOrder.product_id].length - 1 && (
-                          <div className="flex items-center pt-2.5 px-0.5">
-                            <div className="w-4 h-0.5 bg-gray-300" />
-                            <div className="text-gray-300 text-xs">›</div>
-                          </div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+                      <Workflow className="w-4 h-4 text-indigo-500" />
+                      工艺流程
+                      <span className="text-xs text-gray-400 font-normal ml-1">
+                        ({detailOrder.current_step || 0}/{processFlows[detailOrder.product_id].length} 步)
+                      </span>
+                    </h3>
+                    {(detailOrder.status === 'pending' || detailOrder.status === 'in_progress') && (
+                      <div className="flex items-center gap-1.5">
+                        {(() => {
+                          const steps = processFlows[detailOrder.product_id];
+                          const cs = detailOrder.current_step || 0;
+                          if (cs < steps.length) {
+                            const nextStepName = steps[cs]?.step_name || '';
+                            const isLast = cs >= steps.length - 1;
+                            return (
+                              <Button
+                                size="sm"
+                                className={isLast ? 'bg-green-600 hover:bg-green-700' : 'bg-indigo-600 hover:bg-indigo-700'}
+                                onClick={() => handleAdvanceStep(detailOrder.id)}
+                              >
+                                {cs === 0 ? `开始: ${nextStepName}` : `→ ${nextStepName}`}
+                              </Button>
+                            );
+                          }
+                          return null;
+                        })()}
+                        {(detailOrder.current_step || 0) > 0 && (
+                          <Button size="sm" variant="outline" onClick={() => handleResetStep(detailOrder.id)}>
+                            重置进度
+                          </Button>
                         )}
-                      </React.Fragment>
-                    ))}
+                      </div>
+                    )}
                   </div>
+                  <div className="flex items-start gap-0 overflow-x-auto pb-2">
+                    {processFlows[detailOrder.product_id].map((step, idx) => {
+                      const cs = detailOrder.current_step || 0;
+                      const isCompleted = idx < cs;
+                      const isCurrent = idx === cs;
+                      const isPending = idx > cs;
+                      return (
+                        <React.Fragment key={idx}>
+                          <div className="flex flex-col items-center min-w-[72px] max-w-[100px]">
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                              isCompleted
+                                ? 'bg-green-500 text-white'
+                                : isCurrent
+                                  ? step.is_key_step
+                                    ? 'bg-amber-500 text-white ring-2 ring-amber-300 ring-offset-1'
+                                    : 'bg-indigo-500 text-white ring-2 ring-indigo-300 ring-offset-1'
+                                  : step.is_key_step
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-gray-100 text-gray-400'
+                            }`}>
+                              {isCompleted ? '✓' : step.step_order}
+                            </div>
+                            <div className={`mt-1 text-xs text-center leading-tight ${
+                              isCompleted
+                                ? 'text-green-700 line-through'
+                                : isCurrent
+                                  ? step.is_key_step ? 'font-bold text-amber-700' : 'font-bold text-indigo-700'
+                                  : step.is_key_step ? 'font-semibold text-amber-500' : 'text-gray-400'
+                            }`}>
+                              {step.step_name}
+                            </div>
+                            {step.estimated_minutes && (
+                              <div className={`text-[10px] mt-0.5 ${isCompleted ? 'text-green-400' : isCurrent ? 'text-indigo-400' : 'text-gray-300'}`}>
+                                {step.estimated_minutes}分钟
+                              </div>
+                            )}
+                            {isCurrent && (
+                              <div className="text-[9px] text-indigo-500 mt-0.5 font-medium">当前</div>
+                            )}
+                          </div>
+                          {idx < processFlows[detailOrder.product_id].length - 1 && (
+                            <div className="flex items-center pt-2.5 px-0.5">
+                              <div className={`w-4 h-0.5 ${isCompleted ? 'bg-green-400' : 'bg-gray-200'}`} />
+                              <div className={`text-xs ${isCompleted ? 'text-green-400' : 'text-gray-200'}`}>›</div>
+                            </div>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                  {/* 进度条 */}
+                  {(() => {
+                    const steps = processFlows[detailOrder.product_id];
+                    const cs = detailOrder.current_step || 0;
+                    const pct = steps.length > 0 ? Math.round((cs / steps.length) * 100) : 0;
+                    return (
+                      <div className="mt-2">
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-300 ${pct >= 100 ? 'bg-green-500' : 'bg-indigo-500'}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between mt-1 text-[10px] text-gray-400">
+                          <span>进度 {pct}%</span>
+                          {cs < steps.length && <span>剩余 {steps.length - cs} 步</span>}
+                          {cs >= steps.length && <span className="text-green-600">全部完成</span>}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>

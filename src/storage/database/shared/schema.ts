@@ -126,6 +126,7 @@ export const productionOrders = pgTable(
     start_date: timestamp("start_date", { withTimezone: true }),
     due_date: timestamp("due_date", { withTimezone: true }),
     completed_at: timestamp("completed_at", { withTimezone: true }),
+    current_step: integer("current_step").default(0),
     remark: text("remark"),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp("updated_at", { withTimezone: true }),

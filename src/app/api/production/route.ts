@@ -162,6 +162,71 @@ export async function PUT(request: NextRequest) {
   return NextResponse.json(fullOrder);
 }
 
+export async function PATCH(request: NextRequest) {
+  const client = getSupabaseClient();
+  const body = await request.json();
+  const { id, action } = body;
+  if (!id) return NextResponse.json({ error: '缺少 id' }, { status: 400 });
+
+  if (action === 'advance_step') {
+    // 推进工序：current_step + 1
+    const { data: order, error: qErr } = await client
+      .from('production_orders')
+      .select('id, current_step, product_id, status')
+      .eq('id', id)
+      .maybeSingle();
+    if (qErr) return NextResponse.json({ error: qErr.message }, { status: 500 });
+    if (!order) return NextResponse.json({ error: '订单不存在' }, { status: 404 });
+
+    const currentStep = (order as Record<string, unknown>).current_step as number ?? 0;
+    const newStep = currentStep + 1;
+
+    // 获取该产品的工艺流程总步数
+    const { data: steps } = await client
+      .from('process_flows')
+      .select('step_order')
+      .eq('product_id', (order as Record<string, unknown>).product_id as string)
+      .order('step_order');
+    const totalSteps = steps ? steps.length : 0;
+
+    // 如果是第一步，同时将状态改为 in_production
+    const updates: Record<string, unknown> = { current_step: newStep };
+    if (currentStep === 0 && (order as Record<string, unknown>).status === 'pending') {
+      updates.status = 'in_production';
+    }
+
+    // 如果已完成所有工序，将状态改为 completed
+    if (totalSteps > 0 && newStep >= totalSteps) {
+      updates.status = 'completed';
+      updates.completed_at = new Date().toISOString();
+    }
+
+    const { data: updated, error: uErr } = await client
+      .from('production_orders')
+      .update(updates)
+      .eq('id', id)
+      .select(ORDER_SELECT)
+      .maybeSingle();
+    if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 });
+
+    return NextResponse.json({ order: updated, currentStep: newStep, totalSteps });
+  }
+
+  if (action === 'reset_step') {
+    // 重置工序进度
+    const { data: updated, error: uErr } = await client
+      .from('production_orders')
+      .update({ current_step: 0, status: 'pending', completed_at: null })
+      .eq('id', id)
+      .select(ORDER_SELECT)
+      .maybeSingle();
+    if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 });
+    return NextResponse.json({ order: updated, currentStep: 0, totalSteps: 0 });
+  }
+
+  return NextResponse.json({ error: '未知操作' }, { status: 400 });
+}
+
 export async function DELETE(request: NextRequest) {
   const client = getSupabaseClient();
   const { searchParams } = new URL(request.url);
