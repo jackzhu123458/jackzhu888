@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { translateUnit } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -701,8 +701,8 @@ export default function InventoryPage() {
                     const hasBomIndicator = productType === 'finished' || productType === 'semi_finished';
 
                     return (
-                      <>
-                        <tr key={productId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                      <React.Fragment key={productId}>
+                        <tr className="border-b border-gray-50 hover:bg-gray-50/50">
                           {/* BOM展开按钮 */}
                           <td className="px-3 py-3">
                             {hasBomIndicator ? (
@@ -990,7 +990,7 @@ export default function InventoryPage() {
                           <td colSpan={10} className="px-5 py-3 pl-12 text-xs text-gray-400">加载BOM数据...</td>
                         </tr>
                       )}
-                    </>
+                    </React.Fragment>
                     );
                   })
                 )}
@@ -1145,9 +1145,8 @@ export default function InventoryPage() {
                   </thead>
                   <tbody>
                     {fifoData.map((item) => (
-                      <>
+                      <React.Fragment key={item.inventory_id}>
                         <tr
-                          key={item.inventory_id}
                           className={`border-b border-gray-100 cursor-pointer hover:bg-gray-50/50 ${fifoExpandId === item.inventory_id ? 'bg-blue-50/30' : ''}`}
                           onClick={() => setFifoExpandId(fifoExpandId === item.inventory_id ? null : item.inventory_id)}
                         >
@@ -1223,7 +1222,7 @@ export default function InventoryPage() {
                             </td>
                           </tr>
                         )}
-                      </>
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
