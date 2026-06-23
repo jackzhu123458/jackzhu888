@@ -183,7 +183,8 @@ export default function ProductionPage() {
     }
   });
   const productList = Array.from(productMap.values());
-  const finishedProducts = products.filter((p) => p.type === 'finished_product' || p.type === 'semi_finished');
+  // 生产订单可选所有产品（自制件/成品/半成品/原材料都可能需要生产）
+  const producibleProducts = products;
 
   /* ---------- handlers ---------- */
   const handleAdd = () => {
@@ -745,7 +746,7 @@ export default function ProductionPage() {
               )}
               {productSearchFocused && !formProductId && productSearch && (
                 <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
-                  {finishedProducts
+                  {producibleProducts
                     .filter((p) => {
                       const q = productSearch.toLowerCase();
                       return p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q);
@@ -761,7 +762,7 @@ export default function ProductionPage() {
                         <span className="ml-2">{p.name}</span>
                       </div>
                     ))}
-                  {finishedProducts.filter((p) => {
+                  {producibleProducts.filter((p) => {
                     const q = productSearch.toLowerCase();
                     return p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q);
                   }).length === 0 && (
