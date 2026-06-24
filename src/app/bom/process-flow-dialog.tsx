@@ -10,7 +10,21 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { Plus, Trash2, Save, Star, Settings2, X, GitBranch, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import { Plus, Trash2, Save, Star, Settings2, X, GitBranch, ChevronDown, ChevronRight, Check } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface ProcessStep {
   id?: string;
@@ -34,7 +48,7 @@ interface ProcessFlowDialogProps {
   productName: string;
 }
 
-/* ---------- 工序名称输入框（datalist方式，更稳定） ---------- */
+/* ---------- 工序名称选择器（shadcn Combobox 模式） ---------- */
 function StepNameInput({
   value,
   onChange,
@@ -46,31 +60,120 @@ function StepNameInput({
   templates: string[];
   onAddTemplate?: (name: string) => void;
 }) {
-  const datalistId = useRef(`step-names-${Math.random().toString(36).slice(2, 8)}`).current;
+  const [open, setOpen] = useState(false);
+  const [inputValue, setInputValue] = useState(value);
+
+  // 同步外部 value
+  useEffect(() => {
+    setInputValue(value);
+  }, [value]);
+
+  const handleSelect = (name: string) => {
+    onChange(name);
+    setInputValue(name);
+    setOpen(false);
+  };
+
+  const handleInputChange = (val: string) => {
+    setInputValue(val);
+    onChange(val);
+  };
 
   const handleBlur = () => {
     // 失焦时，如果是新名称，自动添加到模板库
-    const trimmed = value.trim();
+    const trimmed = inputValue.trim();
     if (trimmed && !templates.includes(trimmed)) {
       onAddTemplate?.(trimmed);
     }
   };
 
+  const handleAddNew = (name: string) => {
+    onChange(name);
+    setInputValue(name);
+    onAddTemplate?.(name);
+    setOpen(false);
+  };
+
+  const filtered = templates.filter(t =>
+    t.toLowerCase().includes(inputValue.toLowerCase())
+  );
+  const exactMatch = templates.some(t => t === inputValue.trim());
+  const showAddNew = inputValue.trim() && !exactMatch;
+
   return (
     <div className="relative flex-1 min-w-0">
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={handleBlur}
-        placeholder="输入或搜索工序名称"
-        className="h-8 text-sm"
-        list={datalistId}
-      />
-      <datalist id={datalistId}>
-        {templates.map(name => (
-          <option key={name} value={name} />
-        ))}
-      </datalist>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <div className="relative">
+            <Input
+              value={inputValue}
+              onChange={(e) => handleInputChange(e.target.value)}
+              onBlur={handleBlur}
+              onFocus={() => setOpen(true)}
+              placeholder="输入或搜索工序名称"
+              className="h-8 text-sm pr-7"
+            />
+            <button
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400"
+              onClick={() => setOpen(!open)}
+              type="button"
+              tabIndex={-1}
+            >
+              <ChevronDown className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </PopoverTrigger>
+        <PopoverContent className="w-[260px] p-0" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
+          <Command shouldFilter={false}>
+            <CommandInput
+              placeholder="搜索工序..."
+              value={inputValue}
+              onValueChange={handleInputChange}
+            />
+            <CommandList>
+              <CommandEmpty>
+                {showAddNew ? (
+                  <button
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 cursor-pointer"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => handleAddNew(inputValue.trim())}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    新增工序「{inputValue.trim()}」
+                  </button>
+                ) : (
+                  <div className="px-3 py-2 text-sm text-gray-400">无匹配工序</div>
+                )}
+              </CommandEmpty>
+              <CommandGroup>
+                {filtered.map(name => (
+                  <CommandItem
+                    key={name}
+                    value={name}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onSelect={() => handleSelect(name)}
+                  >
+                    <Check className={cn("mr-2 h-4 w-4", value === name ? "opacity-100" : "opacity-0")} />
+                    {name}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+              {showAddNew && filtered.length > 0 && (
+                <div className="border-t">
+                  <button
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 cursor-pointer"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => handleAddNew(inputValue.trim())}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    新增工序「{inputValue.trim()}」
+                  </button>
+                </div>
+              )}
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
@@ -101,11 +204,11 @@ function TemplateManager({
         setNewName('');
         onRefresh();
       } else {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({ error: '添加失败' }));
         alert(err.error || '添加失败');
       }
     } catch {
-      alert('网络错误');
+      alert('网络错误，请检查网络连接');
     } finally {
       setAdding(false);
     }
@@ -118,7 +221,7 @@ function TemplateManager({
       if (res.ok) {
         onRefresh();
       } else {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({ error: '删除失败' }));
         alert(err.error || '删除失败');
       }
     } catch {
@@ -168,7 +271,7 @@ function TemplateManager({
           </span>
         ))}
         {templates.length === 0 && (
-          <span className="text-xs text-gray-400">暂无工序模板</span>
+          <span className="text-xs text-gray-400">暂无工序模板，请先添加</span>
         )}
       </div>
     </div>
@@ -209,7 +312,6 @@ function FlowPreview({ steps }: { steps: ProcessStep[] }) {
               {isParallel ? (
                 /* 并行分支 */
                 <div className="flex items-start gap-2">
-                  {/* 分叉线 */}
                   <div className="flex flex-col items-center">
                     <div className="w-px h-2 bg-gray-300" />
                     <div className="text-[10px] text-gray-400 font-medium">并行</div>
@@ -233,7 +335,6 @@ function FlowPreview({ steps }: { steps: ProcessStep[] }) {
                   </div>
                 </div>
               ) : (
-                /* 单步 */
                 <StepBadge step={groupSteps[0]} />
               )}
             </div>
@@ -278,8 +379,14 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
       if (res.ok) {
         const data = await res.json();
         setTemplates(Array.isArray(data) ? data : []);
+      } else {
+        console.error('加载工序模板失败:', res.status);
+        setTemplates([]);
       }
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.error('加载工序模板网络错误:', e);
+      setTemplates([]);
+    }
   }, []);
 
   const loadSteps = useCallback(async () => {
@@ -312,22 +419,23 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ step_name: name.trim() }),
       });
-      // 409=已存在也算成功，其他错误静默
       if (res.ok || res.status === 409) {
-        loadTemplates(); // 刷新模板列表
+        loadTemplates();
+      } else {
+        console.error('同步工序模板失败:', res.status);
       }
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.error('同步工序模板网络错误:', e);
+    }
   }, [loadTemplates]);
 
   /* ---- 步骤操作 ---- */
 
-  // 计算下一个 step_order
   const nextStepOrder = () => {
     const maxOrder = steps.reduce((max, s) => Math.max(max, s.step_order), 0);
     return maxOrder + 1;
   };
 
-  // 添加主步骤
   const addStep = () => {
     setSteps(prev => [
       ...prev,
@@ -342,7 +450,6 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
     ]);
   };
 
-  // 给某步骤添加并行分支
   const addBranch = (stepOrder: number) => {
     const existingBranches = steps
       .filter(s => s.step_order === stepOrder)
@@ -355,7 +462,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
         break;
       }
     }
-    if (!newBranch) return; // 最多26个分支
+    if (!newBranch) return;
 
     setSteps(prev => [
       ...prev,
@@ -370,15 +477,11 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
     ]);
   };
 
-  // 删除步骤
   const removeStep = (index: number) => {
     const step = steps[index];
     const newSteps = steps.filter((_, i) => i !== index);
-
-    // 如果删除的是某 step_order 下最后一个步骤，则后续 step_order 需要重排
     const remainingInOrder = newSteps.filter(s => s.step_order === step.step_order);
     if (remainingInOrder.length === 0) {
-      // 该步骤被全部删除，重排后续 step_order
       const reordered = newSteps.map(s => {
         if (s.step_order > step.step_order) {
           return { ...s, step_order: s.step_order - 1 };
@@ -458,7 +561,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
         );
         onOpenChange(false);
       } else {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({ error: '保存失败' }));
         setError(err.error || '保存失败');
       }
     } catch {
@@ -518,7 +621,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
 
                 return (
                   <div key={order} className="border border-gray-200 rounded-lg overflow-hidden">
-                    {/* 步骤头部：序号 + 排序 + 并行按钮 */}
+                    {/* 步骤头部 */}
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border-b border-gray-200">
                       <span className="text-sm font-bold text-gray-500">第 {order} 步</span>
                       <div className="flex items-center gap-1 ml-auto">
