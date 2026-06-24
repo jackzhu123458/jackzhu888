@@ -178,6 +178,12 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
       if (res.ok || res.status === 409) {
         setNewTemplateName('');
         await loadTemplates();
+        if (res.status === 409) {
+          setTemplateError(`工序"${name}"已存在，已添加到可选列表`);
+        } else {
+          setTemplateError(`工序"${name}"添加成功`);
+        }
+        setTimeout(() => setTemplateError(''), 3000);
       } else {
         let errMsg = `添加失败 (HTTP ${res.status})`;
         try {
@@ -435,26 +441,20 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
                         <div className={`flex items-center gap-2 px-3 py-2 ${
                           mainStep.is_key_step ? 'bg-amber-50' : ''
                         }`}>
-                          <select
-                            value={templateNames.includes(mainStep.step_name) ? mainStep.step_name : '__custom__'}
-                            onChange={(e) => {
-                              if (e.target.value !== '__custom__') {
-                                updateStep(idx, 'step_name', e.target.value);
-                              }
-                            }}
-                            className="h-8 text-sm border border-gray-200 rounded px-2 bg-white max-w-[160px] shrink-0"
-                          >
-                            <option value="__custom__">{mainStep.step_name || '自定义...'}</option>
-                            {templateNames.map(name => (
-                              <option key={name} value={name}>{name}</option>
-                            ))}
-                          </select>
-                          <Input
-                            value={mainStep.step_name}
-                            onChange={(e) => updateStep(idx, 'step_name', e.target.value)}
-                            placeholder="输入工序名称"
-                            className="h-8 text-sm flex-1 min-w-0"
-                          />
+                          <div className="relative flex-1 min-w-0">
+                            <Input
+                              value={mainStep.step_name}
+                              onChange={(e) => updateStep(idx, 'step_name', e.target.value)}
+                              placeholder="输入或选择工序名称"
+                              className="h-8 text-sm w-full"
+                              list={`step-templates-${idx}`}
+                            />
+                            <datalist id={`step-templates-${idx}`}>
+                              {templateNames.map(name => (
+                                <option key={name} value={name} />
+                              ))}
+                            </datalist>
+                          </div>
                           <div className="w-24">
                             <Input
                               type="number"
@@ -485,7 +485,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
                     })()}
 
                     {/* 并行分支 */}
-                    {branchSteps.map((bs) => {
+                    {branchSteps.map((bs, bIdx) => {
                       const idx = steps.indexOf(bs);
                       return (
                         <div
@@ -497,26 +497,20 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
                           <span className="text-xs font-bold text-indigo-500 bg-indigo-100 px-1.5 py-0.5 rounded w-6 text-center shrink-0">
                             {bs.branch}
                           </span>
-                          <select
-                            value={templateNames.includes(bs.step_name) ? bs.step_name : '__custom__'}
-                            onChange={(e) => {
-                              if (e.target.value !== '__custom__') {
-                                updateStep(idx, 'step_name', e.target.value);
-                              }
-                            }}
-                            className="h-8 text-sm border border-gray-200 rounded px-2 bg-white max-w-[140px] shrink-0"
-                          >
-                            <option value="__custom__">{bs.step_name || '自定义...'}</option>
-                            {templateNames.map(name => (
-                              <option key={name} value={name}>{name}</option>
-                            ))}
-                          </select>
-                          <Input
-                            value={bs.step_name}
-                            onChange={(e) => updateStep(idx, 'step_name', e.target.value)}
-                            placeholder="输入工序名称"
-                            className="h-8 text-sm flex-1 min-w-0"
-                          />
+                          <div className="relative flex-1 min-w-0">
+                            <Input
+                              value={bs.step_name}
+                              onChange={(e) => updateStep(idx, 'step_name', e.target.value)}
+                              placeholder="输入或选择工序名称"
+                              className="h-8 text-sm w-full"
+                              list={`step-templates-branch-${idx}-${bIdx}`}
+                            />
+                            <datalist id={`step-templates-branch-${idx}-${bIdx}`}>
+                              {templateNames.map(name => (
+                                <option key={name} value={name} />
+                              ))}
+                            </datalist>
+                          </div>
                           <div className="w-24">
                             <Input
                               type="number"
@@ -577,7 +571,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
               <div className="text-xs font-medium text-gray-500 mb-1">增删可选工序名称（即时生效）</div>
               <div className="text-xs text-gray-400 mb-2">已加载 {templateItems.length} 个模板</div>
               {templateError && (
-                <div className="text-xs text-red-500 mb-2">{templateError}</div>
+                <div className={`text-xs mb-2 ${templateError.includes('成功') ? 'text-green-600' : templateError.includes('已存在') ? 'text-amber-600' : 'text-red-500'}`}>{templateError}</div>
               )}
               <div className="flex gap-2 mb-3">
                 <Input
