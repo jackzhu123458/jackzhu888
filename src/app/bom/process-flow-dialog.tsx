@@ -179,10 +179,16 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
         setNewTemplateName('');
         await loadTemplates();
       } else {
-        const errData = await res.json().catch(() => ({ error: '添加失败' }));
-        setTemplateError(errData.error || '添加失败');
+        let errMsg = `添加失败 (HTTP ${res.status})`;
+        try {
+          const errData = await res.json();
+          errMsg = errData.error || errData.message || errMsg;
+        } catch { /* parse error, use default */ }
+        console.error('添加工序模板失败:', res.status, errMsg);
+        setTemplateError(errMsg);
       }
-    } catch {
+    } catch (e) {
+      console.error('添加工序模板网络错误:', e);
       setTemplateError('网络错误，请检查网络连接');
     } finally {
       setAddingTemplate(false);
@@ -195,8 +201,12 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
       const res = await fetch(`/api/process-step-templates?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
         await loadTemplates();
+      } else {
+        console.error('删除工序模板失败:', res.status);
       }
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.error('删除工序模板网络错误:', e);
+    }
   };
 
   /* ---- 步骤操作 ---- */
