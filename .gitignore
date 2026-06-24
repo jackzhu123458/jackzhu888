@@ -162,3 +162,4 @@ Desktop.ini
 assets/
 uploads/
 !uploads/.gitkeep
+.codegraph
