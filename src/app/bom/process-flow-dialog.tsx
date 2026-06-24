@@ -184,12 +184,11 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
           const errData = await res.json();
           errMsg = errData.error || errData.message || errMsg;
         } catch { /* parse error, use default */ }
-        console.error('添加工序模板失败:', res.status, errMsg);
         setTemplateError(errMsg);
       }
     } catch (e) {
-      console.error('添加工序模板网络错误:', e);
-      setTemplateError('网络错误，请检查网络连接');
+      const msg = e instanceof Error ? e.message : String(e);
+      setTemplateError('网络错误: ' + msg);
     } finally {
       setAddingTemplate(false);
     }
@@ -575,7 +574,8 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
           </button>
           {showTemplateManager && (
             <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 mt-2">
-              <div className="text-xs font-medium text-gray-500 mb-2">增删可选工序名称（即时生效）</div>
+              <div className="text-xs font-medium text-gray-500 mb-1">增删可选工序名称（即时生效）</div>
+              <div className="text-xs text-gray-400 mb-2">已加载 {templateItems.length} 个模板</div>
               {templateError && (
                 <div className="text-xs text-red-500 mb-2">{templateError}</div>
               )}
