@@ -164,7 +164,8 @@ function TemplateManager({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ step_name: newName.trim() }),
       });
-      if (res.ok) {
+      if (res.ok || res.status === 409) {
+        // 201=新增成功, 409=已存在也视为成功
         setNewName('');
         onRefresh();
       } else {
