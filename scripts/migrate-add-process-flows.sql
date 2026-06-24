@@ -84,3 +84,14 @@ ON CONFLICT (step_name) DO NOTHING;
 
 -- production_orders 增加 current_step 字段
 ALTER TABLE production_orders ADD COLUMN IF NOT EXISTS current_step integer DEFAULT 0;
+
+-- ⚠️ 关键：给 anon 角色授权新表的访问权限（PostgREST 需要 anon 角色才能访问）
+GRANT SELECT, INSERT, UPDATE, DELETE ON process_flows TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON process_step_templates TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON quality_alerts TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON inspection_reports TO anon;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon;
+
+-- 刷新 PostgREST schema cache（通过通知 PostgREST 重新加载）
+-- 注意：需要重启 postgrest 容器才能生效
+-- docker compose restart postgrest
