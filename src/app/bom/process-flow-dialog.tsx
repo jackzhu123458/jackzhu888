@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -10,21 +10,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command';
-import { Plus, Trash2, Save, Star, Settings2, X, GitBranch, ChevronDown, ChevronRight, Check } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Plus, Trash2, Save, Star, X, GitBranch, ChevronDown, ChevronRight, Settings } from 'lucide-react';
 
 interface ProcessStep {
   id?: string;
@@ -33,7 +19,7 @@ interface ProcessStep {
   description: string | null;
   estimated_minutes: number | null;
   is_key_step: boolean;
-  branch: string | null; // null=主线, 'A'/'B'/...=并行分支
+  branch: string | null;
 }
 
 interface StepTemplate {
@@ -48,241 +34,10 @@ interface ProcessFlowDialogProps {
   productName: string;
 }
 
-/* ---------- 工序名称选择器（shadcn Combobox 模式） ---------- */
-function StepNameInput({
-  value,
-  onChange,
-  templates,
-  onAddTemplate,
-}: {
-  value: string;
-  onChange: (val: string) => void;
-  templates: string[];
-  onAddTemplate?: (name: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [inputValue, setInputValue] = useState(value);
-
-  // 同步外部 value
-  useEffect(() => {
-    setInputValue(value);
-  }, [value]);
-
-  const handleSelect = (name: string) => {
-    onChange(name);
-    setInputValue(name);
-    setOpen(false);
-  };
-
-  const handleInputChange = (val: string) => {
-    setInputValue(val);
-    onChange(val);
-  };
-
-  const handleBlur = () => {
-    // 失焦时，如果是新名称，自动添加到模板库
-    const trimmed = inputValue.trim();
-    if (trimmed && !templates.includes(trimmed)) {
-      onAddTemplate?.(trimmed);
-    }
-  };
-
-  const handleAddNew = (name: string) => {
-    onChange(name);
-    setInputValue(name);
-    onAddTemplate?.(name);
-    setOpen(false);
-  };
-
-  const filtered = templates.filter(t =>
-    t.toLowerCase().includes(inputValue.toLowerCase())
-  );
-  const exactMatch = templates.some(t => t === inputValue.trim());
-  const showAddNew = inputValue.trim() && !exactMatch;
-
-  return (
-    <div className="relative flex-1 min-w-0">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <div className="relative">
-            <Input
-              value={inputValue}
-              onChange={(e) => handleInputChange(e.target.value)}
-              onBlur={handleBlur}
-              onFocus={() => setOpen(true)}
-              placeholder="输入或搜索工序名称"
-              className="h-8 text-sm pr-7"
-            />
-            <button
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400"
-              onClick={() => setOpen(!open)}
-              type="button"
-              tabIndex={-1}
-            >
-              <ChevronDown className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </PopoverTrigger>
-        <PopoverContent className="w-[260px] p-0" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
-          <Command shouldFilter={false}>
-            <CommandInput
-              placeholder="搜索工序..."
-              value={inputValue}
-              onValueChange={handleInputChange}
-            />
-            <CommandList>
-              <CommandEmpty>
-                {showAddNew ? (
-                  <button
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 cursor-pointer"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => handleAddNew(inputValue.trim())}
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    新增工序「{inputValue.trim()}」
-                  </button>
-                ) : (
-                  <div className="px-3 py-2 text-sm text-gray-400">无匹配工序</div>
-                )}
-              </CommandEmpty>
-              <CommandGroup>
-                {filtered.map(name => (
-                  <CommandItem
-                    key={name}
-                    value={name}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onSelect={() => handleSelect(name)}
-                  >
-                    <Check className={cn("mr-2 h-4 w-4", value === name ? "opacity-100" : "opacity-0")} />
-                    {name}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-              {showAddNew && filtered.length > 0 && (
-                <div className="border-t">
-                  <button
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 cursor-pointer"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => handleAddNew(inputValue.trim())}
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    新增工序「{inputValue.trim()}」
-                  </button>
-                </div>
-              )}
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
-    </div>
-  );
-}
-
-/* ---------- 工序模板管理面板 ---------- */
-function TemplateManager({
-  templates,
-  onRefresh,
-}: {
-  templates: StepTemplate[];
-  onRefresh: () => void;
-}) {
-  const [newName, setNewName] = useState('');
-  const [adding, setAdding] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const handleAdd = async () => {
-    if (!newName.trim()) return;
-    setAdding(true);
-    try {
-      const res = await fetch('/api/process-step-templates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ step_name: newName.trim() }),
-      });
-      if (res.ok || res.status === 409) {
-        // 201=新增成功, 409=已存在也视为成功
-        setNewName('');
-        onRefresh();
-      } else {
-        const err = await res.json().catch(() => ({ error: '添加失败' }));
-        alert(err.error || '添加失败');
-      }
-    } catch {
-      alert('网络错误，请检查网络连接');
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    setDeletingId(id);
-    try {
-      const res = await fetch(`/api/process-step-templates?id=${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        onRefresh();
-      } else {
-        const err = await res.json().catch(() => ({ error: '删除失败' }));
-        alert(err.error || '删除失败');
-      }
-    } catch {
-      alert('网络错误');
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  return (
-    <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-      <div className="text-xs font-medium text-gray-500 mb-2">管理可选工序名称（增删后即时生效）</div>
-      <div className="flex gap-2 mb-3">
-        <Input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder="输入新工序名称"
-          className="h-7 text-xs flex-1"
-          onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
-        />
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleAdd}
-          disabled={adding || !newName.trim()}
-          className="h-7 text-xs px-2"
-        >
-          <Plus className="w-3 h-3 mr-1" />
-          {adding ? '...' : '添加'}
-        </Button>
-      </div>
-      <div className="flex flex-wrap gap-1.5 max-h-[120px] overflow-y-auto">
-        {templates.map(t => (
-          <span
-            key={t.id}
-            className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-700 group"
-          >
-            {t.step_name}
-            <button
-              onClick={() => handleDelete(t.id)}
-              disabled={deletingId === t.id}
-              className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-              title="删除此工序"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </span>
-        ))}
-        {templates.length === 0 && (
-          <span className="text-xs text-gray-400">暂无工序模板，请先添加</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 /* ---------- 可视化流程预览 ---------- */
 function FlowPreview({ steps }: { steps: ProcessStep[] }) {
   if (steps.length === 0) return null;
 
-  // 按 step_order 分组
   const groups: Map<number, ProcessStep[]> = new Map();
   steps.forEach(s => {
     const key = s.step_order;
@@ -304,13 +59,8 @@ function FlowPreview({ steps }: { steps: ProcessStep[] }) {
 
           return (
             <div key={order} className="flex flex-col items-center">
-              {/* 连接线 */}
-              {oi > 0 && (
-                <div className="w-px h-3 bg-gray-300" />
-              )}
-
+              {oi > 0 && <div className="w-px h-3 bg-gray-300" />}
               {isParallel ? (
-                /* 并行分支 */
                 <div className="flex items-start gap-2">
                   <div className="flex flex-col items-center">
                     <div className="w-px h-2 bg-gray-300" />
@@ -318,9 +68,7 @@ function FlowPreview({ steps }: { steps: ProcessStep[] }) {
                     <div className="w-px h-2 bg-gray-300" />
                   </div>
                   <div className="flex gap-2 items-start">
-                    {mainStep && (
-                      <StepBadge step={mainStep} />
-                    )}
+                    {mainStep && <StepBadge step={mainStep} />}
                     {branchSteps.map((bs, bi) => (
                       <div key={bi} className="flex items-start gap-1">
                         <span className="text-[10px] text-gray-400 mt-1 font-medium">{bs.branch}</span>
@@ -365,27 +113,32 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [templates, setTemplates] = useState<StepTemplate[]>([]);
+  const [templateNames, setTemplateNames] = useState<string[]>([]);
   const [showTemplateManager, setShowTemplateManager] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
 
-  const allStepNames = Array.from(
-    new Set([...templates.map(t => t.step_name)])
-  ).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  // 模板管理面板状态
+  const [newTemplateName, setNewTemplateName] = useState('');
+  const [addingTemplate, setAddingTemplate] = useState(false);
+  const [templateItems, setTemplateItems] = useState<StepTemplate[]>([]);
+  const [templateError, setTemplateError] = useState('');
 
   const loadTemplates = useCallback(async () => {
     try {
       const res = await fetch('/api/process-step-templates');
       if (res.ok) {
-        const data = await res.json();
-        setTemplates(Array.isArray(data) ? data : []);
+        const data: StepTemplate[] = Array.isArray(await res.json()) ? await res.json() : [];
+        setTemplateItems(data);
+        setTemplateNames(data.map((t: StepTemplate) => t.step_name).sort((a: string, b: string) => a.localeCompare(b, 'zh-CN')));
       } else {
         console.error('加载工序模板失败:', res.status);
-        setTemplates([]);
+        setTemplateNames([]);
+        setTemplateItems([]);
       }
     } catch (e) {
       console.error('加载工序模板网络错误:', e);
-      setTemplates([]);
+      setTemplateNames([]);
+      setTemplateItems([]);
     }
   }, []);
 
@@ -410,24 +163,41 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
     }
   }, [open, productId, loadSteps, loadTemplates]);
 
-  /* 同步新工序名到模板库 */
-  const addTemplateIfNeeded = useCallback(async (name: string) => {
-    if (!name.trim()) return;
+  // 添加工序模板
+  const handleAddTemplate = async () => {
+    const name = newTemplateName.trim();
+    if (!name) return;
+    setAddingTemplate(true);
+    setTemplateError('');
     try {
       const res = await fetch('/api/process-step-templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ step_name: name.trim() }),
+        body: JSON.stringify({ step_name: name }),
       });
       if (res.ok || res.status === 409) {
-        loadTemplates();
+        setNewTemplateName('');
+        await loadTemplates();
       } else {
-        console.error('同步工序模板失败:', res.status);
+        const errData = await res.json().catch(() => ({ error: '添加失败' }));
+        setTemplateError(errData.error || '添加失败');
       }
-    } catch (e) {
-      console.error('同步工序模板网络错误:', e);
+    } catch {
+      setTemplateError('网络错误，请检查网络连接');
+    } finally {
+      setAddingTemplate(false);
     }
-  }, [loadTemplates]);
+  };
+
+  // 删除工序模板
+  const handleDeleteTemplate = async (id: string) => {
+    try {
+      const res = await fetch(`/api/process-step-templates?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        await loadTemplates();
+      }
+    } catch { /* ignore */ }
+  };
 
   /* ---- 步骤操作 ---- */
 
@@ -546,11 +316,11 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
       });
 
       if (res.ok) {
-        // 保存成功后同步新工序名到模板库
+        // 保存成功后同步新工序名到模板库（静默，不影响用户）
         const newNames = steps
           .map(s => s.step_name.trim())
           .filter((name, idx, arr) => name && arr.indexOf(name) === idx);
-        await Promise.all(
+        Promise.all(
           newNames.map(name =>
             fetch('/api/process-step-templates', {
               method: 'POST',
@@ -558,7 +328,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
               body: JSON.stringify({ step_name: name }),
             }).catch(() => {})
           )
-        );
+        ).then(() => loadTemplates());
         onOpenChange(false);
       } else {
         const err = await res.json().catch(() => ({ error: '保存失败' }));
@@ -656,11 +426,25 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
                         <div className={`flex items-center gap-2 px-3 py-2 ${
                           mainStep.is_key_step ? 'bg-amber-50' : ''
                         }`}>
-                          <StepNameInput
+                          <select
+                            value={templateNames.includes(mainStep.step_name) ? mainStep.step_name : '__custom__'}
+                            onChange={(e) => {
+                              if (e.target.value !== '__custom__') {
+                                updateStep(idx, 'step_name', e.target.value);
+                              }
+                            }}
+                            className="h-8 text-sm border border-gray-200 rounded px-2 bg-white max-w-[160px] shrink-0"
+                          >
+                            <option value="__custom__">{mainStep.step_name || '自定义...'}</option>
+                            {templateNames.map(name => (
+                              <option key={name} value={name}>{name}</option>
+                            ))}
+                          </select>
+                          <Input
                             value={mainStep.step_name}
-                            onChange={(val) => updateStep(idx, 'step_name', val)}
-                            templates={allStepNames}
-                            onAddTemplate={addTemplateIfNeeded}
+                            onChange={(e) => updateStep(idx, 'step_name', e.target.value)}
+                            placeholder="输入工序名称"
+                            className="h-8 text-sm flex-1 min-w-0"
                           />
                           <div className="w-24">
                             <Input
@@ -704,11 +488,25 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
                           <span className="text-xs font-bold text-indigo-500 bg-indigo-100 px-1.5 py-0.5 rounded w-6 text-center shrink-0">
                             {bs.branch}
                           </span>
-                          <StepNameInput
+                          <select
+                            value={templateNames.includes(bs.step_name) ? bs.step_name : '__custom__'}
+                            onChange={(e) => {
+                              if (e.target.value !== '__custom__') {
+                                updateStep(idx, 'step_name', e.target.value);
+                              }
+                            }}
+                            className="h-8 text-sm border border-gray-200 rounded px-2 bg-white max-w-[140px] shrink-0"
+                          >
+                            <option value="__custom__">{bs.step_name || '自定义...'}</option>
+                            {templateNames.map(name => (
+                              <option key={name} value={name}>{name}</option>
+                            ))}
+                          </select>
+                          <Input
                             value={bs.step_name}
-                            onChange={(val) => updateStep(idx, 'step_name', val)}
-                            templates={allStepNames}
-                            onAddTemplate={addTemplateIfNeeded}
+                            onChange={(e) => updateStep(idx, 'step_name', e.target.value)}
+                            placeholder="输入工序名称"
+                            className="h-8 text-sm flex-1 min-w-0"
                           />
                           <div className="w-24">
                             <Input
@@ -731,74 +529,101 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
                           <button
                             onClick={() => removeStep(idx)}
                             className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
-                            title="删除分支"
+                            title="删除此分支"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       );
                     })}
-
-                    {/* 并行合并提示 */}
-                    {isParallel && (
-                      <div className="px-3 py-1 bg-gray-50 border-t border-gray-200 text-center">
-                        <span className="text-[10px] text-gray-400">↕ 以上分支并行完成后合并进入下一步</span>
-                      </div>
-                    )}
                   </div>
                 );
               })
             )}
 
-            {/* 添加按钮 */}
-            <button
+            {/* 添加工序按钮 */}
+            <Button
+              variant="outline"
               onClick={addStep}
-              className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors text-sm flex items-center justify-center gap-1"
+              className="w-full border-dashed"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4 mr-1" />
               添加工序
-            </button>
-
-            {/* 管理工序模板折叠面板 */}
-            <div className="pt-2">
-              <button
-                onClick={() => setShowTemplateManager(!showTemplateManager)}
-                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-blue-600 transition-colors"
-              >
-                <Settings2 className="w-3.5 h-3.5" />
-                {showTemplateManager ? '收起工序模板管理' : '管理可选工序名称'}
-              </button>
-              {showTemplateManager && (
-                <div className="mt-2">
-                  <TemplateManager
-                    templates={templates}
-                    onRefresh={loadTemplates}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* 说明备注 */}
-            {steps.length > 0 && (
-              <div className="text-xs text-gray-400 mt-2 space-y-1">
-                <p>点击「并行」按钮可为同一步骤添加A/B并行分支</p>
-                <p>并行分支完成后自动合并进入下一步</p>
-                <p>★ 标记关键工序（高亮显示），输入关键字可搜索已有工序</p>
-              </div>
-            )}
+            </Button>
           </div>
         )}
 
+        {/* 管理可选工序名称 */}
+        <div className="mt-3">
+          <button
+            onClick={() => setShowTemplateManager(!showTemplateManager)}
+            className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600"
+          >
+            <Settings className="w-3.5 h-3.5" />
+            {showTemplateManager ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            管理可选工序名称
+          </button>
+          {showTemplateManager && (
+            <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 mt-2">
+              <div className="text-xs font-medium text-gray-500 mb-2">增删可选工序名称（即时生效）</div>
+              {templateError && (
+                <div className="text-xs text-red-500 mb-2">{templateError}</div>
+              )}
+              <div className="flex gap-2 mb-3">
+                <Input
+                  value={newTemplateName}
+                  onChange={(e) => {
+                    setNewTemplateName(e.target.value);
+                    setTemplateError('');
+                  }}
+                  placeholder="输入新工序名称"
+                  className="h-7 text-xs flex-1"
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAddTemplate(); }}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleAddTemplate}
+                  disabled={addingTemplate || !newTemplateName.trim()}
+                  className="h-7 text-xs px-2"
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  {addingTemplate ? '...' : '添加'}
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-1.5 max-h-[120px] overflow-y-auto">
+                {templateItems.map(t => (
+                  <span
+                    key={t.id}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-700 group"
+                  >
+                    {t.step_name}
+                    <button
+                      onClick={() => handleDeleteTemplate(t.id)}
+                      className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                      title="删除此工序"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                {templateItems.length === 0 && (
+                  <span className="text-xs text-gray-400">暂无工序模板，请先添加</span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 错误提示 */}
         {error && (
-          <div className="text-sm text-red-500 mt-2">{error}</div>
+          <div className="text-sm text-red-500 bg-red-50 px-3 py-2 rounded">{error}</div>
         )}
 
-        {/* 底部操作 */}
-        <div className="flex justify-end gap-2 mt-4 pt-3 border-t">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            取消
-          </Button>
-          <Button onClick={handleSave} disabled={saving} className="bg-blue-800 hover:bg-blue-900">
+        {/* 底部按钮 */}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
+          <Button onClick={handleSave} disabled={saving}>
             <Save className="w-4 h-4 mr-1" />
             {saving ? '保存中...' : '保存'}
           </Button>
