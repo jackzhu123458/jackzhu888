@@ -34,7 +34,7 @@ interface ProcessFlowDialogProps {
   productName: string;
 }
 
-/* ---------- 工序名称模糊搜索输入框 ---------- */
+/* ---------- 工序名称输入框（datalist方式，更稳定） ---------- */
 function StepNameInput({
   value,
   onChange,
@@ -46,99 +46,31 @@ function StepNameInput({
   templates: string[];
   onAddTemplate?: (name: string) => void;
 }) {
-  const [focused, setFocused] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const datalistId = useRef(`step-names-${Math.random().toString(36).slice(2, 8)}`).current;
 
-  const filtered = value.trim()
-    ? templates.filter(n => n.toLowerCase().includes(value.trim().toLowerCase()))
-    : templates;
-  const exactMatch = templates.some(n => n === value.trim());
-  const showAddNew = value.trim() && !exactMatch;
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setFocused(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const handleAddNew = (name: string) => {
-    onChange(name);
-    onAddTemplate?.(name);
-    setFocused(false);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && value.trim()) {
-      e.preventDefault();
-      if (exactMatch) {
-        setFocused(false);
-      } else {
-        handleAddNew(value.trim());
-      }
-    }
-    if (e.key === 'Escape') {
-      setFocused(false);
+  const handleBlur = () => {
+    // 失焦时，如果是新名称，自动添加到模板库
+    const trimmed = value.trim();
+    if (trimmed && !templates.includes(trimmed)) {
+      onAddTemplate?.(trimmed);
     }
   };
 
   return (
-    <div ref={containerRef} className="relative flex-1 min-w-0">
+    <div className="relative flex-1 min-w-0">
       <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onKeyDown={handleKeyDown}
-        placeholder="输入或选择工序名称"
+        onBlur={handleBlur}
+        placeholder="输入或搜索工序名称"
         className="h-8 text-sm"
+        list={datalistId}
       />
-      {focused && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-[200px] overflow-y-auto">
-          {filtered.length === 0 && !value.trim() && (
-            <div className="px-3 py-2 text-xs text-gray-400">输入关键字搜索工序</div>
-          )}
-          {filtered.length === 0 && value.trim() && (
-            <button
-              className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 text-blue-600 flex items-center gap-1"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                handleAddNew(value.trim());
-              }}
-            >
-              <Plus className="w-3 h-3" /> 新增工序 &ldquo;{value.trim()}&rdquo;
-            </button>
-          )}
-          {filtered.map(name => (
-            <button
-              key={name}
-              className={`w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 ${
-                name === value ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
-              }`}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                onChange(name);
-                setFocused(false);
-              }}
-            >
-              {name}
-            </button>
-          ))}
-          {showAddNew && filtered.length > 0 && (
-            <button
-              className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 text-blue-600 border-t border-gray-100 flex items-center gap-1"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                handleAddNew(value.trim());
-              }}
-            >
-              <Plus className="w-3 h-3" /> 新增工序 &ldquo;{value.trim()}&rdquo;
-            </button>
-          )}
-        </div>
-      )}
+      <datalist id={datalistId}>
+        {templates.map(name => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
     </div>
   );
 }
@@ -575,7 +507,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
             {steps.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
                 <p>暂无工艺流程</p>
-                <p className="text-xs mt-1">点击下方"添加工序"开始编辑</p>
+                <p className="text-xs mt-1">点击下方&quot;添加工序&quot;开始编辑</p>
               </div>
             ) : (
               sortedOrders.map((order) => {
