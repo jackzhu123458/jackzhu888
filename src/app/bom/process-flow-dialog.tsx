@@ -53,6 +53,7 @@ function StepNameInput({
     ? templates.filter(n => n.toLowerCase().includes(value.trim().toLowerCase()))
     : templates;
   const exactMatch = templates.some(n => n === value.trim());
+  const showAddNew = value.trim() && !exactMatch;
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -70,12 +71,27 @@ function StepNameInput({
     setFocused(false);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && value.trim()) {
+      e.preventDefault();
+      if (exactMatch) {
+        setFocused(false);
+      } else {
+        handleAddNew(value.trim());
+      }
+    }
+    if (e.key === 'Escape') {
+      setFocused(false);
+    }
+  };
+
   return (
     <div ref={containerRef} className="relative flex-1 min-w-0">
       <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => setFocused(true)}
+        onKeyDown={handleKeyDown}
         placeholder="输入或选择工序名称"
         className="h-8 text-sm"
       />
@@ -110,7 +126,7 @@ function StepNameInput({
               {name}
             </button>
           ))}
-          {value.trim() && !exactMatch && filtered.length > 0 && (
+          {showAddNew && filtered.length > 0 && (
             <button
               className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 text-blue-600 border-t border-gray-100 flex items-center gap-1"
               onMouseDown={(e) => {
@@ -356,18 +372,19 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
 
   /* 同步新工序名到模板库 */
   const addTemplateIfNeeded = useCallback(async (name: string) => {
-    if (templates.some(t => t.step_name === name)) return;
+    if (!name.trim()) return;
     try {
       const res = await fetch('/api/process-step-templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ step_name: name }),
+        body: JSON.stringify({ step_name: name.trim() }),
       });
-      if (res.ok) {
+      // 409=已存在也算成功，其他错误静默
+      if (res.ok || res.status === 409) {
         loadTemplates(); // 刷新模板列表
       }
     } catch { /* ignore */ }
-  }, [templates, loadTemplates]);
+  }, [loadTemplates]);
 
   /* ---- 步骤操作 ---- */
 
@@ -496,7 +513,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
         // 保存成功后同步新工序名到模板库
         const newNames = steps
           .map(s => s.step_name.trim())
-          .filter(name => !templates.some(t => t.step_name === name));
+          .filter((name, idx, arr) => name && arr.indexOf(name) === idx);
         await Promise.all(
           newNames.map(name =>
             fetch('/api/process-step-templates', {
