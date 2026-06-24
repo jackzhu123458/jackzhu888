@@ -127,9 +127,10 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
     try {
       const res = await fetch('/api/process-step-templates');
       if (res.ok) {
-        const data: StepTemplate[] = Array.isArray(await res.json()) ? await res.json() : [];
-        setTemplateItems(data);
-        setTemplateNames(data.map((t: StepTemplate) => t.step_name).sort((a: string, b: string) => a.localeCompare(b, 'zh-CN')));
+        const data: StepTemplate[] = await res.json();
+        const list = Array.isArray(data) ? data : [];
+        setTemplateItems(list);
+        setTemplateNames(list.map((t: StepTemplate) => t.step_name).sort((a: string, b: string) => a.localeCompare(b, 'zh-CN')));
       } else {
         console.error('加载工序模板失败:', res.status);
         setTemplateNames([]);
