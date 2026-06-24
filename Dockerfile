@@ -1,6 +1,6 @@
 # ====== 阶段1: 依赖安装 ======
 # 使用国内镜像源拉取基础镜像，如果加速器已配置则可改回 node:22-alpine
-FROM docker.1ms.run/library/node:22-alpine AS deps
+FROM docker.rainbond.cc/library/node:22-alpine AS deps
 
 # 直接安装 pnpm，跳过 corepack（避免 corepack 访问 npmjs.org 下载失败）
 RUN npm install -g pnpm@9 --registry https://registry.npmmirror.com && \
@@ -15,7 +15,7 @@ RUN sed -i '/"packageManager"/d' package.json
 RUN pnpm install --frozen-lockfile
 
 # ====== 阶段2: 构建 ======
-FROM docker.1ms.run/library/node:22-alpine AS builder
+FROM docker.rainbond.cc/library/node:22-alpine AS builder
 
 # 直接安装 pnpm
 RUN npm install -g pnpm@9 --registry https://registry.npmmirror.com && \
@@ -38,7 +38,7 @@ RUN pnpm next build && \
 RUN pnpm prune --prod
 
 # ====== 阶段3: 生产运行 ======
-FROM docker.1ms.run/library/node:22-alpine AS runner
+FROM docker.rainbond.cc/library/node:22-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
