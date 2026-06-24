@@ -1,13 +1,17 @@
 -- ============================================
 -- 增量迁移脚本 - 添加缺失的表
 -- 在已有的数据库上执行此脚本来补充新建的表
+-- 每条语句独立执行，单条失败不影响后续
 -- ============================================
 
--- 工艺流程
+-- 0. 确保 uuid 扩展可用
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- 1. 工艺流程表（不添加外键约束，避免依赖问题）
 CREATE TABLE IF NOT EXISTS process_flows (
   id varchar(36) PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_id varchar(36) NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-  step_order integer NOT NULL,
+  product_id varchar(36) NOT NULL,
+  step_order integer NOT NULL DEFAULT 0,
   step_name varchar(100) NOT NULL,
   description text,
   estimated_minutes integer,
@@ -18,17 +22,17 @@ CREATE TABLE IF NOT EXISTS process_flows (
 );
 CREATE INDEX IF NOT EXISTS process_flows_product_id_idx ON process_flows(product_id);
 
--- 工序模板
+-- 2. 工序模板表
 CREATE TABLE IF NOT EXISTS process_step_templates (
   id varchar(36) PRIMARY KEY DEFAULT gen_random_uuid(),
   step_name varchar(100) NOT NULL UNIQUE,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- 质量警示
+-- 3. 质量警示表（不添加外键约束）
 CREATE TABLE IF NOT EXISTS quality_alerts (
   id varchar(36) PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_id varchar(36) NOT NULL REFERENCES products(id),
+  product_id varchar(36),
   alert_type varchar(50) NOT NULL DEFAULT 'defect',
   severity varchar(20) NOT NULL DEFAULT 'medium',
   title varchar(200) NOT NULL,
@@ -43,15 +47,13 @@ CREATE TABLE IF NOT EXISTS quality_alerts (
   updated_at timestamptz
 );
 CREATE INDEX IF NOT EXISTS quality_alerts_product_id_idx ON quality_alerts(product_id);
-CREATE INDEX IF NOT EXISTS quality_alerts_status_idx ON quality_alerts(status);
-CREATE INDEX IF NOT EXISTS quality_alerts_severity_idx ON quality_alerts(severity);
 
--- 出厂检验报告
+-- 4. 出厂检验报告表（不添加外键约束）
 CREATE TABLE IF NOT EXISTS inspection_reports (
   id varchar(36) PRIMARY KEY DEFAULT gen_random_uuid(),
   report_no varchar(50) NOT NULL UNIQUE,
-  delivery_note_id varchar(36) REFERENCES delivery_notes(id),
-  product_id varchar(36) NOT NULL REFERENCES products(id),
+  delivery_note_id varchar(36),
+  product_id varchar(36),
   inspection_date timestamptz NOT NULL DEFAULT now(),
   result varchar(20) NOT NULL DEFAULT 'passed',
   inspector varchar(100),
@@ -65,11 +67,17 @@ CREATE TABLE IF NOT EXISTS inspection_reports (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz
 );
-CREATE INDEX IF NOT EXISTS inspection_reports_delivery_note_id_idx ON inspection_reports(delivery_note_id);
-CREATE INDEX IF NOT EXISTS inspection_reports_product_id_idx ON inspection_reports(product_id);
 CREATE INDEX IF NOT EXISTS inspection_reports_report_no_idx ON inspection_reports(report_no);
 
--- 工序模板预设数据
+-- 5. production_orders 增加 current_step 字段
+DO $$ 
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'production_orders' AND column_name = 'current_step') THEN
+    ALTER TABLE production_orders ADD COLUMN current_step integer DEFAULT 0;
+  END IF;
+END $$;
+
+-- 6. 工序模板预设数据
 INSERT INTO process_step_templates (step_name) VALUES
 ('落料'), ('冲孔'), ('折弯'), ('成型'), ('焊接'), ('打磨'), ('抛光'), ('清洗'),
 ('喷涂'), ('烘干'), ('组装'), ('调试'), ('检验'), ('包装'), ('入库'),
@@ -82,16 +90,43 @@ INSERT INTO process_step_templates (step_name) VALUES
 ('外观检查'), ('装箱'), ('试运行')
 ON CONFLICT (step_name) DO NOTHING;
 
--- production_orders 增加 current_step 字段
-ALTER TABLE production_orders ADD COLUMN IF NOT EXISTS current_step integer DEFAULT 0;
+-- 7. ⚠️ 关键：给 anon 角色授权新表的访问权限
+-- PostgREST 使用 anon 角色访问数据库，没有权限会返回 403
+DO $$
+BEGIN
+  GRANT SELECT, INSERT, UPDATE, DELETE ON process_flows TO anon;
+  EXCEPTION WHEN others THEN
+    RAISE NOTICE 'GRANT process_flows failed: %', SQLERRM;
+END $$;
 
--- ⚠️ 关键：给 anon 角色授权新表的访问权限（PostgREST 需要 anon 角色才能访问）
-GRANT SELECT, INSERT, UPDATE, DELETE ON process_flows TO anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON process_step_templates TO anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON quality_alerts TO anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON inspection_reports TO anon;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon;
+DO $$
+BEGIN
+  GRANT SELECT, INSERT, UPDATE, DELETE ON process_step_templates TO anon;
+  EXCEPTION WHEN others THEN
+    RAISE NOTICE 'GRANT process_step_templates failed: %', SQLERRM;
+END $$;
 
--- 刷新 PostgREST schema cache（通过通知 PostgREST 重新加载）
--- 注意：需要重启 postgrest 容器才能生效
+DO $$
+BEGIN
+  GRANT SELECT, INSERT, UPDATE, DELETE ON quality_alerts TO anon;
+  EXCEPTION WHEN others THEN
+    RAISE NOTICE 'GRANT quality_alerts failed: %', SQLERRM;
+END $$;
+
+DO $$
+BEGIN
+  GRANT SELECT, INSERT, UPDATE, DELETE ON inspection_reports TO anon;
+  EXCEPTION WHEN others THEN
+    RAISE NOTICE 'GRANT inspection_reports failed: %', SQLERRM;
+END $$;
+
+-- 8. 授权限给所有现有序列
+DO $$
+BEGIN
+  GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon;
+  EXCEPTION WHEN others THEN
+    RAISE NOTICE 'GRANT sequences failed: %', SQLERRM;
+END $$;
+
+-- ⚠️ 注意：执行完后必须重启 postgrest 容器！
 -- docker compose restart postgrest
