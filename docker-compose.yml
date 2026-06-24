@@ -10,7 +10,10 @@
 #   3. 首次启动后初始化数据库（执行建表脚本）
 #      docker compose exec db psql -U erp -d erp -f /docker-entrypoint-initdb.d/init-database.sql
 #
-#   4. 查看日志
+#   4. 增量迁移（更新已有的数据库，补充新表）
+#      docker compose exec db psql -U erp -d erp -f /docker-entrypoint-initdb.d/migrate-add-process-flows.sql
+#
+#   5. 查看日志
 #      docker compose logs -f web
 #
 #   5. 停止
@@ -28,6 +31,7 @@ services:
     volumes:
       - erp-db-data:/var/lib/postgresql/data
       - ./scripts/init-database.sql:/docker-entrypoint-initdb.d/init-database.sql:ro
+      - ./scripts/migrate-add-process-flows.sql:/docker-entrypoint-initdb.d/migrate-add-process-flows.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U erp -d erp"]
       interval: 5s
