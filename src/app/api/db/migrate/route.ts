@@ -74,6 +74,27 @@ export async function POST() {
       results.push({ name: 'process_flows_parallel_branch_constraint', status: 'error', error: e instanceof Error ? e.message : String(e) });
     }
 
+    // 检测 materials_json 字段是否存在
+    try {
+      const colRes = await postgrestFetch('/process_flows?select=materials_json&limit=1');
+      if (colRes.ok) {
+        results.push({ name: 'process_flows_materials_json_column', status: 'ok' });
+      } else {
+        const text = await colRes.text();
+        if (text.includes('materials_json') || text.includes('PGRST') || colRes.status === 400 || colRes.status === 404) {
+          results.push({
+            name: 'process_flows_materials_json_column',
+            status: 'error',
+            error: '缺少 materials_json 字段，请执行: ALTER TABLE process_flows ADD COLUMN materials_json JSONB DEFAULT \'[]\'::jsonb; 然后重启 PostgREST 容器',
+          });
+        } else {
+          results.push({ name: 'process_flows_materials_json_column', status: 'error', error: `HTTP ${colRes.status}: ${text}` });
+        }
+      }
+    } catch (e) {
+      results.push({ name: 'process_flows_materials_json_column', status: 'error', error: e instanceof Error ? e.message : String(e) });
+    }
+
   } else {
           const text = await res.text();
           results.push({ name: table, status: 'error', error: `HTTP ${res.status}: ${text}` });

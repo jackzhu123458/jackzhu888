@@ -293,7 +293,7 @@ export async function POST(req: NextRequest) {
       }
 
       // 3. 插入新的工序步骤（含 materials_json）
-      const rows = steps.map(s => {
+      const rowsWithMaterials = steps.map(s => {
         const { materials, ...rest } = s;
         return {
           product_id,
@@ -304,11 +304,32 @@ export async function POST(req: NextRequest) {
         };
       });
 
-      const insRes = await postgrestFetch('/process_flows', {
+      let insRes = await postgrestFetch('/process_flows', {
         method: 'POST',
         headers: { 'Prefer': 'return=representation' },
-        body: JSON.stringify(rows),
+        body: JSON.stringify(rowsWithMaterials),
       });
+
+      // 容错：如果列 materials_json 不存在（PGRST204），降级为不带 materials_json 重试
+      if (!insRes.ok) {
+        const errText = await insRes.text();
+        if (errText.includes('materials_json') && (errText.includes('PGRST204') || errText.includes('schema cache'))) {
+          console.warn('[process-flows POST] materials_json 列不存在，降级保存（不带物料关联）');
+          const fallbackRows = steps.map(s => {
+            const { materials: _m, ...rest } = s;
+            void _m;
+            return { product_id, ...rest };
+          });
+          insRes = await postgrestFetch('/process_flows', {
+            method: 'POST',
+            headers: { 'Prefer': 'return=representation' },
+            body: JSON.stringify(fallbackRows),
+          });
+        } else {
+          // 其他错误，重建错误响应
+          insRes = new Response(errText, { status: insRes.status });
+        }
+      }
 
       if (!insRes.ok) {
         const text = await insRes.text();
@@ -328,7 +349,6 @@ export async function POST(req: NextRequest) {
               estimated_minutes: d.estimated_minutes,
               is_key_step: d.is_key_step,
               branch: d.branch,
-              materials_json: d.materials_json || [],
             }))),
           }).catch(() => {});
         }
@@ -371,10 +391,23 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    const { data, error: insError } = await sb
+    let { data, error: insError } = await sb
       .from('process_flows')
       .insert(rows)
       .select();
+
+    // 容错：materials_json 列不存在时降级
+    if (insError && insError.message && (insError.message.includes('materials_json') || (insError as { code?: string }).code === 'PGRST204')) {
+      console.warn('[process-flows POST] materials_json 列不存在，降级保存（不带物料关联）');
+      const fallbackRows = steps.map(s => {
+        const { materials: _m, ...rest } = s;
+        void _m;
+        return { product_id, ...rest };
+      });
+      const retry = await sb.from('process_flows').insert(fallbackRows).select();
+      data = retry.data;
+      insError = retry.error;
+    }
 
     if (insError) {
       console.error('[process-flows POST] Supabase insert error:', JSON.stringify(insError));
@@ -390,7 +423,6 @@ export async function POST(req: NextRequest) {
           estimated_minutes: d.estimated_minutes,
           is_key_step: d.is_key_step,
           branch: d.branch,
-          materials_json: d.materials_json || [],
         }))).then(() => {}, () => {});
       }
 
@@ -431,7 +463,7 @@ export async function PATCH(request: NextRequest) {
           product_id: m.product_id,
           quantity: m.quantity,
         }));
-        await postgrestFetch(
+        const res = await postgrestFetch(
           `/process_flows?id=eq.${encodeURIComponent(assoc.step_id)}`,
           {
             method: 'PATCH',
@@ -439,6 +471,15 @@ export async function PATCH(request: NextRequest) {
             body: JSON.stringify({ materials_json: materialsJson }),
           },
         );
+        if (!res.ok) {
+          const text = await res.text();
+          if (text.includes('materials_json') && (text.includes('PGRST204') || text.includes('schema cache'))) {
+            return NextResponse.json({
+              error: '数据库尚未升级：缺少 materials_json 字段。请执行：ALTER TABLE process_flows ADD COLUMN materials_json JSONB DEFAULT \'[]\'::jsonb; 然后重启 PostgREST。',
+            }, { status: 400 });
+          }
+          return NextResponse.json({ error: `更新失败 (HTTP ${res.status}): ${text}` }, { status: 500 });
+        }
       }
 
       return NextResponse.json({ success: true });
@@ -458,6 +499,11 @@ export async function PATCH(request: NextRequest) {
         .eq('id', assoc.step_id);
       if (error) {
         console.error('[process-flows PATCH] Update error for step', assoc.step_id, ':', error.message);
+        if (error.message.includes('materials_json') || (error as { code?: string }).code === 'PGRST204') {
+          return NextResponse.json({
+            error: '数据库尚未升级：缺少 materials_json 字段。请执行：ALTER TABLE process_flows ADD COLUMN materials_json JSONB DEFAULT \'[]\'::jsonb; 然后重启 PostgREST。',
+          }, { status: 400 });
+        }
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
     }

@@ -17,10 +17,14 @@ CREATE TABLE IF NOT EXISTS process_flows (
   estimated_minutes integer,
   is_key_step boolean DEFAULT false,
   branch varchar(20),
+  materials_json jsonb NOT NULL DEFAULT '[]'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz
 );
 CREATE INDEX IF NOT EXISTS process_flows_product_id_idx ON process_flows(product_id);
+
+-- 1.1. 已有 process_flows 表的话，确保 materials_json 字段存在
+ALTER TABLE process_flows ADD COLUMN IF NOT EXISTS materials_json jsonb NOT NULL DEFAULT '[]'::jsonb;
 
 -- 2. 工序模板表
 CREATE TABLE IF NOT EXISTS process_step_templates (
