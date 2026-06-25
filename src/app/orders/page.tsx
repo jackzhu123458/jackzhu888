@@ -821,55 +821,25 @@ export default function OrdersPage() {
       }));
   };
 
-  // 选择物料 - 如果是BOM父产品，自动展开子物料
+  // 选择物料：订单只录入销售产品本身，不展开BOM子物料
   const selectProduct = (itemIdx: number, product: Product & { is_bom_parent?: boolean }) => {
-    if (product.is_bom_parent) {
-      // BOM父产品：自动展开子物料，替换当前行
-      const children = getBomChildren(product.id);
-      const newItems = children.map((bomItem) => ({
-        product_id: bomItem.child_product_id,
-        quantity: bomItem.quantity,
-        unit_price: bomItem.child_product.price ?? null,
-        delivery_date: formDeliveryDeadline || '',
-        remark: '',
-        schedules: [] as { schedule_date: string; quantity: number }[],
-      }));
-      // 替换当前行
-      const updated = [...formItems];
-      updated.splice(itemIdx, 1, ...newItems);
-      setFormItems(updated);
-      // 清理搜索状态
-      const newSearches = { ...itemSearches };
-      delete newSearches[itemIdx];
-      // 重新索引后续搜索
-      const reindexed: Record<number, string> = {};
-      for (const [key, val] of Object.entries(newSearches)) {
-        const k = Number(key);
-        if (k > itemIdx) {
-          reindexed[k + children.length - 1] = val;
-        } else {
-          reindexed[k] = val;
-        }
-      }
-      setItemSearches(reindexed);
-    } else {
-      // 普通物料：直接选中，自动填充单价
-      const updated = [...formItems];
-      updated[itemIdx] = {
-        ...updated[itemIdx],
-        product_id: product.id,
-        unit_price: product.price ?? null,
-      };
-      setFormItems(updated);
-      setItemSearches((prev) => ({
-        ...prev,
-        [itemIdx]: product.code,
-      }));
-      setItemNameSearches((prev) => ({
-        ...prev,
-        [itemIdx]: `${product.code} - ${product.name}`,
-      }));
-    }
+    // 订单只录入销售产品本身，不展开BOM子物料。
+    // BOM子物料属于生产环节，会在订单下推到生产订单时根据BOM自动算料。
+    const updated = [...formItems];
+    updated[itemIdx] = {
+      ...updated[itemIdx],
+      product_id: product.id,
+      unit_price: product.price ?? null,
+    };
+    setFormItems(updated);
+    setItemSearches((prev) => ({
+      ...prev,
+      [itemIdx]: product.code,
+    }));
+    setItemNameSearches((prev) => ({
+      ...prev,
+      [itemIdx]: `${product.code} - ${product.name}`,
+    }));
   };
 
   // 关闭所有搜索下拉
