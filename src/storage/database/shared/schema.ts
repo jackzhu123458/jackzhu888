@@ -1,4 +1,4 @@
-import { pgTable, serial, timestamp, varchar, integer, numeric, text, boolean, date, time, index } from "drizzle-orm/pg-core"
+import { pgTable, serial, timestamp, varchar, integer, numeric, text, boolean, date, time, index, jsonb } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 // 系统表 - 必须保留
@@ -468,6 +468,7 @@ export const processFlows = pgTable("process_flows", {
   estimated_minutes: integer("estimated_minutes"),
   is_key_step: boolean("is_key_step").default(false),
   branch: varchar("branch", { length: 20 }),
+  materials_json: jsonb("materials_json").default([]),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updated_at: timestamp("updated_at", { withTimezone: true }),
 }, (table) => [

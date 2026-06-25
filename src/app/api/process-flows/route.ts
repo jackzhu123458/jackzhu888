@@ -78,6 +78,53 @@ export async function GET(req: NextRequest) {
   try {
     const productId = req.nextUrl.searchParams.get('product_id');
 
+    /**
+     * 从 materials_json 字段丰富步骤的 materials 信息
+     * materials_json 是 JSONB 数组: [{ product_id, quantity }]
+     * 附加 product_name/product_code/product_spec 后返回为 materials 字段
+     */
+    async function enrichMaterialsWithJson(
+      steps: Record<string, unknown>[],
+      fetchProductInfo: (ids: string[]) => Promise<Map<string, { name: string; code: string; spec: string | null }>>,
+    ): Promise<void> {
+      // 收集所有需要查询的 product_id
+      const allProductIds: string[] = [];
+      for (const s of steps) {
+        const mj = s.materials_json;
+        if (Array.isArray(mj)) {
+          for (const m of mj) {
+            if (m.product_id && !allProductIds.includes(m.product_id)) {
+              allProductIds.push(m.product_id);
+            }
+          }
+        }
+      }
+
+      const productInfoMap = allProductIds.length > 0
+        ? await fetchProductInfo(allProductIds)
+        : new Map<string, { name: string; code: string; spec: string | null }>();
+
+      for (const s of steps) {
+        const mj = s.materials_json;
+        if (Array.isArray(mj) && mj.length > 0) {
+          s.materials = mj.map((m: { product_id?: string; quantity?: number }) => {
+            const info = m.product_id ? productInfoMap.get(m.product_id) : undefined;
+            return {
+              product_id: m.product_id || '',
+              quantity: Number(m.quantity || 0),
+              product_name: info?.name,
+              product_code: info?.code,
+              product_spec: info?.spec || undefined,
+            };
+          });
+        } else {
+          s.materials = [];
+        }
+        // 移除 materials_json 避免冗余返回
+        delete s.materials_json;
+      }
+    }
+
     if (isLocalMode()) {
       // 本地 PostgREST 模式：直接调用
       let path = '/process_flows?order=step_order.asc.nullsfirst,branch.asc.nullsfirst';
@@ -105,97 +152,36 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        // 查询工序物料关联
-        const steps = Array.isArray(data) ? data : [];
-        if (steps.length > 0) {
-          const flowIds = steps.map((s: { id: string }) => s.id);
-          const matRes = await postgrestFetch(
-            `/process_flow_materials?process_flow_id=in.(${flowIds.join(',')})`,
-          );
-          if (matRes.ok) {
-            const matData = await matRes.json();
-            const matMap = new Map<string, { product_id: string; quantity: number; product_name?: string; product_code?: string; product_spec?: string }[]>();
-            for (const m of Array.isArray(matData) ? matData : []) {
-              const arr = matMap.get(m.process_flow_id) || [];
-              arr.push({ product_id: m.product_id, quantity: Number(m.quantity) });
-              matMap.set(m.process_flow_id, arr);
-            }
-            // 批量获取物料产品信息
-            const allProductIds = [...new Set(Array.isArray(matData) ? matData.map((m: { product_id: string }) => m.product_id) : [])];
-            const productInfoMap = new Map<string, { name: string; code: string; spec: string | null }>();
-            if (allProductIds.length > 0) {
-              const prodInfoRes = await postgrestFetch(
-                `/products?id=in.(${allProductIds.join(',')})&select=id,name,code,spec`,
-              );
-              if (prodInfoRes.ok) {
-                const prodInfoData = await prodInfoRes.json();
-                for (const p of Array.isArray(prodInfoData) ? prodInfoData : []) {
-                  productInfoMap.set(p.id, { name: p.name, code: p.code, spec: p.spec });
-                }
-              }
-            }
-            // 将产品信息合并到物料列表
-            for (const [flowId, mats] of matMap) {
-              for (const m of mats) {
-                const info = productInfoMap.get(m.product_id);
-                if (info) {
-                  m.product_name = info.name;
-                  m.product_code = info.code;
-                  m.product_spec = info.spec || undefined;
-                }
-              }
-              matMap.set(flowId, mats);
-            }
-            // 将物料列表附加到每个步骤
-            for (const s of steps) {
-              (s as Record<string, unknown>).materials = matMap.get(s.id) || [];
+        const steps = (Array.isArray(data) ? data : []) as Record<string, unknown>[];
+        // 用 materials_json 丰富物料信息
+        await enrichMaterialsWithJson(steps, async (ids) => {
+          const prodInfoRes = await postgrestFetch(`/products?id=in.(${ids.join(',')})&select=id,name,code,spec`);
+          const map = new Map<string, { name: string; code: string; spec: string | null }>();
+          if (prodInfoRes.ok) {
+            const prodInfoData = await prodInfoRes.json();
+            for (const p of Array.isArray(prodInfoData) ? prodInfoData : []) {
+              map.set(p.id, { name: p.name, code: p.code, spec: p.spec });
             }
           }
-        }
+          return map;
+        });
 
         return NextResponse.json({ product, steps });
       }
 
-      // 不带 product_id 时也查询物料关联
-      const steps = Array.isArray(data) ? data : [];
-      if (steps.length > 0) {
-        const flowIds = steps.map((s: { id: string }) => s.id);
-        const matRes = await postgrestFetch(
-          `/process_flow_materials?process_flow_id=in.(${flowIds.join(',')})`,
-        );
-        if (matRes.ok) {
-          const matData = await matRes.json();
-          const matMap = new Map<string, { product_id: string; quantity: number; product_name?: string; product_code?: string; product_spec?: string }[]>();
-          const allProductIds = [...new Set(Array.isArray(matData) ? matData.map((m: { product_id: string }) => m.product_id) : [])];
-          const productInfoMap = new Map<string, { name: string; code: string; spec: string | null }>();
-          if (allProductIds.length > 0) {
-            const prodInfoRes = await postgrestFetch(
-              `/products?id=in.(${allProductIds.join(',')})&select=id,name,code,spec`,
-            );
-            if (prodInfoRes.ok) {
-              const prodInfoData = await prodInfoRes.json();
-              for (const p of Array.isArray(prodInfoData) ? prodInfoData : []) {
-                productInfoMap.set(p.id, { name: p.name, code: p.code, spec: p.spec });
-              }
-            }
-          }
-          for (const m of Array.isArray(matData) ? matData : []) {
-            const arr = matMap.get(m.process_flow_id) || [];
-            const info = productInfoMap.get(m.product_id);
-            arr.push({
-              product_id: m.product_id,
-              quantity: Number(m.quantity),
-              product_name: info?.name,
-              product_code: info?.code,
-              product_spec: info?.spec || undefined,
-            });
-            matMap.set(m.process_flow_id, arr);
-          }
-          for (const s of steps) {
-            (s as Record<string, unknown>).materials = matMap.get(s.id) || [];
+      // 不带 product_id
+      const steps = (Array.isArray(data) ? data : []) as Record<string, unknown>[];
+      await enrichMaterialsWithJson(steps, async (ids) => {
+        const prodInfoRes = await postgrestFetch(`/products?id=in.(${ids.join(',')})&select=id,name,code,spec`);
+        const map = new Map<string, { name: string; code: string; spec: string | null }>();
+        if (prodInfoRes.ok) {
+          const prodInfoData = await prodInfoRes.json();
+          for (const p of Array.isArray(prodInfoData) ? prodInfoData : []) {
+            map.set(p.id, { name: p.name, code: p.code, spec: p.spec });
           }
         }
-      }
+        return map;
+      });
 
       return NextResponse.json(steps);
     }
@@ -219,7 +205,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // If filtering by product_id, also fetch product info + materials
+    // If filtering by product_id, also fetch product info
     if (productId && data && data.length > 0) {
       const { data: product } = await sb
         .from('products')
@@ -227,93 +213,39 @@ export async function GET(req: NextRequest) {
         .eq('id', productId)
         .single();
 
-      // 查询工序物料关联
-      const flowIds = data.map((s: { id: string }) => s.id);
-      const { data: matData } = await sb
-        .from('process_flow_materials')
-        .select('id, process_flow_id, product_id, quantity')
-        .in('process_flow_id', flowIds);
-
-      // 查询物料产品信息
-      const matMap = new Map<string, { product_id: string; quantity: number; product_name?: string; product_code?: string; product_spec?: string }[]>();
-      if (matData && matData.length > 0) {
-        const allProductIds = [...new Set(matData.map((m: { product_id: string }) => m.product_id))];
+      const steps = data as unknown as Record<string, unknown>[];
+      await enrichMaterialsWithJson(steps, async (ids) => {
+        const map = new Map<string, { name: string; code: string; spec: string | null }>();
         const { data: prodInfoData } = await sb
           .from('products')
           .select('id, name, code, spec')
-          .in('id', allProductIds);
-
-        const productInfoMap = new Map<string, { name: string; code: string; spec: string | null }>();
+          .in('id', ids);
         if (prodInfoData) {
           for (const p of prodInfoData) {
-            productInfoMap.set(p.id, { name: p.name, code: p.code, spec: p.spec });
+            map.set(p.id, { name: p.name, code: p.code, spec: p.spec });
           }
         }
+        return map;
+      });
 
-        for (const m of matData) {
-          const arr = matMap.get(m.process_flow_id) || [];
-          const info = productInfoMap.get(m.product_id);
-          arr.push({
-            product_id: m.product_id,
-            quantity: Number(m.quantity),
-            product_name: info?.name,
-            product_code: info?.code,
-            product_spec: info?.spec || undefined,
-          });
-          matMap.set(m.process_flow_id, arr);
-        }
-      }
-
-      // 将物料列表附加到每个步骤
-      for (const s of data) {
-        (s as Record<string, unknown>).materials = matMap.get(s.id) || [];
-      }
-
-      return NextResponse.json({ product: product || null, steps: data });
+      return NextResponse.json({ product: product || null, steps });
     }
 
-    // 不带 product_id 时也查询物料关联
-    const allSteps = data || [];
-    if (allSteps.length > 0) {
-      const flowIds = allSteps.map((s: { id: string }) => s.id);
-      const { data: allMatData } = await sb
-        .from('process_flow_materials')
-        .select('id, process_flow_id, product_id, quantity')
-        .in('process_flow_id', flowIds);
-
-      const allMatMap = new Map<string, { product_id: string; quantity: number; product_name?: string; product_code?: string; product_spec?: string }[]>();
-      if (allMatData && allMatData.length > 0) {
-        const allProductIds = [...new Set(allMatData.map((m: { product_id: string }) => m.product_id))];
-        const { data: allProdInfoData } = await sb
-          .from('products')
-          .select('id, name, code, spec')
-          .in('id', allProductIds);
-
-        const allProductInfoMap = new Map<string, { name: string; code: string; spec: string | null }>();
-        if (allProdInfoData) {
-          for (const p of allProdInfoData) {
-            allProductInfoMap.set(p.id, { name: p.name, code: p.code, spec: p.spec });
-          }
-        }
-
-        for (const m of allMatData) {
-          const arr = allMatMap.get(m.process_flow_id) || [];
-          const info = allProductInfoMap.get(m.product_id);
-          arr.push({
-            product_id: m.product_id,
-            quantity: Number(m.quantity),
-            product_name: info?.name,
-            product_code: info?.code,
-            product_spec: info?.spec || undefined,
-          });
-          allMatMap.set(m.process_flow_id, arr);
+    // 不带 product_id
+    const allSteps = (data || []) as unknown as Record<string, unknown>[];
+    await enrichMaterialsWithJson(allSteps, async (ids) => {
+      const map = new Map<string, { name: string; code: string; spec: string | null }>();
+      const { data: prodInfoData } = await sb
+        .from('products')
+        .select('id, name, code, spec')
+        .in('id', ids);
+      if (prodInfoData) {
+        for (const p of prodInfoData) {
+          map.set(p.id, { name: p.name, code: p.code, spec: p.spec });
         }
       }
-
-      for (const s of allSteps) {
-        (s as Record<string, unknown>).materials = allMatMap.get(s.id) || [];
-      }
-    }
+      return map;
+    });
 
     return NextResponse.json(allSteps);
   } catch (err) {
@@ -360,11 +292,17 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: `删除旧数据失败 (HTTP ${delRes.status}): ${text}` }, { status: 500 });
       }
 
-      // 3. 插入新的工序步骤
-      const rows = steps.map(({ materials: _m, ...s }) => ({
-        product_id,
-        ...s,
-      }));
+      // 3. 插入新的工序步骤（含 materials_json）
+      const rows = steps.map(s => {
+        const { materials, ...rest } = s;
+        return {
+          product_id,
+          ...rest,
+          materials_json: (materials && materials.length > 0)
+            ? materials.map((m: { product_id: string; quantity: number }) => ({ product_id: m.product_id, quantity: m.quantity }))
+            : [],
+        };
+      });
 
       const insRes = await postgrestFetch('/process_flows', {
         method: 'POST',
@@ -390,6 +328,7 @@ export async function POST(req: NextRequest) {
               estimated_minutes: d.estimated_minutes,
               is_key_step: d.is_key_step,
               branch: d.branch,
+              materials_json: d.materials_json || [],
             }))),
           }).catch(() => {});
         }
@@ -398,32 +337,6 @@ export async function POST(req: NextRequest) {
       }
 
       const insertedSteps = await insRes.json();
-
-      // 4. 保存物料关联（用 step_order + branch 匹配新插入的 ID）
-      const allMaterials: { process_flow_id: string; product_id: string; quantity: number }[] = [];
-      for (let i = 0; i < steps.length; i++) {
-        const step = steps[i];
-        const inserted = Array.isArray(insertedSteps) ? insertedSteps[i] : null;
-        if (inserted && step.materials && step.materials.length > 0) {
-          for (const mat of step.materials) {
-            allMaterials.push({
-              process_flow_id: inserted.id,
-              product_id: mat.product_id,
-              quantity: mat.quantity,
-            });
-          }
-        }
-      }
-
-      if (allMaterials.length > 0) {
-        await postgrestFetch('/process_flow_materials', {
-          method: 'POST',
-          body: JSON.stringify(allMaterials),
-        }).catch((err) => {
-          console.error('[process-flows POST] 保存物料关联失败:', err);
-        });
-      }
-
       return NextResponse.json(insertedSteps);
     }
 
@@ -446,11 +359,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: delError.message }, { status: 500 });
     }
 
-    // Insert new steps
-    const rows = steps.map(({ materials: _m, ...s }) => ({
-      product_id,
-      ...s,
-    }));
+    // Insert new steps（含 materials_json）
+    const rows = steps.map(s => {
+      const { materials, ...rest } = s;
+      return {
+        product_id,
+        ...rest,
+        materials_json: (materials && materials.length > 0)
+          ? materials.map((m: { product_id: string; quantity: number }) => ({ product_id: m.product_id, quantity: m.quantity }))
+          : [],
+      };
+    });
 
     const { data, error: insError } = await sb
       .from('process_flows')
@@ -471,38 +390,82 @@ export async function POST(req: NextRequest) {
           estimated_minutes: d.estimated_minutes,
           is_key_step: d.is_key_step,
           branch: d.branch,
+          materials_json: d.materials_json || [],
         }))).then(() => {}, () => {});
       }
 
       return NextResponse.json({ error: insError.message }, { status: 500 });
     }
 
-    // 保存物料关联
-    const allMaterials: { process_flow_id: string; product_id: string; quantity: number }[] = [];
-    for (let i = 0; i < steps.length; i++) {
-      const step = steps[i];
-      const inserted = Array.isArray(data) ? data[i] : null;
-      if (inserted && step.materials && step.materials.length > 0) {
-        for (const mat of step.materials) {
-          allMaterials.push({
-            process_flow_id: inserted.id,
-            product_id: mat.product_id,
-            quantity: mat.quantity,
-          });
-        }
-      }
-    }
-
-    if (allMaterials.length > 0) {
-      await sb.from('process_flow_materials').insert(allMaterials).then(
-        () => {},
-        (err: Error) => { console.error('[process-flows POST] 保存物料关联失败:', err); },
-      );
-    }
-
     return NextResponse.json(data);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+// PATCH /api/process-flows — 批量更新每个步骤的 materials_json 字段
+// Body: { product_id: string, associations: Array<{ step_id: string, materials: Array<{ product_id: string; quantity: number }> }> }
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { product_id, associations } = body as {
+      product_id: string;
+      associations: Array<{
+        step_id: string;
+        materials: Array<{ product_id: string; quantity: number }>;
+      }>;
+    };
+
+    if (!product_id || !Array.isArray(associations)) {
+      return NextResponse.json({ error: '缺少 product_id 或 associations' }, { status: 400 });
+    }
+
+    if (isLocalMode()) {
+      const postgrestUrl = process.env.POSTGREST_URL;
+      if (!postgrestUrl) throw new Error('POSTGREST_URL not set');
+
+      // 逐个更新每个步骤的 materials_json
+      for (const assoc of associations) {
+        const materialsJson = assoc.materials.map(m => ({
+          product_id: m.product_id,
+          quantity: m.quantity,
+        }));
+        await postgrestFetch(
+          `/process_flows?id=eq.${encodeURIComponent(assoc.step_id)}`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+            body: JSON.stringify({ materials_json: materialsJson }),
+          },
+        );
+      }
+
+      return NextResponse.json({ success: true });
+    }
+
+    // 云端 Supabase 模式
+    const sb = getSupabaseClient();
+
+    for (const assoc of associations) {
+      const materialsJson = assoc.materials.map(m => ({
+        product_id: m.product_id,
+        quantity: m.quantity,
+      }));
+      const { error } = await sb
+        .from('process_flows')
+        .update({ materials_json: materialsJson })
+        .eq('id', assoc.step_id);
+      if (error) {
+        console.error('[process-flows PATCH] Update error for step', assoc.step_id, ':', error.message);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[process-flows PATCH] Error:', msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

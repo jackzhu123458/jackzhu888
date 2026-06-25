@@ -263,7 +263,7 @@ export default function BomPage() {
   const [productEditProduct, setProductEditProduct] = useState<Product | null>(null);
 
   // 工艺流程数据（展开行时显示）
-  const [processFlows, setProcessFlows] = useState<Array<{ product_id: string; step_order: number; step_name: string; is_key_step: boolean; estimated_minutes: number | null; branch?: string; materials?: Array<{ product_id: string; product_name?: string; quantity: number }> }>>([]);
+  const [processFlows, setProcessFlows] = useState<Array<{ id: string; product_id: string; step_order: number; step_name: string; is_key_step: boolean; estimated_minutes: number | null; branch?: string; materials?: Array<{ product_id: string; product_name?: string; quantity: number }> }>>([]);
   const processFlowsMap = useMemo(() => {
     const map = new Map<string, typeof processFlows>();
     for (const pf of processFlows) {
@@ -899,6 +899,43 @@ export default function BomPage() {
     } catch { alert('修改用量失败'); }
   };
 
+  // 保存工序-物料关联（通过 process-flows API 更新每个步骤的 materials_json 字段）
+  const saveStepMaterials = async (productId: string, associations: Array<{ step_id: string; materials: Array<{ product_id: string; quantity: number }> }>) => {
+    try {
+      // 调用 process-flows PATCH 接口批量更新 materials_json
+      const res = await fetch('/api/process-flows', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: productId, associations }),
+      });
+      if (res.ok) {
+        // 更新本地 processFlows 状态中的 materials
+        setProcessFlows(prev => {
+          const stepMap = new Map(associations.map(a => [a.step_id, a.materials]));
+          return prev.map(pf => {
+            const mats = stepMap.get(pf.id);
+            if (mats) {
+              // 附加 product_name
+              const enrichedMats = mats.map(m => {
+                const child = products.find(p => p.id === m.product_id);
+                return { product_id: m.product_id, product_name: child?.name, quantity: m.quantity };
+              });
+              return { ...pf, materials: enrichedMats };
+            }
+            return pf;
+          });
+        });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        console.error('保存物料关联失败:', err);
+        alert('保存物料关联失败');
+      }
+    } catch (e) {
+      console.error('保存物料关联失败:', e);
+      alert('保存物料关联失败');
+    }
+  };
+
   // 搜索已有产品（排除自身和已添加的子物料）
   // 分词模糊匹配：把搜索字符串按非字母数字汉字字符分词，每个 token 在 code 或 name 中找到即可
   // 解决"选中后回填 code - name 全串导致再过滤匹配失败"的问题
@@ -1214,189 +1251,267 @@ export default function BomPage() {
                       {/* 子物料展开区域 */}
                       {isExpanded && (
                         <div className="border-b border-gray-200 bg-gray-50/80 px-4 py-3">
-                          {/* 工艺流程 */}
+                          {/* 工艺流程 + 子物料关联 */}
                           {(() => {
                             const steps = processFlowsMap.get(product.id) || [];
-                            if (steps.length > 0) {
-                              const sorted = [...steps].sort((a, b) => a.step_order - b.step_order || (a.branch || '').localeCompare(b.branch || ''));
-                              // 按 step_order 分组
-                              const groups: Map<number, typeof sorted> = new Map();
-                              sorted.forEach(s => {
-                                if (!groups.has(s.step_order)) groups.set(s.step_order, []);
-                                groups.get(s.step_order)!.push(s);
-                              });
-                              const orders = Array.from(groups.keys()).sort((a, b) => a - b);
+                            const children = getChildren(product.id);
+                            if (steps.length === 0 && children.length === 0) {
+                              return <div className="text-xs text-gray-400 text-center py-2">暂无子物料和工艺流程</div>;
+                            }
 
-                              return (
-                                <div className="mb-3">
-                                  <div className="text-xs font-semibold text-gray-600 mb-1.5">工艺流程</div>
-                                  <div className="flex flex-wrap items-stretch gap-0">
-                                    {orders.map((order, oi) => {
-                                      const g = groups.get(order)!;
-                                      const isParallel = g.length > 1;
-                                      const isPrevParallel = oi > 0 && groups.get(orders[oi - 1])!.length > 1;
-                                      const isCurrParallel = isParallel;
-                                      return (
-                                        <div key={order} className="flex items-stretch gap-0">
-                                          {/* 分叉线：前一个非并行 → 当前并行 */}
-                                          {oi > 0 && !isPrevParallel && isCurrParallel && (
-                                            <div className="flex flex-col items-center justify-center w-5 shrink-0">
-                                              <svg width="20" height={g.length * 28} viewBox={`0 0 20 ${g.length * 28}`} className="text-gray-400">
-                                                <line x1="0" y1={g.length * 14} x2="10" y2={g.length * 14} stroke="currentColor" strokeWidth="1.5"/>
-                                                <line x1="10" y1="4" x2="10" y2={g.length * 28 - 4} stroke="currentColor" strokeWidth="1.5"/>
-                                                <line x1="10" y1="4" x2="20" y2="4" stroke="currentColor" strokeWidth="1.5"/>
-                                                <line x1="10" y1={g.length * 28 - 4} x2="20" y2={g.length * 28 - 4} stroke="currentColor" strokeWidth="1.5"/>
-                                                {g.length > 2 && g.slice(1, -1).map((_, mi) => (
-                                                  <line key={mi} x1="10" y1={(mi + 1) * 28} x2="20" y2={(mi + 1) * 28} stroke="currentColor" strokeWidth="1.5"/>
-                                                ))}
-                                              </svg>
-                                            </div>
-                                          )}
+                            const sorted = [...steps].sort((a, b) => a.step_order - b.step_order || (a.branch || '').localeCompare(b.branch || ''));
+                            // 按 step_order 分组
+                            const groups: Map<number, typeof sorted> = new Map();
+                            sorted.forEach(s => {
+                              if (!groups.has(s.step_order)) groups.set(s.step_order, []);
+                              groups.get(s.step_order)!.push(s);
+                            });
+                            const orders = Array.from(groups.keys()).sort((a, b) => a - b);
 
-                                          {/* 合并线：前一个并行 → 当前非并行 */}
-                                          {oi > 0 && isPrevParallel && !isCurrParallel && (() => {
-                                            const prevG = groups.get(orders[oi - 1])!;
-                                            return (
+                            // 构建物料→工序反向映射（用于子物料卡片显示关联工序）
+                            const materialStepMap = new Map<string, string[]>();
+                            for (const step of steps) {
+                              if (step.materials) {
+                                for (const m of step.materials) {
+                                  const list = materialStepMap.get(m.product_id) || [];
+                                  list.push(step.step_name);
+                                  materialStepMap.set(m.product_id, list);
+                                }
+                              }
+                            }
+
+                            // 添加物料到工序
+                            const handleAddMaterialToStep = (stepId: string, productId: string, currentMaterials: Array<{ product_id: string; quantity: number }>) => {
+                              const child = children.find(c => c.child_product_id === productId);
+                              if (!child) return;
+                              if (currentMaterials.some(m => m.product_id === productId)) return;
+                              const newMats = [...currentMaterials, { product_id: productId, quantity: Number(child.quantity) || 1 }];
+                              // 构建 associations: 当前产品所有步骤的物料
+                              const associations = steps.map(s => ({
+                                step_id: s.id,
+                                materials: s.id === stepId ? newMats : (s.materials || []),
+                              }));
+                              saveStepMaterials(product.id, associations);
+                            };
+
+                            // 从工序移除物料
+                            const handleRemoveMaterialFromStep = (stepId: string, matProductId: string) => {
+                              const step = steps.find(s => s.id === stepId);
+                              if (!step) return;
+                              const newMats = (step.materials || []).filter(m => m.product_id !== matProductId);
+                              const associations = steps.map(s => ({
+                                step_id: s.id,
+                                materials: s.id === stepId ? newMats : (s.materials || []),
+                              }));
+                              saveStepMaterials(product.id, associations);
+                            };
+
+                            return (
+                              <div className="space-y-3">
+                                {/* 工艺流程图 */}
+                                {steps.length > 0 && (
+                                  <div>
+                                    <div className="text-xs font-semibold text-gray-600 mb-1.5">工艺流程</div>
+                                    <div className="flex flex-wrap items-stretch gap-0">
+                                      {orders.map((order, oi) => {
+                                        const g = groups.get(order)!;
+                                        const isParallel = g.length > 1;
+                                        const isPrevParallel = oi > 0 && groups.get(orders[oi - 1])!.length > 1;
+                                        const isCurrParallel = isParallel;
+                                        return (
+                                          <div key={order} className="flex items-stretch gap-0">
+                                            {/* 分叉线：前一个非并行 → 当前并行 */}
+                                            {oi > 0 && !isPrevParallel && isCurrParallel && (
                                               <div className="flex flex-col items-center justify-center w-5 shrink-0">
-                                                <svg width="20" height={prevG.length * 28} viewBox={`0 0 20 ${prevG.length * 28}`} className="text-gray-400">
-                                                  <line x1="0" y1="4" x2="10" y2="4" stroke="currentColor" strokeWidth="1.5"/>
-                                                  <line x1="0" y1={prevG.length * 28 - 4} x2="10" y2={prevG.length * 28 - 4} stroke="currentColor" strokeWidth="1.5"/>
-                                                  <line x1="10" y1="4" x2="10" y2={prevG.length * 28 - 4} stroke="currentColor" strokeWidth="1.5"/>
-                                                  <line x1="10" y1={prevG.length * 28 / 2} x2="20" y2={prevG.length * 28 / 2} stroke="currentColor" strokeWidth="1.5"/>
-                                                  {prevG.length > 2 && prevG.slice(1, -1).map((_, mi) => (
-                                                    <line key={mi} x1="0" y1={(mi + 1) * 28} x2="10" y2={(mi + 1) * 28} stroke="currentColor" strokeWidth="1.5"/>
+                                                <svg width="20" height={g.length * 28} viewBox={`0 0 20 ${g.length * 28}`} className="text-gray-400">
+                                                  <line x1="0" y1={g.length * 14} x2="10" y2={g.length * 14} stroke="currentColor" strokeWidth="1.5"/>
+                                                  <line x1="10" y1="4" x2="10" y2={g.length * 28 - 4} stroke="currentColor" strokeWidth="1.5"/>
+                                                  <line x1="10" y1="4" x2="20" y2="4" stroke="currentColor" strokeWidth="1.5"/>
+                                                  <line x1="10" y1={g.length * 28 - 4} x2="20" y2={g.length * 28 - 4} stroke="currentColor" strokeWidth="1.5"/>
+                                                  {g.length > 2 && g.slice(1, -1).map((_, mi) => (
+                                                    <line key={mi} x1="10" y1={(mi + 1) * 28} x2="20" y2={(mi + 1) * 28} stroke="currentColor" strokeWidth="1.5"/>
                                                   ))}
                                                 </svg>
                                               </div>
-                                            );
-                                          })()}
+                                            )}
 
-                                          {/* 普通连接线 */}
-                                          {oi > 0 && ((isPrevParallel && isCurrParallel) || (!isPrevParallel && !isCurrParallel)) && (
-                                            <div className="flex items-center justify-center w-5 shrink-0">
-                                              <svg width="20" height="2" viewBox="0 0 20 2" className="text-gray-400">
-                                                <line x1="0" y1="1" x2="20" y2="1" stroke="currentColor" strokeWidth="1.5"/>
-                                              </svg>
-                                            </div>
-                                          )}
+                                            {/* 合并线：前一个并行 → 当前非并行 */}
+                                            {oi > 0 && isPrevParallel && !isCurrParallel && (() => {
+                                              const prevG = groups.get(orders[oi - 1])!;
+                                              return (
+                                                <div className="flex flex-col items-center justify-center w-5 shrink-0">
+                                                  <svg width="20" height={prevG.length * 28} viewBox={`0 0 20 ${prevG.length * 28}`} className="text-gray-400">
+                                                    <line x1="0" y1="4" x2="10" y2="4" stroke="currentColor" strokeWidth="1.5"/>
+                                                    <line x1="0" y1={prevG.length * 28 - 4} x2="10" y2={prevG.length * 28 - 4} stroke="currentColor" strokeWidth="1.5"/>
+                                                    <line x1="10" y1="4" x2="10" y2={prevG.length * 28 - 4} stroke="currentColor" strokeWidth="1.5"/>
+                                                    <line x1="10" y1={prevG.length * 28 / 2} x2="20" y2={prevG.length * 28 / 2} stroke="currentColor" strokeWidth="1.5"/>
+                                                    {prevG.length > 2 && prevG.slice(1, -1).map((_, mi) => (
+                                                      <line key={mi} x1="0" y1={(mi + 1) * 28} x2="10" y2={(mi + 1) * 28} stroke="currentColor" strokeWidth="1.5"/>
+                                                    ))}
+                                                  </svg>
+                                                </div>
+                                              );
+                                            })()}
 
-                                          {/* 工序节点 */}
-                                          {isCurrParallel ? (
-                                            <div className="flex flex-col gap-0.5">
-                                              {g.map((step, si) => (
-                                                <span key={si} className="inline-flex items-center gap-0.5 whitespace-nowrap h-[28px]">
-                                                  {step.branch && <span className="text-[9px] text-indigo-400 font-bold">{step.branch}:</span>}
-                                                  <span className={`inline-flex items-center px-1.5 py-0 rounded text-xs font-medium whitespace-nowrap ${
-                                                    step.is_key_step
-                                                      ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                                                      : 'bg-white text-gray-700 border border-gray-200'
-                                                  }`}>
-                                                    {step.step_name}
-                                                    {step.is_key_step && <span className="ml-0.5 text-amber-500">★</span>}
-                                                    {step.estimated_minutes && <span className="ml-0.5 text-gray-400 text-[10px]">{step.estimated_minutes}m</span>}
-                                                  </span>
-                                                  {step.materials && step.materials.length > 0 && (
-                                                    <span className="inline-flex items-center gap-0.5 ml-0.5">
-                                                      {step.materials.map((m: { product_name?: string; quantity: number }, mi: number) => (
-                                                        <span key={mi} className="text-[9px] bg-emerald-50 text-emerald-600 border border-emerald-200 rounded px-1 py-0">
-                                                          {m.product_name || '物料'}×{m.quantity}
-                                                        </span>
-                                                      ))}
+                                            {/* 普通连接线 */}
+                                            {oi > 0 && ((isPrevParallel && isCurrParallel) || (!isPrevParallel && !isCurrParallel)) && (
+                                              <div className="flex items-center justify-center w-5 shrink-0">
+                                                <svg width="20" height="2" viewBox="0 0 20 2" className="text-gray-400">
+                                                  <line x1="0" y1="1" x2="20" y2="1" stroke="currentColor" strokeWidth="1.5"/>
+                                                </svg>
+                                              </div>
+                                            )}
+
+                                            {/* 工序节点 + 关联物料 */}
+                                            {isCurrParallel ? (
+                                              <div className="flex flex-col gap-0.5">
+                                                {g.map((step, si) => (
+                                                  <div key={si} className="flex items-center gap-0.5 whitespace-nowrap">
+                                                    <span className="inline-flex items-center gap-0.5 h-[28px]">
+                                                      {step.branch && <span className="text-[9px] text-indigo-400 font-bold">{step.branch}:</span>}
+                                                      <span className={`inline-flex items-center px-1.5 py-0 rounded text-xs font-medium whitespace-nowrap ${
+                                                        step.is_key_step
+                                                          ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                                          : 'bg-white text-gray-700 border border-gray-200'
+                                                      }`}>
+                                                        {step.step_name}
+                                                        {step.is_key_step && <span className="ml-0.5 text-amber-500">★</span>}
+                                                        {step.estimated_minutes && <span className="ml-0.5 text-gray-400 text-[10px]">{step.estimated_minutes}m</span>}
+                                                      </span>
                                                     </span>
-                                                  )}
+                                                    {step.materials && step.materials.length > 0 && step.materials.map((m: { product_id: string; product_name?: string; quantity: number }, mi: number) => (
+                                                      <span key={mi} className="inline-flex items-center text-[9px] bg-emerald-50 text-emerald-600 border border-emerald-200 rounded px-1 py-0.5 gap-0.5">
+                                                        <span>{m.product_name || '物料'}×{m.quantity}</span>
+                                                        <button onClick={() => handleRemoveMaterialFromStep(step.id, m.product_id)} className="text-emerald-300 hover:text-red-500 leading-none">×</button>
+                                                      </span>
+                                                    ))}
+                                                    {children.length > 0 && (
+                                                      <select
+                                                        className="text-[9px] border border-gray-200 rounded px-0.5 py-0 bg-white max-w-[80px] h-[20px]"
+                                                        value=""
+                                                        onChange={(e) => {
+                                                          if (!e.target.value) return;
+                                                          handleAddMaterialToStep(step.id, e.target.value, step.materials || []);
+                                                        }}
+                                                      >
+                                                        <option value="">+物料</option>
+                                                        {children.filter(c => !(step.materials || []).some(m => m.product_id === c.child_product_id)).map(c => (
+                                                          <option key={c.child_product_id} value={c.child_product_id}>{c.child_product?.name?.slice(0, 8)}</option>
+                                                        ))}
+                                                      </select>
+                                                    )}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            ) : (
+                                              <div className="flex items-center gap-0.5 flex-wrap">
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${
+                                                  g[0].is_key_step
+                                                    ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                                    : 'bg-white text-gray-700 border border-gray-200'
+                                                }`}>
+                                                  {g[0].step_name}
+                                                  {g[0].is_key_step && <span className="ml-0.5 text-amber-500">★</span>}
+                                                  {g[0].estimated_minutes && <span className="ml-1 text-gray-400 text-[10px]">{g[0].estimated_minutes}min</span>}
                                                 </span>
-                                              ))}
-                                            </div>
-                                          ) : (
-                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                                              g[0].is_key_step
-                                                ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                                                : 'bg-white text-gray-700 border border-gray-200'
-                                            }`}>
-                                              {g[0].step_name}
-                                              {g[0].is_key_step && <span className="ml-0.5 text-amber-500">★</span>}
-                                              {g[0].estimated_minutes && <span className="ml-1 text-gray-400 text-[10px]">{g[0].estimated_minutes}min</span>}
-                                            </span>
-                                          )}
-                                          {/** 非并行步骤的物料显示 */}
-                                          {!isCurrParallel && g[0].materials && g[0].materials.length > 0 && (
-                                            <span className="inline-flex items-center gap-0.5 ml-0.5">
-                                              {g[0].materials.map((m: { product_name?: string; quantity: number }, mi: number) => (
-                                                <span key={mi} className="text-[9px] bg-emerald-50 text-emerald-600 border border-emerald-200 rounded px-1 py-0">
-                                                  {m.product_name || '物料'}×{m.quantity}
-                                                </span>
-                                              ))}
-                                            </span>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              );
-                            }
-                            return null;
-                          })()}
-
-                          {/* 子物料卡片 */}
-                          {children.length > 0 ? (
-                            <div>
-                              <div className="text-xs font-semibold text-gray-600 mb-1.5">子物料 ({children.length})</div>
-                              <div className="grid grid-cols-1 gap-1.5">
-                                {children.map((bom) => {
-                                  const child = bom.child_product;
-                                  const typeLabel = child.type === 'raw_material' ? '原材料' : child.type === 'semi_finished' ? '半成品' : child.type === 'finished_product' ? '成品' : '其他';
-                                  const sourcingLabel = child.sourcing_type === 'purchased' ? '外购' : '自制';
-                                  const childSteps = processFlowsMap.get(child.id) || [];
-                                  return (
-                                    <div
-                                      key={bom.id}
-                                      className="flex items-center gap-3 px-3 py-2 bg-white rounded border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-colors"
-                                    >
-                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 shrink-0">{typeLabel}</span>
-                                      <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${child.sourcing_type === 'purchased' ? 'bg-amber-100 text-amber-700' : 'bg-blue-50 text-blue-600'}`}>{sourcingLabel}</span>
-                                      <span className="font-mono text-xs text-gray-600 shrink-0 w-[80px]">{child.code}</span>
-                                      <button
-                                        type="button"
-                                        onClick={(e) => { e.stopPropagation(); setProductEditProduct(child); setProductEditOpen(true); }}
-                                        className="text-sm text-gray-900 hover:text-blue-600 hover:underline flex-1 truncate text-left"
-                                        title="点击编辑物料属性"
-                                      >
-                                        {child.name}
-                                      </button>
-                                      <span className="text-xs px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 shrink-0">x{bom.quantity}</span>
-                                      <span className="text-xs text-gray-400 shrink-0">{translateUnit(child.unit)}</span>
-                                      {childSteps.length > 0 && (
-                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 shrink-0">{childSteps.length}道工序</span>
-                                      )}
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); openDrawingDialog(child.id, child.name); }}
-                                        className="p-1 text-gray-300 hover:text-blue-600 shrink-0"
-                                        title="查看图纸"
-                                      ><Paperclip className="w-3.5 h-3.5" /></button>
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); setProcessFlowProductId(child.id); setProcessFlowProductName(child.name); setProcessFlowOpen(true); }}
-                                        className="p-1 text-gray-300 hover:text-indigo-600 shrink-0"
-                                        title="编辑工艺流程"
-                                      ><Workflow className="w-3.5 h-3.5" /></button>
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); setEditQtyBomId(bom.id); setEditQtyValue(bom.quantity); setEditQtyOpen(true); }}
-                                        className="p-1 text-gray-300 hover:text-blue-600 shrink-0"
-                                        title="编辑用量"
-                                      >✎</button>
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); handleDeleteBom(bom.id); }}
-                                        className="p-1 text-gray-300 hover:text-red-600 shrink-0"
-                                        title="移除子物料"
-                                      >✕</button>
+                                                {g[0].materials && g[0].materials.length > 0 && g[0].materials.map((m: { product_id: string; product_name?: string; quantity: number }, mi: number) => (
+                                                  <span key={mi} className="inline-flex items-center text-[9px] bg-emerald-50 text-emerald-600 border border-emerald-200 rounded px-1 py-0.5 gap-0.5">
+                                                    <span>{m.product_name || '物料'}×{m.quantity}</span>
+                                                    <button onClick={() => handleRemoveMaterialFromStep(g[0].id, m.product_id)} className="text-emerald-300 hover:text-red-500 leading-none">×</button>
+                                                  </span>
+                                                ))}
+                                                {children.length > 0 && (
+                                                  <select
+                                                    className="text-[9px] border border-gray-200 rounded px-0.5 py-0 bg-white max-w-[80px] h-[20px]"
+                                                    value=""
+                                                    onChange={(e) => {
+                                                      if (!e.target.value) return;
+                                                      handleAddMaterialToStep(g[0].id, e.target.value, g[0].materials || []);
+                                                    }}
+                                                  >
+                                                    <option value="">+物料</option>
+                                                    {children.filter(c => !(g[0].materials || []).some(m => m.product_id === c.child_product_id)).map(c => (
+                                                      <option key={c.child_product_id} value={c.child_product_id}>{c.child_product?.name?.slice(0, 8)}</option>
+                                                    ))}
+                                                  </select>
+                                                )}
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
                                     </div>
-                                  );
-                                })}
+                                  </div>
+                                )}
+
+                                {/* 子物料卡片 */}
+                                {children.length > 0 ? (
+                                  <div>
+                                    <div className="text-xs font-semibold text-gray-600 mb-1.5">子物料 ({children.length})</div>
+                                    <div className="grid grid-cols-1 gap-1.5">
+                                      {children.map((bom) => {
+                                        const child = bom.child_product;
+                                        const typeLabel = child.type === 'raw_material' ? '原材料' : child.type === 'semi_finished' ? '半成品' : child.type === 'finished_product' ? '成品' : '其他';
+                                        const sourcingLabel = child.sourcing_type === 'purchased' ? '外购' : '自制';
+                                        const childSteps = processFlowsMap.get(child.id) || [];
+                                        const linkedStepNames = materialStepMap.get(child.id) || [];
+                                        return (
+                                          <div
+                                            key={bom.id}
+                                            className="flex items-center gap-2 px-3 py-2 bg-white rounded border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-colors"
+                                          >
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 shrink-0">{typeLabel}</span>
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${child.sourcing_type === 'purchased' ? 'bg-amber-100 text-amber-700' : 'bg-blue-50 text-blue-600'}`}>{sourcingLabel}</span>
+                                            <span className="font-mono text-xs text-gray-600 shrink-0 w-[80px]">{child.code}</span>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => { e.stopPropagation(); setProductEditProduct(child); setProductEditOpen(true); }}
+                                              className="text-sm text-gray-900 hover:text-blue-600 hover:underline flex-1 truncate text-left"
+                                              title="点击编辑物料属性"
+                                            >
+                                              {child.name}
+                                            </button>
+                                            <span className="text-xs px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 shrink-0">x{bom.quantity}</span>
+                                            <span className="text-xs text-gray-400 shrink-0">{translateUnit(child.unit)}</span>
+                                            {linkedStepNames.length > 0 && (
+                                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 shrink-0" title={`关联工序: ${linkedStepNames.join(', ')}`}>
+                                                {linkedStepNames.join(', ')}
+                                              </span>
+                                            )}
+                                            {childSteps.length > 0 && (
+                                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 shrink-0">{childSteps.length}道工序</span>
+                                            )}
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); openDrawingDialog(child.id, child.name); }}
+                                              className="p-1 text-gray-300 hover:text-blue-600 shrink-0"
+                                              title="查看图纸"
+                                            ><Paperclip className="w-3.5 h-3.5" /></button>
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); setProcessFlowProductId(child.id); setProcessFlowProductName(child.name); setProcessFlowOpen(true); }}
+                                              className="p-1 text-gray-300 hover:text-indigo-600 shrink-0"
+                                              title="编辑工艺流程"
+                                            ><Workflow className="w-3.5 h-3.5" /></button>
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); setEditQtyBomId(bom.id); setEditQtyValue(bom.quantity); setEditQtyOpen(true); }}
+                                              className="p-1 text-gray-300 hover:text-blue-600 shrink-0"
+                                              title="编辑用量"
+                                            >✎</button>
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); handleDeleteBom(bom.id); }}
+                                              className="p-1 text-gray-300 hover:text-red-600 shrink-0"
+                                              title="移除子物料"
+                                            >✕</button>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-gray-400 text-center py-2">暂无子物料，点击「+子」添加</div>
+                                )}
                               </div>
-                            </div>
-                          ) : (
-                            <div className="text-xs text-gray-400 text-center py-2">暂无子物料，点击「+子」添加</div>
-                          )}
+                            );
+                          })()}
                         </div>
                       )}
                     </div>
