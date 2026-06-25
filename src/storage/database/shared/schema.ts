@@ -474,6 +474,18 @@ export const processFlows = pgTable("process_flows", {
   index("process_flows_product_id_idx").on(table.product_id),
 ]);
 
+// 工序物料关联（每道工序消耗的原材料）
+export const processFlowMaterials = pgTable("process_flow_materials", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  process_flow_id: varchar("process_flow_id", { length: 36 }).notNull().references(() => processFlows.id, { onDelete: "cascade" }),
+  product_id: varchar("product_id", { length: 36 }).notNull().references(() => products.id),
+  quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull().default("1"),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("idx_pfm_process_flow_id").on(table.process_flow_id),
+  index("idx_pfm_product_id").on(table.product_id),
+]);
+
 // 工序模板（可自定义的工序名称列表）
 export const processStepTemplates = pgTable("process_step_templates", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),

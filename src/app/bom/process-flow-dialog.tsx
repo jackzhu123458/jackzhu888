@@ -12,6 +12,15 @@ import {
 } from '@/components/ui/dialog';
 import { Plus, Trash2, Save, Star, X, GitBranch, ChevronDown, ChevronRight, Settings } from 'lucide-react';
 
+interface StepMaterial {
+  product_id: string;
+  quantity: number;
+  product_name?: string;
+  product_code?: string;
+  product_spec?: string;
+  product_unit?: string;
+}
+
 interface ProcessStep {
   id?: string;
   step_order: number;
@@ -20,6 +29,7 @@ interface ProcessStep {
   estimated_minutes: number | null;
   is_key_step: boolean;
   branch: string | null;
+  materials?: StepMaterial[];
 }
 
 interface StepTemplate {
@@ -27,11 +37,24 @@ interface StepTemplate {
   step_name: string;
 }
 
+interface BomChild {
+  child_product_id: string;
+  quantity: number;
+  child_product?: {
+    id: string;
+    code: string;
+    name: string;
+    spec: string | null;
+    unit: string;
+  };
+}
+
 interface ProcessFlowDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   productId: string;
   productName: string;
+  bomChildren?: BomChild[];
 }
 
 /* ---------- 可视化流程预览 ---------- */
@@ -108,7 +131,7 @@ function StepBadge({ step }: { step: ProcessStep }) {
 }
 
 /* ---------- 主弹窗组件 ---------- */
-export default function ProcessFlowDialog({ open, onOpenChange, productId, productName }: ProcessFlowDialogProps) {
+export default function ProcessFlowDialog({ open, onOpenChange, productId, productName, bomChildren = [] }: ProcessFlowDialogProps) {
   const [steps, setSteps] = useState<ProcessStep[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -167,7 +190,8 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
         const json = await res.json();
         // 兼容两种返回格式: { steps: [...] } 或直接 [...]
         const stepsData = Array.isArray(json) ? json : (json.steps && Array.isArray(json.steps) ? json.steps : []);
-        setSteps(stepsData);
+        // 确保每个 step 都有 materials 数组
+        setSteps(stepsData.map((s: ProcessStep) => ({ ...s, materials: s.materials || [] })));
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
@@ -250,6 +274,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
         estimated_minutes: null,
         is_key_step: false,
         branch: null,
+        materials: [],
       },
     ]);
   };
@@ -277,6 +302,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
         estimated_minutes: null,
         is_key_step: false,
         branch: newBranch,
+        materials: [],
       },
     ]);
   };
@@ -298,7 +324,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
     }
   };
 
-  const updateStep = (index: number, field: keyof ProcessStep, value: string | number | boolean | null) => {
+  const updateStep = (index: number, field: keyof ProcessStep, value: string | number | boolean | StepMaterial[] | null) => {
     setSteps(prev => prev.map((s, i) => i === index ? { ...s, [field]: value } : s));
   };
 
@@ -346,6 +372,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
             estimated_minutes: s.estimated_minutes || null,
             is_key_step: s.is_key_step,
             branch: s.branch || null,
+            materials: s.materials || [],
           })),
         }),
       });
@@ -458,9 +485,8 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
                     {mainStep && (() => {
                       const idx = steps.indexOf(mainStep);
                       return (
-                        <div className={`flex items-center gap-2 px-3 py-2 ${
-                          mainStep.is_key_step ? 'bg-amber-50' : ''
-                        }`}>
+                        <div className={mainStep.is_key_step ? 'bg-amber-50' : ''}>
+                        <div className={`flex items-center gap-2 px-3 py-2`}>
                           <div className="relative flex-1 min-w-0">
                             <Input
                               value={mainStep.step_name}
@@ -501,6 +527,49 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
+                        {/* 物料关联 */}
+                        {(() => {
+                          const stepMats = mainStep.materials || [];
+                          return (
+                            <div className="px-3 pb-2 pt-1 border-t border-dashed border-gray-100">
+                              <div className="flex flex-wrap gap-1 items-center">
+                                <span className="text-[10px] text-gray-400 mr-1">物料:</span>
+                                {stepMats.map((m, mi) => {
+                                  const p = bomChildren.find(c => c.child_product_id === m.product_id);
+                                  const pName = p?.child_product?.name || m.product_name || m.product_id.slice(0,6);
+                                  return (
+                                    <span key={mi} className="inline-flex items-center gap-0.5 text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 rounded px-1.5 py-0.5">
+                                      {pName} ×{m.quantity}
+                                      <button onClick={() => {
+                                        const newMats = stepMats.filter((_, i) => i !== mi);
+                                        updateStep(idx, 'materials', newMats);
+                                      }} className="text-emerald-400 hover:text-red-500 ml-0.5">×</button>
+                                    </span>
+                                  );
+                                })}
+                                <select
+                                  className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white max-w-[120px]"
+                                  value=""
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (!val) return;
+                                    const child = bomChildren.find(c => c.child_product_id === val);
+                                    if (!child) return;
+                                    if (stepMats.some(m => m.product_id === val)) return;
+                                    const newMats = [...stepMats, { product_id: val, product_name: child.child_product?.name, quantity: child.quantity || 1 }];
+                                    updateStep(idx, 'materials', newMats);
+                                  }}
+                                >
+                                  <option value="">+添加</option>
+                                  {bomChildren.filter(c => !stepMats.some(m => m.product_id === c.child_product_id)).map(c => (
+                                    <option key={c.child_product_id} value={c.child_product_id}>{c.child_product?.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                        </div>
                       );
                     })()}
 
@@ -508,12 +577,8 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
                     {branchSteps.map((bs, bIdx) => {
                       const idx = steps.indexOf(bs);
                       return (
-                        <div
-                          key={bs.branch}
-                          className={`flex items-center gap-2 px-3 py-2 border-t border-dashed border-gray-200 ${
-                            bs.is_key_step ? 'bg-amber-50' : 'bg-blue-50/30'
-                          }`}
-                        >
+                        <div key={bs.branch} className={bs.is_key_step ? 'bg-amber-50' : 'bg-blue-50/30'}>
+                        <div className={`flex items-center gap-2 px-3 py-2 border-t border-dashed border-gray-200`}>
                           <span className="text-xs font-bold text-indigo-500 bg-indigo-100 px-1.5 py-0.5 rounded w-6 text-center shrink-0">
                             {bs.branch}
                           </span>
@@ -556,6 +621,49 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
+                        </div>
+                        {/* 分支物料关联 */}
+                        {(() => {
+                          const stepMats = bs.materials || [];
+                          return (
+                            <div className="px-3 pb-2 pt-1 border-t border-dashed border-gray-100">
+                              <div className="flex flex-wrap gap-1 items-center">
+                                <span className="text-[10px] text-gray-400 mr-1">物料:</span>
+                                {stepMats.map((m, mi) => {
+                                  const p = bomChildren.find(c => c.child_product_id === m.product_id);
+                                  const pName = p?.child_product?.name || m.product_name || m.product_id.slice(0,6);
+                                  return (
+                                    <span key={mi} className="inline-flex items-center gap-0.5 text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 rounded px-1.5 py-0.5">
+                                      {pName} ×{m.quantity}
+                                      <button onClick={() => {
+                                        const newMats = stepMats.filter((_, i) => i !== mi);
+                                        updateStep(idx, 'materials', newMats);
+                                      }} className="text-emerald-400 hover:text-red-500 ml-0.5">×</button>
+                                    </span>
+                                  );
+                                })}
+                                <select
+                                  className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white max-w-[120px]"
+                                  value=""
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (!val) return;
+                                    const child = bomChildren.find(c => c.child_product_id === val);
+                                    if (!child) return;
+                                    if (stepMats.some(m => m.product_id === val)) return;
+                                    const newMats = [...stepMats, { product_id: val, product_name: child.child_product?.name, quantity: child.quantity || 1 }];
+                                    updateStep(idx, 'materials', newMats);
+                                  }}
+                                >
+                                  <option value="">+添加</option>
+                                  {bomChildren.filter(c => !stepMats.some(m => m.product_id === c.child_product_id)).map(c => (
+                                    <option key={c.child_product_id} value={c.child_product_id}>{c.child_product?.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          );
+                        })()}
                         </div>
                       );
                     })}

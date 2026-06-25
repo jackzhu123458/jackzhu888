@@ -164,3 +164,23 @@ BEGIN
     RAISE NOTICE 'Column sourcing_type already exists in products';
   END IF;
 END $$;
+
+-- 11. 工序物料关联表
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'process_flow_materials') THEN
+    CREATE TABLE process_flow_materials (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      process_flow_id UUID NOT NULL REFERENCES process_flows(id) ON DELETE CASCADE,
+      product_id UUID NOT NULL REFERENCES products(id),
+      quantity NUMERIC(12,2) NOT NULL DEFAULT 1,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX idx_pfm_process_flow_id ON process_flow_materials(process_flow_id);
+    CREATE INDEX idx_pfm_product_id ON process_flow_materials(product_id);
+    GRANT SELECT, INSERT, UPDATE, DELETE ON process_flow_materials TO anon;
+    RAISE NOTICE 'Created process_flow_materials table';
+  ELSE
+    RAISE NOTICE 'Table process_flow_materials already exists';
+  END IF;
+END $$;

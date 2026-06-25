@@ -246,7 +246,7 @@ export default function BomPage() {
   const [processFlowProductName, setProcessFlowProductName] = useState('');
 
   // 工艺流程数据（展开行时显示）
-  const [processFlows, setProcessFlows] = useState<Array<{ product_id: string; step_order: number; step_name: string; is_key_step: boolean; estimated_minutes: number | null; branch?: string }>>([]);
+  const [processFlows, setProcessFlows] = useState<Array<{ product_id: string; step_order: number; step_name: string; is_key_step: boolean; estimated_minutes: number | null; branch?: string; materials?: Array<{ product_id: string; product_name?: string; quantity: number }> }>>([]);
   const processFlowsMap = useMemo(() => {
     const map = new Map<string, typeof processFlows>();
     for (const pf of processFlows) {
@@ -1235,6 +1235,15 @@ export default function BomPage() {
                                                     {step.is_key_step && <span className="ml-0.5 text-amber-500">★</span>}
                                                     {step.estimated_minutes && <span className="ml-0.5 text-gray-400 text-[10px]">{step.estimated_minutes}m</span>}
                                                   </span>
+                                                  {step.materials && step.materials.length > 0 && (
+                                                    <span className="inline-flex items-center gap-0.5 ml-0.5">
+                                                      {step.materials.map((m: { product_name?: string; quantity: number }, mi: number) => (
+                                                        <span key={mi} className="text-[9px] bg-emerald-50 text-emerald-600 border border-emerald-200 rounded px-1 py-0">
+                                                          {m.product_name || '物料'}×{m.quantity}
+                                                        </span>
+                                                      ))}
+                                                    </span>
+                                                  )}
                                                 </span>
                                               ))}
                                             </div>
@@ -1247,6 +1256,16 @@ export default function BomPage() {
                                               {g[0].step_name}
                                               {g[0].is_key_step && <span className="ml-0.5 text-amber-500">★</span>}
                                               {g[0].estimated_minutes && <span className="ml-1 text-gray-400 text-[10px]">{g[0].estimated_minutes}min</span>}
+                                            </span>
+                                          )}
+                                          {/** 非并行步骤的物料显示 */}
+                                          {!isCurrParallel && g[0].materials && g[0].materials.length > 0 && (
+                                            <span className="inline-flex items-center gap-0.5 ml-0.5">
+                                              {g[0].materials.map((m: { product_name?: string; quantity: number }, mi: number) => (
+                                                <span key={mi} className="text-[9px] bg-emerald-50 text-emerald-600 border border-emerald-200 rounded px-1 py-0">
+                                                  {m.product_name || '物料'}×{m.quantity}
+                                                </span>
+                                              ))}
                                             </span>
                                           )}
                                         </div>

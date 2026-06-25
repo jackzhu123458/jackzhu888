@@ -352,6 +352,18 @@ CREATE TABLE IF NOT EXISTS process_flows (
 );
 CREATE INDEX IF NOT EXISTS process_flows_product_id_idx ON process_flows(product_id);
 
+-- ========== 23b. 工序物料关联 ==========
+CREATE TABLE IF NOT EXISTS process_flow_materials (
+  id varchar(36) PRIMARY KEY DEFAULT gen_random_uuid(),
+  process_flow_id varchar(36) NOT NULL REFERENCES process_flows(id) ON DELETE CASCADE,
+  product_id varchar(36) NOT NULL REFERENCES products(id),
+  quantity numeric(12,2) NOT NULL DEFAULT 1,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pfm_process_flow_id ON process_flow_materials(process_flow_id);
+CREATE INDEX IF NOT EXISTS idx_pfm_product_id ON process_flow_materials(product_id);
+
 -- ========== 24. 工序模板（可自定义的工序名称列表） ==========
 CREATE TABLE IF NOT EXISTS process_step_templates (
   id varchar(36) PRIMARY KEY DEFAULT gen_random_uuid(),
