@@ -48,6 +48,7 @@ interface Product {
   price: number;
   cost_price: number;
   remark: string | null;
+  sourcing_type?: string; // self_made=自制, purchased=外购
   is_active: boolean;
   location_no: string | null;
 }
@@ -102,6 +103,7 @@ export default function BomPage() {
   const [addChildNewName, setAddChildNewName] = useState('');
   const [addChildNewUnit, setAddChildNewUnit] = useState('个');
   const [addChildNewType, setAddChildNewType] = useState('raw_material');
+  const [addChildNewSourcingType, setAddChildNewSourcingType] = useState('self_made');
   const [addChildNewSpec, setAddChildNewSpec] = useState('');
   const [addChildNewCostPrice, setAddChildNewCostPrice] = useState('');
 
@@ -760,6 +762,7 @@ export default function BomPage() {
     setAddChildNewName('');
     setAddChildNewUnit('个');
     setAddChildNewType('raw_material');
+    setAddChildNewSourcingType('self_made');
     setAddChildNewSpec('');
     setAddChildNewCostPrice('');
     setAddChildOpen(true);
@@ -787,6 +790,7 @@ export default function BomPage() {
             name: addChildNewName.trim(),
             unit: addChildNewUnit,
             type: addChildNewType,
+            sourcing_type: addChildNewSourcingType,
             spec: addChildNewSpec.trim() || null,
             cost_price: addChildNewCostPrice ? parseFloat(addChildNewCostPrice) : 0,
             price: 0,
@@ -1263,6 +1267,7 @@ export default function BomPage() {
                                 {children.map((bom) => {
                                   const child = bom.child_product;
                                   const typeLabel = child.type === 'raw_material' ? '原材料' : child.type === 'semi_finished' ? '半成品' : child.type === 'finished_product' ? '成品' : '其他';
+                                  const sourcingLabel = child.sourcing_type === 'purchased' ? '外购' : '自制';
                                   const childSteps = processFlowsMap.get(child.id) || [];
                                   return (
                                     <div
@@ -1270,6 +1275,7 @@ export default function BomPage() {
                                       className="flex items-center gap-3 px-3 py-2 bg-white rounded border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-colors"
                                     >
                                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 shrink-0">{typeLabel}</span>
+                                      <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${child.sourcing_type === 'purchased' ? 'bg-amber-100 text-amber-700' : 'bg-blue-50 text-blue-600'}`}>{sourcingLabel}</span>
                                       <span className="font-mono text-xs text-gray-600 shrink-0 w-[80px]">{child.code}</span>
                                       <span className="text-sm text-gray-900 flex-1 truncate">{child.name}</span>
                                       <span className="text-xs px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 shrink-0">x{bom.quantity}</span>
@@ -2054,6 +2060,16 @@ export default function BomPage() {
                         <SelectItem value="semi_finished">半成品</SelectItem>
                         <SelectItem value="finished_product">成品</SelectItem>
                         <SelectItem value="other">其他</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">采购属性</label>
+                    <Select value={addChildNewSourcingType} onValueChange={setAddChildNewSourcingType}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="self_made">自制</SelectItem>
+                        <SelectItem value="purchased">外购</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

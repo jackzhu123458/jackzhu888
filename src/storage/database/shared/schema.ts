@@ -18,6 +18,7 @@ export const products = pgTable(
     unit: varchar("unit", { length: 20 }).notNull().default("个"),
     category: varchar("category", { length: 100 }),
     type: varchar("type", { length: 30 }).notNull().default("raw_material"),
+    sourcing_type: varchar("sourcing_type", { length: 30 }).notNull().default("self_made"), // self_made=自制, purchased=外购
     price: numeric("price", { precision: 12, scale: 2 }),
     cost_price: numeric("cost_price", { precision: 12, scale: 2 }).default("0"),
     location_no: varchar("location_no", { length: 50 }).default(""),

@@ -647,9 +647,10 @@ export default function OrdersPage() {
         reserved?: Array<{ product_name: string; quantity: number }>;
         produced?: Array<{ product_name: string; quantity: number; production_order_id: string }>;
         shortage?: Array<{ product_name: string; required: number; available: number }>;
+        purchase_suggestions?: Array<{ product_name: string; product_code: string; required: number; available: number; shortage: number; used_in: string }>;
       } | undefined;
 
-      if (pushDown && (pushDown.produced?.length || pushDown.reserved?.length || pushDown.shortage?.length)) {
+      if (pushDown && (pushDown.produced?.length || pushDown.reserved?.length || pushDown.shortage?.length || pushDown.purchase_suggestions?.length)) {
         const lines: string[] = ['订单已保存，自动下推结果：'];
         if (pushDown.produced?.length) {
           lines.push(`\n生成生产订单 ${pushDown.produced.length} 条：`);
@@ -662,6 +663,10 @@ export default function OrdersPage() {
         if (pushDown.shortage?.length) {
           lines.push(`\n缺料 ${pushDown.shortage.length} 项：`);
           pushDown.shortage.forEach((p) => lines.push(`  - ${p.product_name}（需${p.required}，可用${p.available}）`));
+        }
+        if (pushDown.purchase_suggestions?.length) {
+          lines.push(`\n⚠️ 采购建议 ${pushDown.purchase_suggestions.length} 项：`);
+          pushDown.purchase_suggestions.forEach((p) => lines.push(`  - [${p.product_code}] ${p.product_name}：需采购${p.shortage}${p.available > 0 ? `（总需${p.required}，库存${p.available}）` : `（库存不足）`} → ${p.used_in}`));
         }
         alert(lines.join('\n'));
       }

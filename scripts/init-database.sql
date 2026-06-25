@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS products (
   location_no varchar(50) DEFAULT '',
   remark text,
   is_active boolean NOT NULL DEFAULT true,
+  sourcing_type varchar(30) NOT NULL DEFAULT 'self_made', -- 采购属性: self_made=自制, purchased=外购
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz
 );

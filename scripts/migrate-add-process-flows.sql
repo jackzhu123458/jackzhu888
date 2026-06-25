@@ -151,3 +151,16 @@ END $$;
 
 -- ⚠️ 注意：执行完后必须重启 postgrest 容器！
 -- docker compose restart postgrest
+
+-- 10. products 表添加 sourcing_type 字段（采购属性：自制/外购）
+DO $$
+BEGIN
+  -- 检查字段是否已存在
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'sourcing_type') THEN
+    ALTER TABLE products ADD COLUMN sourcing_type varchar(30) NOT NULL DEFAULT 'self_made';
+    COMMENT ON COLUMN products.sourcing_type IS '采购属性: self_made=自制, purchased=外购';
+    RAISE NOTICE 'Added sourcing_type column to products';
+  ELSE
+    RAISE NOTICE 'Column sourcing_type already exists in products';
+  END IF;
+END $$;

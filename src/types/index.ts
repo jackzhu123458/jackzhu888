@@ -11,6 +11,7 @@ export interface Product {
   unit?: string;
   category?: string;
   type?: string;
+  sourcing_type?: string; // self_made=自制, purchased=外购
   price?: number;
 }
 
