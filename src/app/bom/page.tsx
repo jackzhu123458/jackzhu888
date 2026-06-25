@@ -821,12 +821,15 @@ export default function BomPage() {
   };
 
   // 保存添加子物料
+  const [addChildSaving, setAddChildSaving] = useState(false);
   const handleAddChildSave = async () => {
     if (!addChildParentId) return;
+    if (addChildSaving) return;
+    setAddChildSaving(true);
     try {
       let childId = '';
       if (addChildMode === 'existing') {
-        if (!addChildSelectedId) { alert('请选择一个产品'); return; }
+        if (!addChildSelectedId) { alert('请先在列表中点击选中一个产品'); return; }
         childId = addChildSelectedId;
         if (addChildParentId === childId) { alert('不能将自身添加为子物料'); return; }
         // 检查是否已存在
@@ -852,13 +855,14 @@ export default function BomPage() {
           const prod = await res.json();
           childId = prod.id;
         } else {
-          const err = await res.json();
-          alert(err.error || '创建产品失败');
+          let errMsg = `创建产品失败 (HTTP ${res.status})`;
+          try { const err = await res.json(); errMsg = err.error || errMsg; } catch {}
+          alert(errMsg);
           return;
         }
       }
       // 创建 BOM 关系
-      await fetch('/api/bom', {
+      const bomRes = await fetch('/api/bom', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -867,12 +871,21 @@ export default function BomPage() {
           quantity: addChildQty || '1',
         }),
       });
+      if (!bomRes.ok) {
+        let errMsg = `添加子物料失败 (HTTP ${bomRes.status})`;
+        try { const err = await bomRes.json(); errMsg = err.error || errMsg; } catch {}
+        alert(errMsg);
+        return;
+      }
       setAddChildOpen(false);
-      loadData();
+      await loadData();
       // 确保节点展开
       setExpandedNodes(prev => { const next = new Set(prev); next.add(addChildParentId); return next; });
-    } catch {
-      alert('添加子物料失败');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert(`添加子物料失败：${msg}`);
+    } finally {
+      setAddChildSaving(false);
     }
   };
 
@@ -2302,8 +2315,14 @@ export default function BomPage() {
             </div>
 
             <div className="flex gap-3 pt-2">
-              <Button onClick={handleAddChildSave} className="flex-1 bg-green-600 hover:bg-green-700">确定</Button>
-              <Button variant="outline" onClick={() => setAddChildOpen(false)} className="flex-1">取消</Button>
+              <Button
+                onClick={handleAddChildSave}
+                disabled={addChildSaving || (addChildMode === 'existing' && !addChildSelectedId)}
+                className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                {addChildSaving ? '保存中...' : '确定'}
+              </Button>
+              <Button variant="outline" onClick={() => setAddChildOpen(false)} disabled={addChildSaving} className="flex-1">取消</Button>
             </div>
           </div>
         </DialogContent>
