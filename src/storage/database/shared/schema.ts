@@ -493,6 +493,14 @@ export const processStepTemplates = pgTable("process_step_templates", {
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// 产品类目（独立管理，不依赖产品记录存在）
+export const productCategories = pgTable("product_categories", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 50 }).notNull().unique(),
+  label: varchar("label", { length: 100 }),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // 钉钉令牌缓存
 export const dingtalkTokenCache = pgTable("dingtalk_token_cache", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),

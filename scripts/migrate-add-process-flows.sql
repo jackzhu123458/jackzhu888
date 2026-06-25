@@ -183,4 +183,18 @@ BEGIN
   ELSE
     RAISE NOTICE 'Table process_flow_materials already exists';
   END IF;
+
+  -- 12. 创建 product_categories 表（产品类目持久化）
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'product_categories') THEN
+    CREATE TABLE product_categories (
+      id varchar(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      name varchar(50) NOT NULL UNIQUE,
+      label varchar(100),
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    GRANT SELECT, INSERT, UPDATE, DELETE ON product_categories TO anon;
+    RAISE NOTICE 'Created product_categories table';
+  ELSE
+    RAISE NOTICE 'Table product_categories already exists';
+  END IF;
 END $$;

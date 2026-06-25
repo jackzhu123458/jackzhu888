@@ -76,6 +76,18 @@ export default function BomPage() {
   const [bomList, setBomList] = useState<BomItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [persistedCategories, setPersistedCategories] = useState<{id: string; name: string; label: string | null}[]>([]);
+
+  // 加载持久化类目
+  const loadPersistedCategories = useCallback(async () => {
+    try {
+      const res = await fetch('/api/product-categories');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setPersistedCategories(data);
+      }
+    } catch {}
+  }, []);
 
   // 左侧类目树状态
   const [selectedCategory, setSelectedCategory] = useState<string>('0'); // '0' = 所有商品
@@ -331,6 +343,13 @@ export default function BomPage() {
   const categories = useMemo(() => {
     const catMap = new Map<string, { count: number; names: string[] }>();
     let unclassifiedCount = 0;
+    // 先把持久化的类目放入（即使还没产品也能展示）
+    persistedCategories.forEach(pc => {
+      const isNumericCategory = /^\d{2,3}$/.test(pc.name) && pc.name !== '0';
+      if (isNumericCategory) {
+        catMap.set(pc.name, { count: 0, names: [] });
+      }
+    });
     products
       .filter(p => !p.code.startsWith('BOM-'))
       .forEach(p => {
@@ -353,17 +372,18 @@ export default function BomPage() {
       });
     const result = Array.from(catMap.entries())
       .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))
-      .map(([cat, { count, names }]) => ({
-        name: cat,
-        count,
-        label: extractCommonLabel(names),
-      }));
+      .map(([cat, { count, names }]) => {
+        // 优先使用持久化类目的 label，再用从产品名提取的公共前缀
+        const persisted = persistedCategories.find(pc => pc.name === cat);
+        const label = persisted?.label || (names.length > 0 ? extractCommonLabel(names) : '');
+        return { name: cat, count, label };
+      });
     // 添加"未分类"类目（包含中文类目和"0"类目的产品）
     if (unclassifiedCount > 0) {
       result.push({ name: 'unclassified', count: unclassifiedCount, label: '未分类' });
     }
     return result;
-  }, [products]);
+  }, [products, persistedCategories]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -386,7 +406,7 @@ export default function BomPage() {
     }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { loadData(); loadPersistedCategories(); }, [loadData, loadPersistedCategories]);
 
   // 根据选中类目和搜索条件过滤产品
   const filteredProducts = useMemo(() => {
@@ -618,7 +638,7 @@ export default function BomPage() {
     setDeleteId(null);
   };
 
-  // 删除类目（将类目下所有商品的category清空）
+  // 删除类目（将类目下所有商品的category清空 + 从持久化表中删除）
   const handleDeleteCategory = async () => {
     if (!deleteId || deleteType !== 'category') return;
     const categoryToDelete = deleteId;
@@ -630,10 +650,20 @@ export default function BomPage() {
         body: JSON.stringify({ id: p.id, category: null }),
       });
     }
+    // 从持久化表中删除
+    await fetch('/api/product-categories?name=' + encodeURIComponent(categoryToDelete), {
+      method: 'DELETE',
+    }).catch(() => {});
     if (selectedCategory === categoryToDelete) {
       setSelectedCategory('0');
     }
     setDeleteId(null);
+    // 刷新持久化类目列表
+    const pcRes = await fetch('/api/product-categories');
+    if (pcRes.ok) {
+      const pcData = await pcRes.json();
+      setPersistedCategories(Array.isArray(pcData) ? pcData : []);
+    }
     loadData();
   };
 
@@ -662,10 +692,33 @@ export default function BomPage() {
     }
 
     if (categoryDialogMode === 'add') {
-      // 新增类目：创建一个空产品占位即可，类目由产品带出
-      // 直接切换到该类目视图
-      setSelectedCategory(newName);
-      setCategoryDialogOpen(false);
+      // 新增类目：持久化到 product_categories 表
+      try {
+        const res = await fetch('/api/product-categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newName }),
+        });
+        if (res.status === 409) {
+          alert('类目已存在');
+          return;
+        }
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert('添加失败: ' + (err.error || res.statusText));
+          return;
+        }
+        // 刷新持久化类目列表
+        const pcRes = await fetch('/api/product-categories');
+        if (pcRes.ok) {
+          const pcData = await pcRes.json();
+          setPersistedCategories(Array.isArray(pcData) ? pcData : []);
+        }
+        setSelectedCategory(newName);
+        setCategoryDialogOpen(false);
+      } catch (e) {
+        alert('添加失败: ' + (e instanceof Error ? e.message : String(e)));
+      }
     } else {
       // 编辑类目：更新该类目下所有产品的category
       if (newName === selectedCategory) {
