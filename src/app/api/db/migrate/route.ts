@@ -39,7 +39,42 @@ export async function POST() {
           results.push({ name: table, status: 'missing', error: '表不存在或 PostgREST schema cache 未刷新（需重启 postgrest）' });
         } else if (res.status === 403) {
           results.push({ name: table, status: 'no_permission', error: 'anon 角色无权限，需要执行 GRANT' });
+          // 检测并行分支唯一约束是否正确
+    // 旧约束 UNIQUE(product_id, step_order) 不支持并行分支，需要改为 UNIQUE(product_id, step_order, branch)
+    try {
+      // 尝试插入两条同 product_id + step_order 但不同 branch 的数据来检测约束
+      const testProductId = '00000000-0000-0000-0000-000000000000';
+      const testInsertRes = await postgrestFetch('/process_flows', {
+        method: 'POST',
+        headers: { 'Prefer': 'return=representation' },
+        body: JSON.stringify([
+          { product_id: testProductId, step_order: 1, step_name: '__test_A', branch: 'A' },
+          { product_id: testProductId, step_order: 1, step_name: '__test_B', branch: 'B' },
+        ]),
+      });
+
+      // 清理测试数据
+      await postgrestFetch(`/process_flows?product_id=eq.${testProductId}`, { method: 'DELETE' });
+
+      if (!testInsertRes.ok) {
+        const text = await testInsertRes.text();
+        if (text.includes('process_flows_product_id_step_order_key') || text.includes('duplicate key')) {
+          results.push({
+            name: 'process_flows_parallel_branch_constraint',
+            status: 'error',
+            error: '唯一约束不支持并行分支，需要执行迁移脚本修复 (UNIQUE(product_id, step_order) → UNIQUE(product_id, step_order, branch))',
+          });
         } else {
+          results.push({ name: 'process_flows_parallel_branch_constraint', status: 'error', error: `测试失败: ${text}` });
+        }
+      } else {
+        results.push({ name: 'process_flows_parallel_branch_constraint', status: 'ok' });
+      }
+    } catch (e) {
+      results.push({ name: 'process_flows_parallel_branch_constraint', status: 'error', error: e instanceof Error ? e.message : String(e) });
+    }
+
+  } else {
           const text = await res.text();
           results.push({ name: table, status: 'error', error: `HTTP ${res.status}: ${text}` });
         }
@@ -133,6 +168,32 @@ export async function POST() {
       results.push({ name: 'process_step_templates_data', status: insertError ? 'error' : 'seeded', error: insertError?.message });
     } else {
       results.push({ name: 'process_step_templates_data', status: 'ok' });
+    }
+    // 检测并行分支唯一约束
+    try {
+      const testProductId = '00000000-0000-0000-0000-000000000000';
+      const { error: testError } = await supabase.from('process_flows').insert([
+        { product_id: testProductId, step_order: 1, step_name: '__test_A', branch: 'A' },
+        { product_id: testProductId, step_order: 1, step_name: '__test_B', branch: 'B' },
+      ]).select();
+      // 清理
+      await supabase.from('process_flows').delete().eq('product_id', testProductId);
+
+      if (testError) {
+        if (testError.message.includes('process_flows_product_id_step_order_key') || testError.message.includes('duplicate key') || testError.message.includes('unique')) {
+          results.push({
+            name: 'process_flows_parallel_branch_constraint',
+            status: 'error',
+            error: '唯一约束不支持并行分支，需要修复 (UNIQUE(product_id, step_order) → UNIQUE(product_id, step_order, branch))',
+          });
+        } else {
+          results.push({ name: 'process_flows_parallel_branch_constraint', status: 'error', error: testError.message });
+        }
+      } else {
+        results.push({ name: 'process_flows_parallel_branch_constraint', status: 'ok' });
+      }
+    } catch (e) {
+      results.push({ name: 'process_flows_parallel_branch_constraint', status: 'error', error: e instanceof Error ? e.message : String(e) });
     }
   }
 

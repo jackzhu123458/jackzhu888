@@ -346,7 +346,8 @@ CREATE TABLE IF NOT EXISTS process_flows (
   is_key_step boolean DEFAULT false,
   branch varchar(20),
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz
+  updated_at timestamptz,
+  UNIQUE (product_id, step_order, branch)
 );
 CREATE INDEX IF NOT EXISTS process_flows_product_id_idx ON process_flows(product_id);
 

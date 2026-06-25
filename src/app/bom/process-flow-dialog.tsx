@@ -164,8 +164,10 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
     try {
       const res = await fetch(`/api/process-flows?product_id=${productId}`);
       if (res.ok) {
-        const data = await res.json();
-        setSteps(data.steps && data.steps.length > 0 ? data.steps : []);
+        const json = await res.json();
+        // 兼容两种返回格式: { steps: [...] } 或直接 [...]
+        const stepsData = Array.isArray(json) ? json : (json.steps && Array.isArray(json.steps) ? json.steps : []);
+        setSteps(stepsData);
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
@@ -338,6 +340,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
         body: JSON.stringify({
           product_id: productId,
           steps: steps.map(s => ({
+            step_order: s.step_order,
             step_name: s.step_name.trim(),
             description: s.description?.trim() || null,
             estimated_minutes: s.estimated_minutes || null,

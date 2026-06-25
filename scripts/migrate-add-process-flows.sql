@@ -128,5 +128,26 @@ BEGIN
     RAISE NOTICE 'GRANT sequences failed: %', SQLERRM;
 END $$;
 
+-- 9. 修复 process_flows 唯一约束：支持并行分支
+-- 旧约束 UNIQUE(product_id, step_order) 不包含 branch，导致并行步骤无法保存
+-- 需要改为 UNIQUE(product_id, step_order, branch)
+DO $$
+BEGIN
+  -- 删除旧约束（如果存在）
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'process_flows_product_id_step_order_key' AND conrelid = 'process_flows'::regclass) THEN
+    ALTER TABLE process_flows DROP CONSTRAINT process_flows_product_id_step_order_key;
+    RAISE NOTICE 'Dropped old constraint process_flows_product_id_step_order_key';
+  END IF;
+END $$;
+
+-- 添加新约束（包含 branch，支持并行步骤）
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'process_flows_product_id_step_order_branch_key' AND conrelid = 'process_flows'::regclass) THEN
+    ALTER TABLE process_flows ADD CONSTRAINT process_flows_product_id_step_order_branch_key UNIQUE (product_id, step_order, branch);
+    RAISE NOTICE 'Added new constraint process_flows_product_id_step_order_branch_key';
+  END IF;
+END $$;
+
 -- ⚠️ 注意：执行完后必须重启 postgrest 容器！
 -- docker compose restart postgrest

@@ -18,6 +18,51 @@ async function postgrestFetch(path: string, options?: RequestInit): Promise<Resp
   });
 }
 
+/**
+ * 重新编号 step_order，确保：
+ * 1. step_order 从 1 开始连续递增
+ * 2. 同一 step_order 下允许有多个 branch（并行步骤）
+ * 3. 不再依赖前端传来的 step_order（防止遗漏导致全为0冲突）
+ */
+function reindexSteps(steps: { step_order?: number; step_name: string; description?: string; estimated_minutes?: number; is_key_step?: boolean; branch?: string | null }[]): {
+  step_order: number;
+  step_name: string;
+  description: string | null;
+  estimated_minutes: number | null;
+  is_key_step: boolean;
+  branch: string | null;
+}[] {
+  // 按 step_order 分组，保留原始分组关系
+  const groups: Map<number, typeof steps> = new Map();
+  let groupIndex = 0;
+  for (const s of steps) {
+    const key = s.step_order ?? (groupIndex + 1);
+    if (!groups.has(key)) {
+      groupIndex++;
+      groups.set(key, []);
+    }
+    groups.get(key)!.push(s);
+  }
+
+  // 重新编号为 1, 2, 3...
+  const result: ReturnType<typeof reindexSteps> = [];
+  let order = 1;
+  for (const [, group] of groups) {
+    for (const s of group) {
+      result.push({
+        step_order: order,
+        step_name: s.step_name,
+        description: s.description || null,
+        estimated_minutes: s.estimated_minutes || null,
+        is_key_step: s.is_key_step || false,
+        branch: s.branch || null,
+      });
+    }
+    order++;
+  }
+  return result;
+}
+
 // GET /api/process-flows?product_id=xxx — 获取某产品的工艺流程
 export async function GET(req: NextRequest) {
   try {
@@ -25,7 +70,7 @@ export async function GET(req: NextRequest) {
 
     if (isLocalMode()) {
       // 本地 PostgREST 模式：直接调用
-      let path = '/process_flows?order=step_order.asc,branch.asc';
+      let path = '/process_flows?order=step_order.asc.nullsfirst,branch.asc.nullsfirst';
       if (productId) {
         path += `&product_id=eq.${encodeURIComponent(productId)}`;
       }
@@ -39,15 +84,17 @@ export async function GET(req: NextRequest) {
 
       const data = await res.json();
 
-      if (productId && Array.isArray(data) && data.length > 0) {
+      if (productId) {
         // 获取产品信息
-        const prodRes = await postgrestFetch(`/products?id=eq.${encodeURIComponent(productId)}&limit=1`);
         let product = null;
-        if (prodRes.ok) {
-          const prodData = await prodRes.json();
-          product = Array.isArray(prodData) && prodData.length > 0 ? prodData[0] : null;
+        if (Array.isArray(data) && data.length > 0) {
+          const prodRes = await postgrestFetch(`/products?id=eq.${encodeURIComponent(productId)}&limit=1`);
+          if (prodRes.ok) {
+            const prodData = await prodRes.json();
+            product = Array.isArray(prodData) && prodData.length > 0 ? prodData[0] : null;
+          }
         }
-        return NextResponse.json({ product, steps: data });
+        return NextResponse.json({ product, steps: Array.isArray(data) ? data : [] });
       }
 
       return NextResponse.json(data);
@@ -94,7 +141,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { product_id, steps } = body as {
+    const { product_id, steps: rawSteps } = body as {
       product_id: string;
       steps: { step_order?: number; step_name: string; description?: string; estimated_minutes?: number; is_key_step?: boolean; branch?: string | null }[];
     };
@@ -102,13 +149,22 @@ export async function POST(req: NextRequest) {
     if (!product_id) {
       return NextResponse.json({ error: '请选择产品' }, { status: 400 });
     }
-    if (!steps || !Array.isArray(steps) || steps.length === 0) {
+    if (!rawSteps || !Array.isArray(rawSteps) || rawSteps.length === 0) {
       return NextResponse.json({ error: '请至少添加一个工序步骤' }, { status: 400 });
     }
 
+    // 重新编号 step_order，防止前端遗漏或冲突
+    const steps = reindexSteps(rawSteps);
+
     if (isLocalMode()) {
       // 本地 PostgREST 模式：直接调用
-      // 1. 删除该产品已有的工艺流程
+      // 1. 先读取旧数据（用于回滚）
+      const oldRes = await postgrestFetch(
+        `/process_flows?product_id=eq.${encodeURIComponent(product_id)}&select=id,step_order,step_name,description,estimated_minutes,is_key_step,branch`,
+      );
+      const oldData = oldRes.ok ? await oldRes.json() : [];
+
+      // 2. 删除该产品已有的工艺流程
       const delRes = await postgrestFetch(
         `/process_flows?product_id=eq.${encodeURIComponent(product_id)}`,
         { method: 'DELETE' },
@@ -119,15 +175,10 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: `删除旧数据失败 (HTTP ${delRes.status}): ${text}` }, { status: 500 });
       }
 
-      // 2. 插入新的工序步骤
+      // 3. 插入新的工序步骤
       const rows = steps.map((s) => ({
         product_id,
-        step_order: s.step_order ?? 0,
-        step_name: s.step_name,
-        description: s.description || null,
-        estimated_minutes: s.estimated_minutes || null,
-        is_key_step: s.is_key_step || false,
-        branch: s.branch || null,
+        ...s,
       }));
 
       const insRes = await postgrestFetch('/process_flows', {
@@ -139,7 +190,26 @@ export async function POST(req: NextRequest) {
       if (!insRes.ok) {
         const text = await insRes.text();
         console.error('[process-flows POST] PostgREST insert error:', insRes.status, text);
-        return NextResponse.json({ error: `插入数据失败 (HTTP ${insRes.status}): ${text}` }, { status: 500 });
+
+        // 插入失败，尝试恢复旧数据
+        if (Array.isArray(oldData) && oldData.length > 0) {
+          console.log('[process-flows POST] 尝试恢复旧数据...');
+          await postgrestFetch('/process_flows', {
+            method: 'POST',
+            headers: { 'Prefer': 'return=representation' },
+            body: JSON.stringify(oldData.map((d: Record<string, unknown>) => ({
+              product_id,
+              step_order: d.step_order,
+              step_name: d.step_name,
+              description: d.description,
+              estimated_minutes: d.estimated_minutes,
+              is_key_step: d.is_key_step,
+              branch: d.branch,
+            }))),
+          }).catch(() => {});
+        }
+
+        return NextResponse.json({ error: `保存失败 (HTTP ${insRes.status}): ${text}` }, { status: 500 });
       }
 
       const data = await insRes.json();
@@ -148,6 +218,12 @@ export async function POST(req: NextRequest) {
 
     // 云端 Supabase 模式
     const sb = getSupabaseClient();
+
+    // 先读取旧数据用于回滚
+    const { data: oldData } = await sb
+      .from('process_flows')
+      .select('*')
+      .eq('product_id', product_id);
 
     // Delete existing steps for this product
     const { error: delError } = await sb
@@ -159,15 +235,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: delError.message }, { status: 500 });
     }
 
-    // Insert new steps - preserve step_order and branch from client
+    // Insert new steps
     const rows = steps.map((s) => ({
       product_id,
-      step_order: s.step_order ?? 0,
-      step_name: s.step_name,
-      description: s.description || null,
-      estimated_minutes: s.estimated_minutes || null,
-      is_key_step: s.is_key_step || false,
-      branch: s.branch || null,
+      ...s,
     }));
 
     const { data, error: insError } = await sb
@@ -176,6 +247,22 @@ export async function POST(req: NextRequest) {
       .select();
 
     if (insError) {
+      console.error('[process-flows POST] Supabase insert error:', JSON.stringify(insError));
+
+      // 插入失败，尝试恢复旧数据
+      if (oldData && oldData.length > 0) {
+        console.log('[process-flows POST] 尝试恢复旧数据...');
+        await sb.from('process_flows').insert(oldData.map((d: Record<string, unknown>) => ({
+          product_id,
+          step_order: d.step_order,
+          step_name: d.step_name,
+          description: d.description,
+          estimated_minutes: d.estimated_minutes,
+          is_key_step: d.is_key_step,
+          branch: d.branch,
+        }))).then(() => {}, () => {});
+      }
+
       return NextResponse.json({ error: insError.message }, { status: 500 });
     }
 
