@@ -2157,6 +2157,7 @@ export default function BomPage() {
         onOpenChange={setProcessFlowOpen}
         productId={processFlowProductId}
         productName={processFlowProductName}
+        onSaved={() => { loadData(); }}
       />
 
       {/* 物料属性编辑弹窗 */}

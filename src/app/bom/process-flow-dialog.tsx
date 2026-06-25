@@ -55,6 +55,7 @@ interface ProcessFlowDialogProps {
   productId: string;
   productName: string;
   bomChildren?: BomChild[];
+  onSaved?: () => void;
 }
 
 /* ---------- 可视化流程预览 ---------- */
@@ -131,7 +132,7 @@ function StepBadge({ step }: { step: ProcessStep }) {
 }
 
 /* ---------- 主弹窗组件 ---------- */
-export default function ProcessFlowDialog({ open, onOpenChange, productId, productName, bomChildren = [] }: ProcessFlowDialogProps) {
+export default function ProcessFlowDialog({ open, onOpenChange, productId, productName, bomChildren = [], onSaved }: ProcessFlowDialogProps) {
   const [steps, setSteps] = useState<ProcessStep[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -391,6 +392,7 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
             }).catch(() => {})
           )
         ).then(() => loadTemplates());
+        onSaved?.();
         onOpenChange(false);
       } else {
         const err = await res.json().catch(() => ({ error: '保存失败' }));
