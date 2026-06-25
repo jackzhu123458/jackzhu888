@@ -1166,19 +1166,61 @@ export default function BomPage() {
                               return (
                                 <div className="mb-3">
                                   <div className="text-xs font-semibold text-gray-600 mb-1.5">工艺流程</div>
-                                  <div className="flex flex-wrap items-stretch gap-1">
+                                  <div className="flex flex-wrap items-stretch gap-0">
                                     {orders.map((order, oi) => {
                                       const g = groups.get(order)!;
                                       const isParallel = g.length > 1;
+                                      const isPrevParallel = oi > 0 && groups.get(orders[oi - 1])!.length > 1;
+                                      const isCurrParallel = isParallel;
                                       return (
-                                        <div key={order} className="flex items-center gap-1">
-                                          {oi > 0 && (
-                                            <span className="text-gray-300 shrink-0">—</span>
+                                        <div key={order} className="flex items-stretch gap-0">
+                                          {/* 分叉线：前一个非并行 → 当前并行 */}
+                                          {oi > 0 && !isPrevParallel && isCurrParallel && (
+                                            <div className="flex flex-col items-center justify-center w-5 shrink-0">
+                                              <svg width="20" height={g.length * 28} viewBox={`0 0 20 ${g.length * 28}`} className="text-gray-400">
+                                                <line x1="0" y1={g.length * 14} x2="10" y2={g.length * 14} stroke="currentColor" strokeWidth="1.5"/>
+                                                <line x1="10" y1="4" x2="10" y2={g.length * 28 - 4} stroke="currentColor" strokeWidth="1.5"/>
+                                                <line x1="10" y1="4" x2="20" y2="4" stroke="currentColor" strokeWidth="1.5"/>
+                                                <line x1="10" y1={g.length * 28 - 4} x2="20" y2={g.length * 28 - 4} stroke="currentColor" strokeWidth="1.5"/>
+                                                {g.length > 2 && g.slice(1, -1).map((_, mi) => (
+                                                  <line key={mi} x1="10" y1={(mi + 1) * 28} x2="20" y2={(mi + 1) * 28} stroke="currentColor" strokeWidth="1.5"/>
+                                                ))}
+                                              </svg>
+                                            </div>
                                           )}
-                                          {isParallel ? (
+
+                                          {/* 合并线：前一个并行 → 当前非并行 */}
+                                          {oi > 0 && isPrevParallel && !isCurrParallel && (() => {
+                                            const prevG = groups.get(orders[oi - 1])!;
+                                            return (
+                                              <div className="flex flex-col items-center justify-center w-5 shrink-0">
+                                                <svg width="20" height={prevG.length * 28} viewBox={`0 0 20 ${prevG.length * 28}`} className="text-gray-400">
+                                                  <line x1="0" y1="4" x2="10" y2="4" stroke="currentColor" strokeWidth="1.5"/>
+                                                  <line x1="0" y1={prevG.length * 28 - 4} x2="10" y2={prevG.length * 28 - 4} stroke="currentColor" strokeWidth="1.5"/>
+                                                  <line x1="10" y1="4" x2="10" y2={prevG.length * 28 - 4} stroke="currentColor" strokeWidth="1.5"/>
+                                                  <line x1="10" y1={prevG.length * 28 / 2} x2="20" y2={prevG.length * 28 / 2} stroke="currentColor" strokeWidth="1.5"/>
+                                                  {prevG.length > 2 && prevG.slice(1, -1).map((_, mi) => (
+                                                    <line key={mi} x1="0" y1={(mi + 1) * 28} x2="10" y2={(mi + 1) * 28} stroke="currentColor" strokeWidth="1.5"/>
+                                                  ))}
+                                                </svg>
+                                              </div>
+                                            );
+                                          })()}
+
+                                          {/* 普通连接线 */}
+                                          {oi > 0 && ((isPrevParallel && isCurrParallel) || (!isPrevParallel && !isCurrParallel)) && (
+                                            <div className="flex items-center justify-center w-5 shrink-0">
+                                              <svg width="20" height="2" viewBox="0 0 20 2" className="text-gray-400">
+                                                <line x1="0" y1="1" x2="20" y2="1" stroke="currentColor" strokeWidth="1.5"/>
+                                              </svg>
+                                            </div>
+                                          )}
+
+                                          {/* 工序节点 */}
+                                          {isCurrParallel ? (
                                             <div className="flex flex-col gap-0.5">
                                               {g.map((step, si) => (
-                                                <span key={si} className="inline-flex items-center gap-0.5 whitespace-nowrap">
+                                                <span key={si} className="inline-flex items-center gap-0.5 whitespace-nowrap h-[28px]">
                                                   {step.branch && <span className="text-[9px] text-indigo-400 font-bold">{step.branch}:</span>}
                                                   <span className={`inline-flex items-center px-1.5 py-0 rounded text-xs font-medium whitespace-nowrap ${
                                                     step.is_key_step
