@@ -1173,7 +1173,7 @@ export default function BomPage() {
                                       return (
                                         <div key={order} className="flex items-center gap-1">
                                           {oi > 0 && (
-                                            <svg className="w-3 h-3 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                            <span className="text-gray-300 shrink-0">—</span>
                                           )}
                                           {isParallel ? (
                                             <div className="flex flex-col gap-0.5">
