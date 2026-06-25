@@ -1176,11 +1176,11 @@ export default function BomPage() {
                                             <svg className="w-3 h-3 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                                           )}
                                           {isParallel ? (
-                                            <span className="flex items-center gap-0.5 px-1 py-0.5 rounded border border-indigo-200 bg-indigo-50">
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-indigo-200 bg-indigo-50 whitespace-nowrap">
                                               {g.map((step, si) => (
-                                                <span key={si} className="flex items-center gap-0.5">
-                                                  {step.branch && <span className="text-[9px] text-indigo-400 font-bold">{step.branch}</span>}
-                                                  <span className={`inline-flex items-center px-1.5 py-0 rounded text-xs font-medium ${
+                                                <span key={si} className="inline-flex items-center gap-0.5">
+                                                  {step.branch && <span className="text-[9px] text-indigo-400 font-bold mr-0.5">{step.branch}:</span>}
+                                                  <span className={`inline-flex items-center px-1.5 py-0 rounded text-xs font-medium whitespace-nowrap ${
                                                     step.is_key_step
                                                       ? 'bg-amber-100 text-amber-800 border border-amber-300'
                                                       : 'bg-white text-gray-700 border border-gray-200'
@@ -1189,7 +1189,7 @@ export default function BomPage() {
                                                     {step.is_key_step && <span className="ml-0.5 text-amber-500">★</span>}
                                                     {step.estimated_minutes && <span className="ml-0.5 text-gray-400 text-[10px]">{step.estimated_minutes}m</span>}
                                                   </span>
-                                                  {si < g.length - 1 && <span className="text-gray-300 text-xs">|</span>}
+                                                  {si < g.length - 1 && <span className="text-indigo-300 text-xs">|</span>}
                                                 </span>
                                               ))}
                                             </span>
