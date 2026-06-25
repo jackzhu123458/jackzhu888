@@ -319,10 +319,10 @@ export default function ProductionDetailDialog({
                                   {isCurrent && <span className="text-[10px] text-blue-400">进行中</span>}
                                   {isCompleted && <span className="text-[10px] text-green-400">已完成</span>}
                                 </div>
-                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-1">
+                                <div className="flex flex-col gap-1 pl-1">
                                   {group.map((step) => (
                                     <div key={step.id || step.branch} className="flex items-center gap-1.5 whitespace-nowrap">
-                                      <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-1 py-0.5 rounded text-center">
+                                      <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-1 py-0.5 rounded text-center min-w-[16px]">
                                         {step.branch || '主'}
                                       </span>
                                       <span className={`text-sm font-medium ${isCompleted ? 'text-green-700 line-through' : ''} ${isCurrent ? 'text-blue-700' : ''}`}>

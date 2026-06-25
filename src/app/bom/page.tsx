@@ -1166,7 +1166,7 @@ export default function BomPage() {
                               return (
                                 <div className="mb-3">
                                   <div className="text-xs font-semibold text-gray-600 mb-1.5">工艺流程</div>
-                                  <div className="flex flex-wrap items-center gap-1">
+                                  <div className="flex flex-wrap items-stretch gap-1">
                                     {orders.map((order, oi) => {
                                       const g = groups.get(order)!;
                                       const isParallel = g.length > 1;
@@ -1176,10 +1176,10 @@ export default function BomPage() {
                                             <svg className="w-3 h-3 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                                           )}
                                           {isParallel ? (
-                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-indigo-200 bg-indigo-50 whitespace-nowrap">
+                                            <div className="flex flex-col gap-0.5 border border-indigo-200 bg-indigo-50/60 rounded px-1 py-1">
                                               {g.map((step, si) => (
-                                                <span key={si} className="inline-flex items-center gap-0.5">
-                                                  {step.branch && <span className="text-[9px] text-indigo-400 font-bold mr-0.5">{step.branch}:</span>}
+                                                <span key={si} className="inline-flex items-center gap-0.5 whitespace-nowrap">
+                                                  {step.branch && <span className="text-[9px] text-indigo-400 font-bold">{step.branch}:</span>}
                                                   <span className={`inline-flex items-center px-1.5 py-0 rounded text-xs font-medium whitespace-nowrap ${
                                                     step.is_key_step
                                                       ? 'bg-amber-100 text-amber-800 border border-amber-300'
@@ -1189,10 +1189,9 @@ export default function BomPage() {
                                                     {step.is_key_step && <span className="ml-0.5 text-amber-500">★</span>}
                                                     {step.estimated_minutes && <span className="ml-0.5 text-gray-400 text-[10px]">{step.estimated_minutes}m</span>}
                                                   </span>
-                                                  {si < g.length - 1 && <span className="text-indigo-300 text-xs">|</span>}
                                                 </span>
                                               ))}
-                                            </span>
+                                            </div>
                                           ) : (
                                             <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                                               g[0].is_key_step
