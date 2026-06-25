@@ -1016,6 +1016,8 @@ export default function BomPage() {
                 filteredProducts.map((product, idx) => {
                   const isSelected = selectedProductId === product.id;
                   const bomCount = getBomChildCount(product.id);
+                  const hasProcessFlow = processFlowsMap.has(product.id);
+                  const canExpand = bomCount > 0 || hasProcessFlow;
                   const isExpanded = expandedNodes.has(product.id);
                   const children = getChildren(product.id);
                   const productLocationNo = product.location_no || '';
@@ -1032,7 +1034,7 @@ export default function BomPage() {
                         }`}
                         onClick={() => {
                           setSelectedProductId(product.id);
-                          if (bomCount > 0) toggleNodeExpand(product.id);
+                          if (canExpand) toggleNodeExpand(product.id);
                         }}
                         onDoubleClick={() => handleEditProduct(product)}
                       >
@@ -1044,7 +1046,7 @@ export default function BomPage() {
                         </div>
                         <div className="px-2 py-2.5 text-xs text-gray-900 font-mono border-r border-gray-100 flex items-center gap-1">
                           {/* 展开箭头 */}
-                          {bomCount > 0 ? (
+                          {canExpand ? (
                             <svg
                               className={`w-3.5 h-3.5 shrink-0 transition-transform cursor-pointer ${isExpanded ? 'rotate-90' : ''}`}
                               fill="currentColor" viewBox="0 0 20 20"
@@ -1063,9 +1065,18 @@ export default function BomPage() {
                             <span
                               className="ml-1.5 inline-flex items-center px-1.5 py-0 rounded text-[10px] bg-blue-100 text-blue-700 font-medium cursor-pointer shrink-0 hover:bg-blue-200"
                               onClick={(e) => { e.stopPropagation(); toggleNodeExpand(product.id); }}
-                              title="点击展开子物料"
+                              title="点击展开"
                             >
                               BOM({bomCount})
+                            </span>
+                          )}
+                          {hasProcessFlow && !bomCount && (
+                            <span
+                              className="ml-1.5 inline-flex items-center px-1.5 py-0 rounded text-[10px] bg-indigo-100 text-indigo-700 font-medium cursor-pointer shrink-0 hover:bg-indigo-200"
+                              onClick={(e) => { e.stopPropagation(); toggleNodeExpand(product.id); }}
+                              title="点击展开工艺流程"
+                            >
+                              工艺
                             </span>
                           )}
                           {/* 添加子物料按钮 */}
