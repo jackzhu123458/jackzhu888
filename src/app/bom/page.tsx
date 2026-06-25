@@ -900,16 +900,24 @@ export default function BomPage() {
   };
 
   // 搜索已有产品（排除自身和已添加的子物料）
+  // 分词模糊匹配：把搜索字符串按非字母数字汉字字符分词，每个 token 在 code 或 name 中找到即可
+  // 解决"选中后回填 code - name 全串导致再过滤匹配失败"的问题
   const existingProductOptions = useMemo(() => {
     const existingChildIds = new Set(getChildren(addChildParentId).map(b => b.child_product_id));
-    return products.filter(p => 
-      p.id !== addChildParentId && 
-      !existingChildIds.has(p.id) &&
-      !p.code.startsWith('BOM-') &&
-      (addChildSearch.trim() === '' || 
-        p.code.toLowerCase().includes(addChildSearch.toLowerCase()) ||
-        p.name.toLowerCase().includes(addChildSearch.toLowerCase()))
-    );
+    const tokens = addChildSearch
+      .toLowerCase()
+      .split(/[\s\-,，、/|]+/u)
+      .map(t => t.trim())
+      .filter(t => t.length > 0);
+    return products.filter(p => {
+      if (p.id === addChildParentId) return false;
+      if (existingChildIds.has(p.id)) return false;
+      if (p.code.startsWith('BOM-')) return false;
+      if (tokens.length === 0) return true;
+      const code = p.code.toLowerCase();
+      const name = (p.name || '').toLowerCase();
+      return tokens.every(t => code.includes(t) || name.includes(t));
+    });
   }, [products, addChildParentId, addChildSearch, bomList]);
 
   return (
