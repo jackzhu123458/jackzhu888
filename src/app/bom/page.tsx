@@ -345,29 +345,23 @@ export default function BomPage() {
     let unclassifiedCount = 0;
     // 先把持久化的类目放入（即使还没产品也能展示）
     persistedCategories.forEach(pc => {
-      const isNumericCategory = /^\d{2,3}$/.test(pc.name) && pc.name !== '0';
-      if (isNumericCategory) {
+      if (pc.name && pc.name !== '0') {
         catMap.set(pc.name, { count: 0, names: [] });
       }
     });
     products
       .filter(p => !p.code.startsWith('BOM-'))
       .forEach(p => {
-        if (p.category) {
-          // 判断是否为数字编号类目（如001、002等）
-          const isNumericCategory = /^\d{2,3}$/.test(p.category) && p.category !== '0';
-          if (isNumericCategory) {
-            const existing = catMap.get(p.category);
-            if (existing) {
-              existing.count++;
-              existing.names.push(p.name);
-            } else {
-              catMap.set(p.category, { count: 1, names: [p.name] });
-            }
+        if (p.category && p.category !== '0') {
+          const existing = catMap.get(p.category);
+          if (existing) {
+            existing.count++;
+            existing.names.push(p.name);
           } else {
-            // 非数字编号类目归入未分类
-            unclassifiedCount++;
+            catMap.set(p.category, { count: 1, names: [p.name] });
           }
+        } else {
+          unclassifiedCount++;
         }
       });
     const result = Array.from(catMap.entries())
