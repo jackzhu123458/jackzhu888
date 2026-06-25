@@ -36,6 +36,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import ProcessFlowDialog from './process-flow-dialog';
+import { ProductEditDialog } from './product-edit-dialog';
 
 interface Product {
   id: string;
@@ -256,6 +257,10 @@ export default function BomPage() {
   const [processFlowOpen, setProcessFlowOpen] = useState(false);
   const [processFlowProductId, setProcessFlowProductId] = useState('');
   const [processFlowProductName, setProcessFlowProductName] = useState('');
+
+  // 物料属性编辑弹窗
+  const [productEditOpen, setProductEditOpen] = useState(false);
+  const [productEditProduct, setProductEditProduct] = useState<Product | null>(null);
 
   // 工艺流程数据（展开行时显示）
   const [processFlows, setProcessFlows] = useState<Array<{ product_id: string; step_order: number; step_name: string; is_key_step: boolean; estimated_minutes: number | null; branch?: string; materials?: Array<{ product_id: string; product_name?: string; quantity: number }> }>>([]);
@@ -1343,7 +1348,14 @@ export default function BomPage() {
                                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 shrink-0">{typeLabel}</span>
                                       <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${child.sourcing_type === 'purchased' ? 'bg-amber-100 text-amber-700' : 'bg-blue-50 text-blue-600'}`}>{sourcingLabel}</span>
                                       <span className="font-mono text-xs text-gray-600 shrink-0 w-[80px]">{child.code}</span>
-                                      <span className="text-sm text-gray-900 flex-1 truncate">{child.name}</span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); setProductEditProduct(child); setProductEditOpen(true); }}
+                                        className="text-sm text-gray-900 hover:text-blue-600 hover:underline flex-1 truncate text-left"
+                                        title="点击编辑物料属性"
+                                      >
+                                        {child.name}
+                                      </button>
                                       <span className="text-xs px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 shrink-0">x{bom.quantity}</span>
                                       <span className="text-xs text-gray-400 shrink-0">{translateUnit(child.unit)}</span>
                                       {childSteps.length > 0 && (
@@ -2022,6 +2034,14 @@ export default function BomPage() {
         onOpenChange={setProcessFlowOpen}
         productId={processFlowProductId}
         productName={processFlowProductName}
+      />
+
+      {/* 物料属性编辑弹窗 */}
+      <ProductEditDialog
+        open={productEditOpen}
+        onClose={() => setProductEditOpen(false)}
+        product={productEditProduct}
+        onSaved={() => { loadData(); }}
       />
 
       {/* 添加子物料弹窗 */}
