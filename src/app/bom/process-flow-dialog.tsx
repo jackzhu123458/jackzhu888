@@ -127,19 +127,34 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
     try {
       const res = await fetch('/api/process-step-templates');
       if (res.ok) {
-        const data: StepTemplate[] = await res.json();
-        const list = Array.isArray(data) ? data : [];
+        const json = await res.json();
+        const list = Array.isArray(json) ? json : [];
         setTemplateItems(list);
         setTemplateNames(list.map((t: StepTemplate) => t.step_name).sort((a: string, b: string) => a.localeCompare(b, 'zh-CN')));
+        if (list.length === 0 && json && typeof json === 'object' && !Array.isArray(json) && 'error' in json) {
+          // API 返回了错误对象
+          console.error('加载工序模板API返回错误:', json);
+          setTemplateError('加载模板失败: ' + (json as { error: string }).error);
+        }
       } else {
-        console.error('加载工序模板失败:', res.status);
+        let errMsg = `加载工序模板失败 (HTTP ${res.status})`;
+        try {
+          const errData = await res.json();
+          if (errData?.error) errMsg = errData.error;
+        } catch { /* ignore */ }
+        console.error(errMsg);
         setTemplateNames([]);
         setTemplateItems([]);
+        setTemplateError(errMsg);
+        setTimeout(() => setTemplateError(''), 5000);
       }
     } catch (e) {
-      console.error('加载工序模板网络错误:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('加载工序模板网络错误:', msg);
       setTemplateNames([]);
       setTemplateItems([]);
+      setTemplateError('网络错误: ' + msg);
+      setTimeout(() => setTemplateError(''), 5000);
     }
   }, []);
 
@@ -176,14 +191,15 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ step_name: name }),
       });
-      if (res.ok || res.status === 409) {
+      if (res.ok) {
         setNewTemplateName('');
+        setTemplateError(`工序"${name}"添加成功`);
         await loadTemplates();
-        if (res.status === 409) {
-          setTemplateError(`工序"${name}"已存在，已添加到可选列表`);
-        } else {
-          setTemplateError(`工序"${name}"添加成功`);
-        }
+        setTimeout(() => setTemplateError(''), 3000);
+      } else if (res.status === 409) {
+        setNewTemplateName('');
+        setTemplateError(`工序"${name}"已存在`);
+        await loadTemplates();
         setTimeout(() => setTemplateError(''), 3000);
       } else {
         let errMsg = `添加失败 (HTTP ${res.status})`;
