@@ -1176,7 +1176,7 @@ export default function BomPage() {
                                             <svg className="w-3 h-3 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                                           )}
                                           {isParallel ? (
-                                            <div className="flex flex-col gap-0.5 border border-indigo-200 bg-indigo-50/60 rounded px-1 py-1">
+                                            <div className="flex flex-col gap-0.5">
                                               {g.map((step, si) => (
                                                 <span key={si} className="inline-flex items-center gap-0.5 whitespace-nowrap">
                                                   {step.branch && <span className="text-[9px] text-indigo-400 font-bold">{step.branch}:</span>}

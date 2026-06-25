@@ -312,14 +312,7 @@ export default function ProductionDetailDialog({
                           <div className={`flex-1 pb-3 min-w-0 ${isPending && !isFirstPending ? 'opacity-50' : ''}`}>
                             {isParallel ? (
                               <div>
-                                <div className="flex items-center gap-1 mb-1">
-                                  <span className={`text-xs font-medium ${isCurrent ? 'text-blue-600' : isCompleted ? 'text-green-600' : 'text-gray-500'}`}>
-                                    并行工序
-                                  </span>
-                                  {isCurrent && <span className="text-[10px] text-blue-400">进行中</span>}
-                                  {isCompleted && <span className="text-[10px] text-green-400">已完成</span>}
-                                </div>
-                                <div className="flex flex-col gap-1 pl-1">
+                                <div className="flex flex-col gap-1">
                                   {group.map((step) => (
                                     <div key={step.id || step.branch} className="flex items-center gap-1.5 whitespace-nowrap">
                                       <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-1 py-0.5 rounded text-center min-w-[16px]">
