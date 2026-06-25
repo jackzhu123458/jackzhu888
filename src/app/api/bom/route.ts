@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
 
   let query = client
     .from('bom')
-    .select('*, parent_product:products!bom_parent_product_id_products_id_fk(id, code, name, spec, unit, type, price), child_product:products!bom_child_product_id_products_id_fk(id, code, name, spec, unit, type, price)')
+    .select('*, parent_product:products!parent_product_id(id, code, name, spec, unit, type, price), child_product:products!child_product_id(id, code, name, spec, unit, type, price)')
     .order('created_at', { ascending: false })
     .limit(500);
 
