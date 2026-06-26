@@ -77,7 +77,28 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json(data);
+    // 去重防止 PostgREST 嵌套 join 笛卡尔积带来的重复行（订单维度、明细维度）
+    const seenOrder = new Set<string>();
+    type OrderRow = Record<string, unknown> & { id?: string; customer_order_items?: Array<Record<string, unknown>> };
+    const uniq: OrderRow[] = [];
+    for (const o of (data || []) as OrderRow[]) {
+      const oid = o.id as string;
+      if (oid && seenOrder.has(oid)) continue;
+      if (oid) seenOrder.add(oid);
+      const items = (o.customer_order_items as Array<Record<string, unknown>>) || [];
+      const seenItem = new Set<string>();
+      const uniqItems: Array<Record<string, unknown>> = [];
+      for (const it of items) {
+        const iid = it.id as string;
+        if (iid && seenItem.has(iid)) continue;
+        if (iid) seenItem.add(iid);
+        uniqItems.push(it);
+      }
+      o.customer_order_items = uniqItems;
+      uniq.push(o);
+    }
+
+    return NextResponse.json(uniq);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });
