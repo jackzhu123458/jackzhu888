@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { translateUnit } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1016,13 +1017,23 @@ export default function DeliveryPage() {
                             </button>
                           </div>
                           {showItemOrderDropdown[idx] && (() => {
+                            // 用 Portal 渲染到 body，配合 fixed 定位，避免被父容器 overflow:auto 裁剪
+                            if (typeof document === 'undefined') return null;
+                            const inputEl = itemOrderInputRefs.current[idx];
+                            if (!inputEl) return null;
+                            const rect = inputEl.getBoundingClientRect();
+                            const pos = { top: rect.bottom + 2, left: rect.left };
+
                             // 二级菜单：用户已选订单 → 显示该订单下未交付物料
                             const expanded = expandedOrderForItem[idx];
                             if (expanded) {
                               const undelivered = (expanded.customer_order_items || []).filter((i) => Number(i.quantity) - Number(i.delivered_qty) > 0);
-                              return (
-                                <div className="absolute z-50 top-6 left-0 bg-white border rounded shadow-lg max-h-[70vh] w-80 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                                  <div className="px-2 py-1 bg-[#F9FAFB] border-b text-[11px] text-gray-500 flex items-center justify-between">
+                              return createPortal(
+                                <div
+                                  style={{ position: 'fixed', top: pos.top, left: pos.left, width: 320, maxHeight: '70vh' }}
+                                  className="z-[100] bg-white border rounded shadow-lg overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+                                >
+                                  <div className="px-2 py-1 bg-[#F9FAFB] border-b text-[11px] text-gray-500 flex items-center justify-between sticky top-0">
                                     <span>订单 <span className="font-mono text-[#1E40AF]">{expanded.order_no}</span> 未交物料</span>
                                     <button
                                       type="button"
@@ -1043,7 +1054,7 @@ export default function DeliveryPage() {
                                     const totalQty = Number(inv?.quantity || 0);
                                     const reservedQty = Number(inv?.reserved_qty || 0);
                                     const available = totalQty - reservedQty;
-                                    const usable = Math.max(0, available + reservedQty); // 客户订单可用 = 库存 (含为本订单预扣的部分)
+                                    const usable = Math.max(0, available + reservedQty);
                                     const noStock = usable <= 0;
                                     return (
                                       <button
@@ -1071,23 +1082,27 @@ export default function DeliveryPage() {
                                       </button>
                                     );
                                   })}
-                                </div>
+                                </div>,
+                                document.body,
                               );
                             }
-                            // 一级菜单：模糊搜索订单（不再前置过滤 hasUndelivered，避免 customer_order_items 数据缺失时下拉为空）
+                            // 一级菜单：模糊搜索订单
                             const q = (itemOrderSearches[idx] || item.customer_order || '').toLowerCase();
                             const filtered = customerOrders.filter(o => {
                               if (!q) return true;
                               return o.order_no.toLowerCase().includes(q) ||
                                 (o.customers?.name || '').toLowerCase().includes(q);
                             });
-                            return (
-                              <div className="absolute z-50 top-6 left-0 bg-white border rounded shadow-lg max-h-[60vh] w-72 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                            return createPortal(
+                              <div
+                                style={{ position: 'fixed', top: pos.top, left: pos.left, width: 288, maxHeight: '60vh' }}
+                                className="z-[100] bg-white border rounded shadow-lg overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+                              >
                                 {filtered.length === 0 ? (
                                   <div className="px-2 py-2 text-[11px] text-gray-400">
                                     {customerOrders.length === 0 ? '暂无订单数据，请先创建客户订单' : '无匹配订单'}
                                   </div>
-                                ) : filtered.slice(0, 10).map(o => {
+                                ) : filtered.slice(0, 20).map(o => {
                                   const undeliveredCount = (o.customer_order_items || []).filter(i => Number(i.quantity) - Number(i.delivered_qty) > 0).length;
                                   return (
                                     <button key={o.id} type="button" className="w-full text-left px-2 py-1 hover:bg-gray-100 text-xs border-b border-gray-50 last:border-0"
@@ -1105,7 +1120,8 @@ export default function DeliveryPage() {
                                     </button>
                                   );
                                 })}
-                              </div>
+                              </div>,
+                              document.body,
                             );
                           })()}
                         </div>
