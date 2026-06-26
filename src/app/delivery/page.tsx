@@ -38,6 +38,7 @@ import {
   Printer,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   ChevronsLeft,
   ChevronsRight,
   Tag,
@@ -965,24 +966,40 @@ export default function DeliveryPage() {
                     <td className="py-2 px-2">
                       {editMode ? (
                         <div className="relative">
-                          <Input
-                            className="h-6 text-xs font-mono"
-                            value={item.customer_order || ''}
-                            onChange={(e) => {
-                              updateItem(idx, 'customer_order', e.target.value);
-                              setItemOrderSearches(prev => ({ ...prev, [idx]: e.target.value }));
-                              setShowItemOrderDropdown(prev => ({ ...prev, [idx]: true }));
-                            }}
-                            onFocus={() => {
-                              setItemOrderSearches(prev => ({ ...prev, [idx]: item.customer_order || '' }));
-                              setShowItemOrderDropdown(prev => ({ ...prev, [idx]: true }));
-                            }}
-                            onBlur={() => setTimeout(() => {
-                              // 仅关闭下拉，不清 search/expanded 状态，避免与异步 expandOrderForItem 竞速
-                              setShowItemOrderDropdown(prev => ({ ...prev, [idx]: false }));
-                            }, 250)}
-                            placeholder="输入订单号"
-                          />
+                          <div className="flex items-center gap-1">
+                            <Input
+                              className="h-6 text-xs font-mono flex-1"
+                              value={item.customer_order || ''}
+                              onChange={(e) => {
+                                updateItem(idx, 'customer_order', e.target.value);
+                                setItemOrderSearches(prev => ({ ...prev, [idx]: e.target.value }));
+                                setShowItemOrderDropdown(prev => ({ ...prev, [idx]: true }));
+                                // 输入变化时清掉已展开的订单（重新搜索）
+                                setExpandedOrderForItem(prev => { const next = { ...prev }; delete next[idx]; return next; });
+                              }}
+                              onFocus={() => {
+                                setItemOrderSearches(prev => ({ ...prev, [idx]: item.customer_order || '' }));
+                                setShowItemOrderDropdown(prev => ({ ...prev, [idx]: true }));
+                              }}
+                              onBlur={() => setTimeout(() => {
+                                // 仅关闭下拉，不清 search/expanded 状态，避免与异步 expandOrderForItem 竞速
+                                setShowItemOrderDropdown(prev => ({ ...prev, [idx]: false }));
+                              }, 250)}
+                              placeholder="输入订单号"
+                            />
+                            <button
+                              type="button"
+                              className="text-gray-400 hover:text-[#1E40AF] shrink-0"
+                              title="展开订单列表"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setShowItemOrderDropdown(prev => ({ ...prev, [idx]: !prev[idx] }));
+                                setItemOrderSearches(prev => ({ ...prev, [idx]: item.customer_order || '' }));
+                              }}
+                            >
+                              <ChevronDown className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                           {showItemOrderDropdown[idx] && (() => {
                             // 二级菜单：用户已选订单 → 显示该订单下未交付物料
                             const expanded = expandedOrderForItem[idx];
