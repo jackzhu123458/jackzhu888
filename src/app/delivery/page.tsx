@@ -130,7 +130,7 @@ export default function DeliveryPage() {
     const [cRes, pRes, oRes, sRes] = await Promise.all([
       fetch('/api/customers'),
       fetch('/api/products'),
-      fetch('/api/orders?status=confirmed'),
+      fetch('/api/orders'),
       fetch('/api/settings'),
     ]);
     const [cData, pData, oData, sData] = await Promise.all([
