@@ -23,6 +23,7 @@ export interface OrderItem {
   product_id: string;
   quantity: number;
   delivered_qty: number;
+  reserved_qty?: number;
   price: number | null;
   remark: string | null;
   products?: Product | Product[];

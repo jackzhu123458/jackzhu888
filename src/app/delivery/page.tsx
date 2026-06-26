@@ -477,9 +477,21 @@ export default function DeliveryPage() {
     }
     const undelivered = Number(orderItem.quantity) - Number(orderItem.delivered_qty);
     const inv = orderInventoryMap[orderItem.product_id];
-    const availableQty = inv ? inv.quantity - inv.reserved_qty : 0;
-    const deliverQty = Math.min(undelivered, Math.max(0, availableQty));
-    const lacksStock = availableQty < undelivered;
+    const totalStock = inv?.quantity || 0; // 仓库实物总量
+    const totalReserved = inv?.reserved_qty || 0; // 所有订单累计预扣
+    const ownReserved = Number(orderItem.reserved_qty || 0); // 本订单本明细的预扣
+    const otherReserved = Math.max(0, totalReserved - ownReserved); // 其他订单占用
+    // 本订单可发上限 = 仓库实物 - 其他订单预扣（自己预扣的随本单出库一起释放）
+    const realAvailable = Math.max(0, totalStock - otherReserved);
+    const deliverQty = Math.min(undelivered, realAvailable);
+    const lacksStock = realAvailable < undelivered;
+
+    const remarkParts: string[] = [];
+    if (ownReserved > 0) remarkParts.push(`本单已预扣 ${ownReserved}`);
+    remarkParts.push(`仓库实有 ${totalStock}`);
+    if (otherReserved > 0) remarkParts.push(`他单占用 ${otherReserved}`);
+    if (lacksStock) remarkParts.unshift(`库存不足！欠 ${undelivered - realAvailable}`);
+    const autoRemark = remarkParts.join('，');
 
     setForm(prev => ({
       ...prev,
@@ -492,9 +504,7 @@ export default function DeliveryPage() {
               quantity: deliverQty,
               unit_price: Number(orderItem.price) || it.unit_price || 0,
               per_box_qty: deliverQty,
-              remark: lacksStock
-                ? `库存不足！欠交 ${undelivered - Math.max(0, availableQty)}（可用 ${Math.max(0, availableQty)}，预扣 ${inv?.reserved_qty || 0}）`
-                : (it.remark || ''),
+              remark: autoRemark,
               customer_order_item_id: orderItem.id,
               customer_order: order.order_no,
             }
@@ -506,9 +516,9 @@ export default function DeliveryPage() {
     setIsFormDirty(true);
 
     if (lacksStock) {
-      const msg = availableQty <= 0
-        ? `提示：物料 ${prod.name} 当前可用库存为 0（总库存 ${inv?.quantity || 0}，预扣 ${inv?.reserved_qty || 0}）。`
-        : `提示：物料 ${prod.name} 可用库存仅 ${availableQty}，欠交 ${undelivered - availableQty}。`;
+      const msg = realAvailable <= 0
+        ? `提示：物料 ${prod.name} 当前可发数量为 0（仓库实有 ${totalStock}，他单占用 ${otherReserved}）。`
+        : `提示：物料 ${prod.name} 可发数量仅 ${realAvailable}，欠交 ${undelivered - realAvailable}。${ownReserved > 0 ? `本单已预扣 ${ownReserved}（已计入可发）。` : ''}`;
       window.setTimeout(() => alert(msg), 0);
     }
   };
@@ -1052,9 +1062,10 @@ export default function DeliveryPage() {
                                     const remaining = Math.max(0, Number(oi.quantity) - Number(oi.delivered_qty));
                                     const inv = orderInventoryMap[product.id];
                                     const totalQty = Number(inv?.quantity || 0);
-                                    const reservedQty = Number(inv?.reserved_qty || 0);
-                                    const available = totalQty - reservedQty;
-                                    const usable = Math.max(0, available + reservedQty);
+                                    const totalReserved = Number(inv?.reserved_qty || 0);
+                                    const ownReserved = Number(oi.reserved_qty || 0);
+                                    const otherReserved = Math.max(0, totalReserved - ownReserved);
+                                    const usable = Math.max(0, totalQty - otherReserved);
                                     const noStock = usable <= 0;
                                     return (
                                       <button
@@ -1075,7 +1086,7 @@ export default function DeliveryPage() {
                                         </div>
                                         <div className="mt-0.5 text-[11px] flex items-center justify-between">
                                           <span className={noStock ? 'text-red-600 font-medium' : 'text-gray-500'}>
-                                            {noStock ? '⚠ 无可用库存' : `可用 ${usable}`}
+                                            {noStock ? '⚠ 无可用库存' : `可发 ${usable}${ownReserved > 0 ? ` · 含本单预扣 ${ownReserved}` : ''}`}
                                           </span>
                                           <span className="text-gray-400">单价 {Number(oi.price || 0).toFixed(2)}</span>
                                         </div>
