@@ -156,13 +156,20 @@ export default function DeliveryPage() {
     ]);
 
     // 全量库存聚合到 orderInventoryMap，按产品 id 合并所有仓库
-    if (Array.isArray(invData)) {
+    // /api/inventory 返回 { items: [...] }，每项已聚合 total_quantity / total_reserved；兼容历史数组形态
+    const invList: Array<Record<string, unknown>> = Array.isArray(invData)
+      ? (invData as Array<Record<string, unknown>>)
+      : Array.isArray((invData as { items?: unknown[] })?.items)
+        ? ((invData as { items: Array<Record<string, unknown>> }).items)
+        : [];
+    if (invList.length > 0) {
       const m: Record<string, { quantity: number; reserved_qty: number }> = {};
-      for (const r of invData as Array<{ product_id: string; quantity?: number; reserved_qty?: number }>) {
-        const pid = r.product_id;
+      for (const r of invList) {
+        const pid = String(r.product_id || '');
         if (!pid) continue;
-        const qty = Number(r.quantity || 0);
-        const reserved = Number(r.reserved_qty || 0);
+        // 优先用聚合字段；找不到时回退到单仓字段
+        const qty = Number(r.total_quantity ?? r.quantity ?? 0);
+        const reserved = Number(r.total_reserved ?? r.reserved_qty ?? 0);
         const existing = m[pid];
         if (existing) {
           existing.quantity += qty;
