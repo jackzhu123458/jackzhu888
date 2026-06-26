@@ -108,6 +108,8 @@ export default function DeliveryPage() {
   const [itemSearches, setItemSearches] = useState<Record<number, string>>({});
   const [itemOrderSearches, setItemOrderSearches] = useState<Record<number, string>>({});
   const [showItemOrderDropdown, setShowItemOrderDropdown] = useState<Record<number, boolean>>({});
+  // 每行选中订单后展开的订单（二级下拉，展示订单下未交付物料）
+  const [expandedOrderForItem, setExpandedOrderForItem] = useState<Record<number, CustomerOrder | null>>({});
   const [orderInventoryMap, setOrderInventoryMap] = useState<Record<string, { quantity: number; reserved_qty: number }>>({});
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
 
@@ -407,6 +409,83 @@ export default function DeliveryPage() {
     setCustomerSearch(cust?.code || cust?.name || '');
     setOrderPickerOpen(false);
     setIsFormDirty(true);
+  };
+
+  /* ─── 在明细行选中订单后展开二级下拉（订单下未交付物料 + 库存状态） ─── */
+  const expandOrderForItem = async (idx: number, order: CustomerOrder) => {
+    // 加载库存
+    let inventoryMap: Record<string, { quantity: number; reserved_qty: number }> = orderInventoryMap;
+    if (Object.keys(inventoryMap).length === 0) {
+      try {
+        const invRes = await fetch('/api/inventory');
+        const invData = await invRes.json();
+        const invItems = Array.isArray(invData) ? invData : (invData.items || []);
+        const m: Record<string, { quantity: number; reserved_qty: number }> = {};
+        for (const item of invItems) {
+          const pid = item.product_id;
+          const qty = Number(item.total_quantity) || 0;
+          const reserved = Number(item.total_reserved) || 0;
+          const existing = m[pid];
+          if (existing) {
+            existing.quantity += qty;
+            existing.reserved_qty += reserved;
+          } else {
+            m[pid] = { quantity: qty, reserved_qty: reserved };
+          }
+        }
+        inventoryMap = m;
+        setOrderInventoryMap(m);
+      } catch { /* ignore */ }
+    }
+
+    // 也更新当前行的订单号字段
+    updateItem(idx, 'customer_order', order.order_no);
+    setExpandedOrderForItem(prev => ({ ...prev, [idx]: order }));
+  };
+
+  /* ─── 从二级下拉中选某个物料填入行 ─── */
+  const selectOrderItemForRow = (idx: number, order: CustomerOrder, orderItem: NonNullable<CustomerOrder['customer_order_items']>[number]) => {
+    const prod = resolveProduct(orderItem.products);
+    if (!prod) {
+      alert('找不到该物料信息，请刷新页面后重试');
+      return;
+    }
+    const undelivered = Number(orderItem.quantity) - Number(orderItem.delivered_qty);
+    const inv = orderInventoryMap[orderItem.product_id];
+    const availableQty = inv ? inv.quantity - inv.reserved_qty : 0;
+    const deliverQty = Math.min(undelivered, Math.max(0, availableQty));
+    const lacksStock = availableQty < undelivered;
+
+    setForm(prev => ({
+      ...prev,
+      delivery_note_items: prev.delivery_note_items.map((it, i) =>
+        i === idx
+          ? {
+              ...it,
+              product_id: orderItem.product_id,
+              product: prod,
+              quantity: deliverQty,
+              unit_price: Number(orderItem.price) || it.unit_price || 0,
+              per_box_qty: deliverQty,
+              remark: lacksStock
+                ? `库存不足！欠交 ${undelivered - Math.max(0, availableQty)}（可用 ${Math.max(0, availableQty)}，预扣 ${inv?.reserved_qty || 0}）`
+                : (it.remark || ''),
+              customer_order_item_id: orderItem.id,
+              customer_order: order.order_no,
+            }
+          : it
+      ),
+    }));
+    setExpandedOrderForItem(prev => ({ ...prev, [idx]: null }));
+    setShowItemOrderDropdown(prev => ({ ...prev, [idx]: false }));
+    setIsFormDirty(true);
+
+    if (lacksStock) {
+      const msg = availableQty <= 0
+        ? `提示：物料 ${prod.name} 当前可用库存为 0（总库存 ${inv?.quantity || 0}，预扣 ${inv?.reserved_qty || 0}）。`
+        : `提示：物料 ${prod.name} 可用库存仅 ${availableQty}，欠交 ${undelivered - availableQty}。`;
+      window.setTimeout(() => alert(msg), 0);
+    }
   };
 
   /* ─── Items manipulation ─── */
@@ -894,10 +973,70 @@ export default function DeliveryPage() {
                             onBlur={() => setTimeout(() => {
                               setShowItemOrderDropdown(prev => ({ ...prev, [idx]: false }));
                               setItemOrderSearches(prev => { const next = { ...prev }; delete next[idx]; return next; });
+                              setExpandedOrderForItem(prev => { const next = { ...prev }; delete next[idx]; return next; });
                             }, 200)}
                             placeholder="输入订单号"
                           />
                           {showItemOrderDropdown[idx] && (() => {
+                            // 二级菜单：用户已选订单 → 显示该订单下未交付物料
+                            const expanded = expandedOrderForItem[idx];
+                            if (expanded) {
+                              const undelivered = (expanded.customer_order_items || []).filter((i) => Number(i.quantity) - Number(i.delivered_qty) > 0);
+                              return (
+                                <div className="absolute z-50 top-6 left-0 bg-white border rounded shadow-lg max-h-60 overflow-auto w-80">
+                                  <div className="px-2 py-1 bg-[#F9FAFB] border-b text-[11px] text-gray-500 flex items-center justify-between">
+                                    <span>订单 <span className="font-mono text-[#1E40AF]">{expanded.order_no}</span> 未交物料</span>
+                                    <button
+                                      type="button"
+                                      className="text-gray-400 hover:text-gray-700"
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        setExpandedOrderForItem(prev => { const next = { ...prev }; delete next[idx]; return next; });
+                                      }}
+                                    >返回</button>
+                                  </div>
+                                  {undelivered.length === 0 ? (
+                                    <div className="px-2 py-2 text-[11px] text-gray-400">该订单没有待交付物料</div>
+                                  ) : undelivered.map((oi) => {
+                                    const product = resolveProduct(oi.products);
+                                    if (!product) return null;
+                                    const remaining = Math.max(0, Number(oi.quantity) - Number(oi.delivered_qty));
+                                    const inv = orderInventoryMap[product.id];
+                                    const totalQty = Number(inv?.quantity || 0);
+                                    const reservedQty = Number(inv?.reserved_qty || 0);
+                                    const available = totalQty - reservedQty;
+                                    const usable = Math.max(0, available + reservedQty); // 客户订单可用 = 库存 (含为本订单预扣的部分)
+                                    const noStock = usable <= 0;
+                                    return (
+                                      <button
+                                        key={oi.id}
+                                        type="button"
+                                        className={`w-full text-left px-2 py-1 hover:bg-gray-100 text-xs border-b border-gray-50 last:border-0 ${noStock ? 'opacity-80' : ''}`}
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          selectOrderItemForRow(idx, expanded, oi);
+                                        }}
+                                      >
+                                        <div className="flex items-center justify-between gap-2">
+                                          <span className="flex-1 truncate">
+                                            <span className="font-mono text-[#1E40AF]">{product.code}</span>
+                                            <span className="ml-1 text-gray-700">{product.name}</span>
+                                          </span>
+                                          <span className="text-[11px] text-gray-500 whitespace-nowrap">待交 {remaining}</span>
+                                        </div>
+                                        <div className="mt-0.5 text-[11px] flex items-center justify-between">
+                                          <span className={noStock ? 'text-red-600 font-medium' : 'text-gray-500'}>
+                                            {noStock ? '⚠ 无可用库存' : `可用 ${usable}`}
+                                          </span>
+                                          <span className="text-gray-400">单价 {Number(oi.price || 0).toFixed(2)}</span>
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            }
+                            // 一级菜单：模糊搜索订单
                             const q = (itemOrderSearches[idx] || item.customer_order || '').toLowerCase();
                             const filtered = customerOrders.filter(o => {
                               const hasUndelivered = (o.customer_order_items || []).some(i => Number(i.quantity) - Number(i.delivered_qty) > 0);
@@ -907,18 +1046,22 @@ export default function DeliveryPage() {
                                 (o.customers?.name || '').toLowerCase().includes(q);
                             });
                             return filtered.length > 0 ? (
-                              <div className="absolute z-50 top-6 left-0 bg-white border rounded shadow-lg max-h-40 overflow-auto w-56">
+                              <div className="absolute z-50 top-6 left-0 bg-white border rounded shadow-lg max-h-40 overflow-auto w-72">
                                 {filtered.slice(0, 10).map(o => {
+                                  const undeliveredCount = (o.customer_order_items || []).filter(i => Number(i.quantity) - Number(i.delivered_qty) > 0).length;
                                   return (
-                                    <button key={o.id} className="w-full text-left px-2 py-1 hover:bg-gray-100 text-xs border-b border-gray-50 last:border-0"
+                                    <button key={o.id} type="button" className="w-full text-left px-2 py-1 hover:bg-gray-100 text-xs border-b border-gray-50 last:border-0"
                                       onMouseDown={(e) => {
                                         e.preventDefault();
-                                        updateItem(idx, 'customer_order', o.order_no);
-                                        setShowItemOrderDropdown(prev => ({ ...prev, [idx]: false }));
-                                        setItemOrderSearches(prev => { const next = { ...prev }; delete next[idx]; return next; });
+                                        expandOrderForItem(idx, o);
                                       }}>
-                                      <span className="font-mono text-[#1E40AF]">{o.order_no}</span>
-                                      {o.customers && <span className="text-gray-400 ml-2">{o.customers.name}</span>}
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span>
+                                          <span className="font-mono text-[#1E40AF]">{o.order_no}</span>
+                                          {o.customers && <span className="text-gray-400 ml-2">{o.customers.name}</span>}
+                                        </span>
+                                        <span className="text-[11px] text-gray-400 whitespace-nowrap">{undeliveredCount} 项</span>
+                                      </div>
                                     </button>
                                   );
                                 })}
