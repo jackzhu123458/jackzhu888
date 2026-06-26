@@ -1136,7 +1136,7 @@ export default function BomPage() {
                   const children = getChildren(product.id);
                   const productLocationNo = product.location_no || '';
                   return (
-                    <div key={product.id}>
+                    <div key={`prod-${product.id}-${idx}`}>
                       {/* 成品/父级行 */}
                       <div
                         className={`grid grid-cols-[50px_80px_120px_1fr_50px_80px_80px_80px_1fr_80px_60px_60px_50px] items-center border-b border-gray-200 cursor-pointer transition-colors ${
@@ -1462,7 +1462,7 @@ export default function BomPage() {
                                   <div>
                                     <div className="text-xs font-semibold text-gray-600 mb-1.5">子物料 ({children.length})</div>
                                     <div className="grid grid-cols-1 gap-1.5">
-                                      {children.map((bom) => {
+                                      {children.map((bom, bi) => {
                                         const child = bom.child_product;
                                         const typeLabel = child.type === 'raw_material' ? '原材料' : child.type === 'semi_finished' ? '半成品' : child.type === 'finished_product' ? '成品' : '其他';
                                         const sourcingLabel = child.sourcing_type === 'purchased' ? '外购' : '自制';
@@ -1470,7 +1470,7 @@ export default function BomPage() {
                                         const linkedStepNames = materialStepMap.get(child.id) || [];
                                         return (
                                           <div
-                                            key={bom.id}
+                                            key={`bom-${bom.id}-${bi}`}
                                             className="flex items-center gap-2 px-3 py-2 bg-white rounded border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-colors"
                                           >
                                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 shrink-0">{typeLabel}</span>
@@ -2117,8 +2117,8 @@ export default function BomPage() {
               <div className="text-center py-8 text-gray-400">暂无图纸</div>
             ) : (
               <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                {drawings.map((d) => (
-                  <div key={d.id} className="flex items-center justify-between p-3 bg-gray-50 rounded border">
+                {drawings.map((d, di) => (
+                  <div key={`drw-${d.id}-${di}`} className="flex items-center justify-between p-3 bg-gray-50 rounded border">
                     <div className="flex items-center gap-3">
                       <FileText className="w-5 h-5 text-gray-400" />
                       <div>
@@ -2231,9 +2231,9 @@ export default function BomPage() {
                   {existingProductOptions.length === 0 ? (
                     <div className="text-center py-6 text-gray-400 text-sm">无匹配产品</div>
                   ) : (
-                    existingProductOptions.map(p => (
+                    existingProductOptions.map((p, pi) => (
                       <div
-                        key={p.id}
+                        key={`ep-${p.id}-${pi}`}
                         className={`px-3 py-2 cursor-pointer text-sm border-b border-gray-50 flex items-center gap-2 ${
                           addChildSelectedId === p.id ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50'
                         }`}

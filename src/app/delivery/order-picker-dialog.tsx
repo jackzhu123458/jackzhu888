@@ -109,7 +109,7 @@ export default function OrderPickerDialog({
                 </tr>
               </thead>
               <tbody>
-                {filteredOrders.map((order) => {
+                {filteredOrders.map((order, orderIdx) => {
                   const orderItems = (order.customer_order_items || []).filter((i: OrderItem) => Number(i.quantity) - Number(i.delivered_qty) > 0);
                   if (orderItems.length === 0) return null;
 
@@ -139,7 +139,7 @@ export default function OrderPickerDialog({
                     const categoryGroup = prod?.category ? findCategoryGroup(prod.category, categoryGroups) : undefined;
 
                     return (
-                      <tr key={`${order.id}-${idx}`} className="border-b hover:bg-gray-50">
+                      <tr key={`opick-${order.id}-${idx}-${orderIdx}`} className="border-b hover:bg-gray-50">
                         {idx === 0 ? (
                           <>
                             <td className="py-2 px-2 font-mono" rowSpan={filteredItems.length}>{order.order_no}</td>

@@ -104,11 +104,11 @@ export default function ShipDialog({ open, onOpenChange, noteId, onShip }: ShipD
               </tr>
             </thead>
             <tbody>
-              {productStocks.map(ps => {
+              {productStocks.map((ps, psIdx) => {
                 const selectedWh = allocations[ps.product_id] || '';
                 const selectedStock = ps.stocks.find(s => s.warehouse_id === selectedWh);
                 return (
-                  <tr key={ps.product_id} className="border-b">
+                  <tr key={`ps-${ps.product_id}-${psIdx}`} className="border-b">
                     <td className="p-2">
                       <div className="font-medium">{ps.product_name}</div>
                       <div className="text-xs text-gray-500">{ps.product_code}</div>

@@ -812,9 +812,9 @@ export default function ProductionPage() {
                             return p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q);
                           })
                           .slice(0, 15)
-                          .map((p) => (
+                          .map((p, pi) => (
                             <div
-                              key={p.id}
+                              key={`pmat-${p.id}-${pi}`}
                               className="px-2 py-1.5 hover:bg-blue-50 cursor-pointer text-xs"
                               onMouseDown={() => updateMaterialRow(idx, 'product_id', p.id)}
                             >

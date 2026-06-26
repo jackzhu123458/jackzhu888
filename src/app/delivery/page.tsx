@@ -192,11 +192,18 @@ export default function DeliveryPage() {
       }
       setCustomerOrders(Array.from(dedupMap.values()));
     }
-    setProducts(Array.isArray(pData) ? pData : []);
+    const rawProducts = Array.isArray(pData) ? pData : [];
+    const seenPids = new Set<string>();
+    const uniqueProducts = rawProducts.filter((p: Product) => {
+      if (seenPids.has(p.id)) return false;
+      seenPids.add(p.id);
+      return true;
+    });
+    setProducts(uniqueProducts);
 
     // 提取产品类目列表
     const cats = new Set<string>();
-    (Array.isArray(pData) ? pData : []).forEach((p: Product) => {
+    uniqueProducts.forEach((p: Product) => {
       if (p.category && p.category !== '0' && !p.code.startsWith('BOM-')) {
         cats.add(p.category);
       }
@@ -661,10 +668,14 @@ export default function DeliveryPage() {
     /* 为每个产品聚合：该产品在哪些活跃订单里待交 */
     const buildOrdersForProduct = (pid: string) => {
       const list: Array<{ order: CustomerOrder; item: OrderItem; pending: number }> = [];
+      const seenKeys = new Set<string>();
       for (const o of customerOrders) {
         const items = (o.customer_order_items || []) as OrderItem[];
         for (const it of items) {
           if (it.product_id !== pid) continue;
+          const key = `${o.id}-${it.id}`;
+          if (seenKeys.has(key)) continue;
+          seenKeys.add(key);
           const pending = Number(it.quantity || 0) - Number(it.delivered_qty || 0);
           if (pending > 0) list.push({ order: o, item: it, pending });
         }
@@ -882,8 +893,8 @@ export default function DeliveryPage() {
                       const filtered = customers.filter(c => c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
                       return filtered.length > 0 ? (
                         <div className="absolute z-50 top-7 left-0 bg-white border rounded shadow-lg max-h-32 overflow-auto w-full">
-                          {filtered.slice(0, 10).map(c => (
-                            <button key={c.id} className="w-full text-left px-2 py-1 hover:bg-gray-100 text-xs" onMouseDown={(e) => { e.preventDefault(); pickCustomer(c); setCustomerSearch(c.code); }}>
+                          {filtered.slice(0, 10).map((c, cIdx) => (
+                            <button key={`cust-${c.id}-${cIdx}`} className="w-full text-left px-2 py-1 hover:bg-gray-100 text-xs" onMouseDown={(e) => { e.preventDefault(); pickCustomer(c); setCustomerSearch(c.code); }}>
                               <span className="font-mono text-gray-600 mr-1">{c.code}</span> {c.name}
                             </button>
                           ))}

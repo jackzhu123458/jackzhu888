@@ -705,9 +705,9 @@ export default function QualityPage() {
                 </div>
               )}
               <div className="max-h-40 overflow-y-auto border border-gray-200 rounded">
-                {filteredProducts.map(p => (
+                {filteredProducts.map((p, pi) => (
                   <button
-                    key={p.id}
+                    key={`qp-${p.id}-${pi}`}
                     onClick={() => { setFormProductId(p.id); setProductSearch(`${p.code} - ${p.name}`); }}
                     className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 transition-colors ${
                       formProductId === p.id ? 'bg-blue-50 text-blue-700' : ''
@@ -830,9 +830,9 @@ export default function QualityPage() {
                 </div>
               )}
               <div className="max-h-32 overflow-y-auto border border-gray-200 rounded">
-                {filteredProducts.map(p => (
+                {filteredProducts.map((p, pi) => (
                   <button
-                    key={p.id}
+                    key={`iqp-${p.id}-${pi}`}
                     onClick={() => { setInspProductId(p.id); setProductSearch(`${p.code} - ${p.name}`); }}
                     className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 transition-colors ${
                       inspProductId === p.id ? 'bg-blue-50 text-blue-700' : ''

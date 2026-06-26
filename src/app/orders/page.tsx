@@ -1219,9 +1219,9 @@ export default function OrdersPage() {
                             );
                           })
                           .slice(0, 20)
-                          .map((c) => (
+                          .map((c, ci) => (
                             <div
-                              key={c.id}
+                              key={`cust-${c.id}-${ci}`}
                               className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-0"
                               onMouseDown={(e) => {
                                 e.preventDefault();
@@ -1350,9 +1350,9 @@ export default function OrdersPage() {
                         {searchProducts(itemSearches[itemIdx]).length === 0 ? (
                           <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
                         ) : (
-                          searchProducts(itemSearches[itemIdx]).slice(0, 20).map((p) => (
+                          searchProducts(itemSearches[itemIdx]).slice(0, 20).map((p, pi) => (
                             <button
-                              key={p.id}
+                              key={`sp-${p.id}-${pi}`}
                               className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 flex items-center justify-between"
                               onClick={() => selectProduct(itemIdx, p)}
                             >
@@ -1412,9 +1412,9 @@ export default function OrdersPage() {
                         {searchProducts(itemNameSearches[itemIdx]).length === 0 ? (
                           <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
                         ) : (
-                          searchProducts(itemNameSearches[itemIdx]).slice(0, 20).map((p) => (
+                          searchProducts(itemNameSearches[itemIdx]).slice(0, 20).map((p, pi) => (
                             <button
-                              key={p.id}
+                              key={`sn-${p.id}-${pi}`}
                               className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 flex items-center justify-between"
                               onClick={() => selectProduct(itemIdx, p)}
                             >

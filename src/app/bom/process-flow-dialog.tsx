@@ -726,9 +726,9 @@ export default function ProcessFlowDialog({ open, onOpenChange, productId, produ
                 </Button>
               </div>
               <div className="flex flex-wrap gap-1.5 max-h-[120px] overflow-y-auto">
-                {templateItems.map(t => (
+                {templateItems.map((t, ti) => (
                   <span
-                    key={t.id}
+                    key={`tpl-${t.id}-${ti}`}
                     className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-700 group"
                   >
                     {t.step_name}

@@ -840,9 +840,9 @@ export default function InboundPage() {
                                           {searchInboundProducts(itemSearches[idx]).length === 0 ? (
                                             <div className="px-3 py-2 text-xs text-gray-400">无匹配结果</div>
                                           ) : (
-                                            searchInboundProducts(itemSearches[idx]).map(p => (
+                                            searchInboundProducts(itemSearches[idx]).map((p, pi) => (
                                               <div
-                                                key={p.id}
+                                                key={`inp-${p.id}-${pi}`}
                                                 className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-xs"
                                                 onClick={() => selectProductForItem(idx, p)}
                                               >

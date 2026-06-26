@@ -314,9 +314,9 @@ export default function DrawingsPage() {
                 className="h-9 text-sm mb-2"
               />
               <div className="max-h-[200px] overflow-y-auto border border-gray-200 rounded">
-                {filteredProducts.slice(0, 50).map((p) => (
+                {filteredProducts.slice(0, 50).map((p, pi) => (
                   <div
-                    key={p.id}
+                    key={`dp-${p.id}-${pi}`}
                     className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-0 ${uploadProductId === p.id ? 'bg-blue-50 text-blue-700 font-medium' : ''}`}
                     onClick={() => { setUploadProductId(p.id); setUploadProductName(p.name); setProductSearch(`${p.code} - ${p.name}`); }}
                   >

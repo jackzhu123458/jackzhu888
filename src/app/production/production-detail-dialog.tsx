@@ -437,11 +437,11 @@ export default function ProductionDetailDialog({
               {drawings.length > 0 && (
                 <div className="w-[200px] flex-shrink-0 border-r bg-white overflow-y-auto">
                   <div className="p-2 space-y-2">
-                    {drawings.map((d) => {
+                    {drawings.map((d, di) => {
                       const thumbUrl = drawingUrlsCache[d.file_key];
                       return (
                         <div
-                          key={d.id}
+                          key={`det-${d.id}-${di}`}
                           className={`p-1.5 rounded border cursor-pointer text-xs transition-colors ${
                             selectedDrawing?.id === d.id
                               ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-200'
@@ -517,12 +517,12 @@ export default function ProductionDetailDialog({
               <div className="border-t bg-white px-4 py-2 flex-shrink-0">
                 <div className="text-xs text-gray-500 mb-1.5">子物料图纸</div>
                 <div className="flex gap-2 overflow-x-auto pb-1">
-                  {order.production_order_materials.map((mat) => {
+                  {order.production_order_materials.map((mat, mi) => {
                     const matDrawings = mat.products ? materialsDrawings[mat.products.id] : undefined;
                     const hasDrawings = matDrawings && matDrawings.length > 0;
                     return (
                       <div
-                        key={mat.id}
+                        key={`mat-${mat.id}-${mi}`}
                         className={`flex-shrink-0 px-3 py-1.5 rounded border text-xs cursor-pointer transition-colors ${
                           hasDrawings
                             ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
