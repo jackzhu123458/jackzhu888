@@ -676,12 +676,12 @@ export default function DeliveryPage() {
         {results.length === 0 ? (
           <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
         ) : (
-          results.map(p => {
+          results.map((p, pIdx) => {
             const orders = rowIdx !== undefined ? buildOrdersForProduct(p.id) : [];
             const inv = orderInventoryMap[p.id];
             const totalQty = Number(inv?.quantity || 0);
             return (
-              <div key={p.id} className="border-b border-gray-100 last:border-0">
+              <div key={`prod-${p.id}-${pIdx}`} className="border-b border-gray-100 last:border-0">
                 <button
                   className="w-full text-left px-2 py-1.5 text-xs hover:bg-blue-50 flex items-center justify-between"
                   onMouseDown={(e) => { e.preventDefault(); onSelect(p); }}
@@ -698,7 +698,7 @@ export default function DeliveryPage() {
                 {rowIdx !== undefined && orders.length > 0 && (
                   <div className="bg-gray-50 px-2 py-1 space-y-0.5">
                     <div className="text-[10px] text-gray-500">涉及订单（点击直接填行）</div>
-                    {orders.map(({ order, item, pending }) => {
+                    {orders.map(({ order, item, pending }, oiIdx) => {
                       const ownReserved = Number(item.reserved_qty || 0);
                       const reservedAll = Number(inv?.reserved_qty || 0);
                       const otherReserved = Math.max(0, reservedAll - ownReserved);
@@ -706,7 +706,7 @@ export default function DeliveryPage() {
                       const enough = available >= pending;
                       return (
                         <button
-                          key={`${order.id}-${item.id}`}
+                          key={`ord-${order.id}-${item.id}-${oiIdx}`}
                           className="w-full text-left text-[11px] px-2 py-1 rounded hover:bg-blue-100 flex items-center justify-between"
                           onMouseDown={(e) => { e.preventDefault(); selectOrderItemForRow(rowIdx, order, item); }}
                         >
@@ -980,10 +980,10 @@ export default function DeliveryPage() {
                       });
                       return filtered.length > 0 ? (
                         <div className="absolute z-50 top-7 left-0 bg-white border rounded shadow-lg max-h-48 overflow-auto w-72">
-                          {filtered.slice(0, 15).map(o => {
+                          {filtered.slice(0, 15).map((o, oIdx) => {
                             const undeliveredCount = (o.customer_order_items || []).filter(i => Number(i.quantity) - Number(i.delivered_qty) > 0).length;
                             return (
-                              <button key={o.id} className="w-full text-left px-2 py-1.5 hover:bg-gray-100 text-xs border-b border-gray-50 last:border-0"
+                              <button key={`item-ord-${o.id}-${oIdx}`} className="w-full text-left px-2 py-1.5 hover:bg-gray-100 text-xs border-b border-gray-50 last:border-0"
                                 onMouseDown={(e) => {
                                   e.preventDefault();
                                   importFromOrder(o);
@@ -1209,10 +1209,10 @@ export default function DeliveryPage() {
                                   <div className="px-2 py-2 text-[11px] text-gray-400">
                                     {customerOrders.length === 0 ? '暂无订单数据，请先创建客户订单' : '无匹配订单'}
                                   </div>
-                                ) : filtered.slice(0, 20).map(o => {
+                                ) : filtered.slice(0, 20).map((o, oIdx) => {
                                   const undeliveredCount = (o.customer_order_items || []).filter(i => Number(i.quantity) - Number(i.delivered_qty) > 0).length;
                                   return (
-                                    <button key={o.id} type="button" className="w-full text-left px-2 py-1 hover:bg-gray-100 text-xs border-b border-gray-50 last:border-0"
+                                    <button key={`top-ord-${o.id}-${oIdx}`} type="button" className="w-full text-left px-2 py-1 hover:bg-gray-100 text-xs border-b border-gray-50 last:border-0"
                                       onMouseDown={(e) => {
                                         e.preventDefault();
                                         expandOrderForItem(idx, o);
