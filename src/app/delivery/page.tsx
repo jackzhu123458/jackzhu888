@@ -139,7 +139,15 @@ export default function DeliveryPage() {
 
     setCustomers(Array.isArray(cData) ? cData : []);
     // 只排除已取消订单，其余状态都可被送货单引用（兼容历史数据中 status 可能为空或自定义状态）
-    if (Array.isArray(oData)) setCustomerOrders(oData.filter((o: CustomerOrder) => o.status !== 'cancelled'));
+    // 同时按 id 去重，避免 PostgREST 多重 join 时返回重复行
+    if (Array.isArray(oData)) {
+      const dedupMap = new Map<string, CustomerOrder>();
+      for (const o of oData as CustomerOrder[]) {
+        if (o.status === 'cancelled') continue;
+        if (!dedupMap.has(o.id)) dedupMap.set(o.id, o);
+      }
+      setCustomerOrders(Array.from(dedupMap.values()));
+    }
     setProducts(Array.isArray(pData) ? pData : []);
 
     // 提取产品类目列表
@@ -996,7 +1004,7 @@ export default function DeliveryPage() {
                                   </div>
                                   {undelivered.length === 0 ? (
                                     <div className="px-2 py-2 text-[11px] text-gray-400">该订单没有待交付物料</div>
-                                  ) : undelivered.map((oi) => {
+                                  ) : undelivered.map((oi, oiIdx) => {
                                     const product = resolveProduct(oi.products);
                                     if (!product) return null;
                                     const remaining = Math.max(0, Number(oi.quantity) - Number(oi.delivered_qty));
@@ -1008,7 +1016,7 @@ export default function DeliveryPage() {
                                     const noStock = usable <= 0;
                                     return (
                                       <button
-                                        key={oi.id}
+                                        key={`${oi.id}-${oiIdx}`}
                                         type="button"
                                         className={`w-full text-left px-2 py-1 hover:bg-gray-100 text-xs border-b border-gray-50 last:border-0 ${noStock ? 'opacity-80' : ''}`}
                                         onMouseDown={(e) => {
