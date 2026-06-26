@@ -1,13 +1,15 @@
 'use client';
 
+import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import type { CustomerOrder, Customer, CategoryGroup, Product, OrderItem } from './types';
+import type { CustomerOrder, Customer, CategoryGroup, OrderItem } from './types';
 import { resolveProduct, parseCategories, findCategoryGroup } from './types';
 
 interface OrderPickerDialogProps {
@@ -32,6 +34,18 @@ export default function OrderPickerDialog({
   onImport,
 }: OrderPickerDialogProps) {
   const hasCategoryFilter = selectedCategories.length > 0;
+  const [orderSearch, setOrderSearch] = useState('');
+  const [onlyInStock, setOnlyInStock] = useState(true);
+
+  const filteredOrders = useMemo(() => {
+    const q = orderSearch.trim().toLowerCase();
+    if (!q) return orders;
+    return orders.filter((o) => {
+      if (o.order_no.toLowerCase().includes(q)) return true;
+      const customerName = customers.find((c) => c.id === o.customer_id)?.name || '';
+      return customerName.toLowerCase().includes(q);
+    });
+  }, [orders, orderSearch, customers]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -39,7 +53,24 @@ export default function OrderPickerDialog({
         <DialogHeader>
           <DialogTitle>从客户订单导入</DialogTitle>
         </DialogHeader>
-        <div className="text-xs text-gray-500 mb-2">仅导入有库存的物料，已预扣的库存可用于送货出库</div>
+        <div className="flex items-center gap-3 mb-2">
+          <Input
+            value={orderSearch}
+            onChange={(e) => setOrderSearch(e.target.value)}
+            placeholder="输入订单号或客户名模糊筛选（例：4 可匹配 44739）"
+            className="h-8 text-xs max-w-sm"
+          />
+          <label className="text-xs text-gray-600 flex items-center gap-1 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={onlyInStock}
+              onChange={(e) => setOnlyInStock(e.target.checked)}
+              className="cursor-pointer"
+            />
+            仅显示已入库（有库存）的物料
+          </label>
+        </div>
+        <div className="text-xs text-gray-500 mb-2">已预扣的库存可用于送货出库；勾选上方选项后会过滤掉零库存物料</div>
 
         {hasCategoryFilter && (
           <div className="flex items-center gap-2 mb-2">
@@ -58,8 +89,10 @@ export default function OrderPickerDialog({
         )}
 
         <div className="max-h-96 overflow-auto">
-          {orders.length === 0 ? (
-            <p className="text-sm text-gray-400 py-8 text-center">暂无可导入的客户订单，请先在客户订单中下推</p>
+          {filteredOrders.length === 0 ? (
+            <p className="text-sm text-gray-400 py-8 text-center">
+              {orders.length === 0 ? '暂无可导入的客户订单，请先在客户订单中下推' : `没有匹配「${orderSearch}」的订单`}
+            </p>
           ) : (
             <table className="w-full text-xs">
               <thead>
@@ -76,16 +109,23 @@ export default function OrderPickerDialog({
                 </tr>
               </thead>
               <tbody>
-                {orders.map((order) => {
+                {filteredOrders.map((order) => {
                   const orderItems = (order.customer_order_items || []).filter((i: OrderItem) => Number(i.quantity) - Number(i.delivered_qty) > 0);
                   if (orderItems.length === 0) return null;
 
-                  const filteredItems = hasCategoryFilter
+                  let filteredItems = hasCategoryFilter
                     ? orderItems.filter((item: OrderItem) => {
                         const prod = resolveProduct(item.products);
                         return prod?.category && selectedCategories.includes(prod.category);
                       })
                     : orderItems;
+
+                  if (onlyInStock) {
+                    filteredItems = filteredItems.filter((item: OrderItem) => {
+                      const inv = orderInventoryMap[item.product_id];
+                      return inv && Number(inv.quantity) > 0;
+                    });
+                  }
 
                   if (filteredItems.length === 0) return null;
 
@@ -120,11 +160,19 @@ export default function OrderPickerDialog({
                         </td>
                         <td className="py-2 px-2 text-right font-mono">{undelivered}</td>
                         <td className="py-2 px-2 text-right font-mono">
-                          {availableQty > 0 ? <span className="text-green-600">{availableQty}</span> : <span className="text-red-500">{availableQty}</span>}
+                          {totalStock > 0 ? (
+                            <span className={availableQty > 0 ? 'text-green-600' : 'text-orange-500'}>{availableQty}</span>
+                          ) : (
+                            <span className="text-red-500">未入库</span>
+                          )}
                         </td>
                         <td className="py-2 px-2 text-right font-mono text-orange-500">{reservedQty > 0 ? reservedQty : '-'}</td>
                         <td className="py-2 px-2 text-center">
-                          <span className="text-xs text-gray-400">导入时检查</span>
+                          {totalStock > 0 ? (
+                            <span className="text-xs text-green-600">已入库</span>
+                          ) : (
+                            <span className="text-xs text-gray-400">未入库</span>
+                          )}
                         </td>
                         {idx === 0 ? (
                           <td className="py-2 px-2 text-center" rowSpan={filteredItems.length}>
