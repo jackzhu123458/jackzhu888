@@ -848,16 +848,9 @@ export default function OrdersPage() {
     setItemNameSearches({});
   };
 
-  // 当交货期限改变时，自动填充到所有未填写交货日期的物料行
+  // 当交货期限改变时，只更新顶部字段，不自动填充到明细行
   const handleDeliveryDeadlineChange = (deadline: string) => {
     setFormDeliveryDeadline(deadline);
-    if (deadline) {
-      const updated = formItems.map((item) => ({
-        ...item,
-        delivery_date: item.delivery_date || deadline,
-      }));
-      setFormItems(updated);
-    }
   };
 
   return (
@@ -1278,7 +1271,7 @@ export default function OrdersPage() {
                   type="date"
                   value={formDeliveryDeadline}
                   onChange={(e) => handleDeliveryDeadlineChange(e.target.value)}
-                  placeholder="填写后自动填充到物料行"
+                  placeholder="选择交货期限"
                 />
               </div>
 
