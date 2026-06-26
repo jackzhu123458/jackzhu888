@@ -144,15 +144,35 @@ export default function DeliveryPage() {
   }, []);
 
   const fetchMeta = useCallback(async () => {
-    const [cRes, pRes, oRes, sRes] = await Promise.all([
+    const [cRes, pRes, oRes, sRes, invRes] = await Promise.all([
       fetch('/api/customers'),
       fetch('/api/products'),
       fetch('/api/orders'),
       fetch('/api/settings'),
+      fetch('/api/inventory'),
     ]);
-    const [cData, pData, oData, sData] = await Promise.all([
-      cRes.json(), pRes.json(), oRes.json(), sRes.json(),
+    const [cData, pData, oData, sData, invData] = await Promise.all([
+      cRes.json(), pRes.json(), oRes.json(), sRes.json(), invRes.json(),
     ]);
+
+    // 全量库存聚合到 orderInventoryMap，按产品 id 合并所有仓库
+    if (Array.isArray(invData)) {
+      const m: Record<string, { quantity: number; reserved_qty: number }> = {};
+      for (const r of invData as Array<{ product_id: string; quantity?: number; reserved_qty?: number }>) {
+        const pid = r.product_id;
+        if (!pid) continue;
+        const qty = Number(r.quantity || 0);
+        const reserved = Number(r.reserved_qty || 0);
+        const existing = m[pid];
+        if (existing) {
+          existing.quantity += qty;
+          existing.reserved_qty += reserved;
+        } else {
+          m[pid] = { quantity: qty, reserved_qty: reserved };
+        }
+      }
+      setOrderInventoryMap(m);
+    }
 
     setCustomers(Array.isArray(cData) ? cData : []);
     // 只排除已取消订单，其余状态都可被送货单引用（兼容历史数据中 status 可能为空或自定义状态）
