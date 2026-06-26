@@ -1021,7 +1021,7 @@ export default function DeliveryPage() {
                             if (expanded) {
                               const undelivered = (expanded.customer_order_items || []).filter((i) => Number(i.quantity) - Number(i.delivered_qty) > 0);
                               return (
-                                <div className="absolute z-50 top-6 left-0 bg-white border rounded shadow-lg max-h-60 overflow-auto w-80">
+                                <div className="absolute z-50 top-6 left-0 bg-white border rounded shadow-lg max-h-[70vh] w-80 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                                   <div className="px-2 py-1 bg-[#F9FAFB] border-b text-[11px] text-gray-500 flex items-center justify-between">
                                     <span>订单 <span className="font-mono text-[#1E40AF]">{expanded.order_no}</span> 未交物料</span>
                                     <button
@@ -1082,7 +1082,7 @@ export default function DeliveryPage() {
                                 (o.customers?.name || '').toLowerCase().includes(q);
                             });
                             return (
-                              <div className="absolute z-50 top-6 left-0 bg-white border rounded shadow-lg max-h-40 overflow-auto w-72">
+                              <div className="absolute z-50 top-6 left-0 bg-white border rounded shadow-lg max-h-[60vh] w-72 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                                 {filtered.length === 0 ? (
                                   <div className="px-2 py-2 text-[11px] text-gray-400">
                                     {customerOrders.length === 0 ? '暂无订单数据，请先创建客户订单' : '无匹配订单'}
