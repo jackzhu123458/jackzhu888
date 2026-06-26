@@ -138,7 +138,8 @@ export default function DeliveryPage() {
     ]);
 
     setCustomers(Array.isArray(cData) ? cData : []);
-    if (Array.isArray(oData)) setCustomerOrders(oData.filter((o: CustomerOrder) => ['confirmed', 'in_progress', 'pending'].includes(o.status)));
+    // 只排除已取消订单，其余状态都可被送货单引用（兼容历史数据中 status 可能为空或自定义状态）
+    if (Array.isArray(oData)) setCustomerOrders(oData.filter((o: CustomerOrder) => o.status !== 'cancelled'));
     setProducts(Array.isArray(pData) ? pData : []);
 
     // 提取产品类目列表
@@ -843,8 +844,6 @@ export default function DeliveryPage() {
                     {showOrderDropdown && (() => {
                       const q = (form.customer_order || '').toLowerCase();
                       const filtered = customerOrders.filter(o => {
-                        const hasUndelivered = (o.customer_order_items || []).some(i => Number(i.quantity) - Number(i.delivered_qty) > 0);
-                        if (!hasUndelivered) return false;
                         if (!q) return true;
                         return o.order_no.toLowerCase().includes(q) ||
                           (o.customers?.name || '').toLowerCase().includes(q);
@@ -1036,18 +1035,20 @@ export default function DeliveryPage() {
                                 </div>
                               );
                             }
-                            // 一级菜单：模糊搜索订单
+                            // 一级菜单：模糊搜索订单（不再前置过滤 hasUndelivered，避免 customer_order_items 数据缺失时下拉为空）
                             const q = (itemOrderSearches[idx] || item.customer_order || '').toLowerCase();
                             const filtered = customerOrders.filter(o => {
-                              const hasUndelivered = (o.customer_order_items || []).some(i => Number(i.quantity) - Number(i.delivered_qty) > 0);
-                              if (!hasUndelivered) return false;
                               if (!q) return true;
                               return o.order_no.toLowerCase().includes(q) ||
                                 (o.customers?.name || '').toLowerCase().includes(q);
                             });
-                            return filtered.length > 0 ? (
+                            return (
                               <div className="absolute z-50 top-6 left-0 bg-white border rounded shadow-lg max-h-40 overflow-auto w-72">
-                                {filtered.slice(0, 10).map(o => {
+                                {filtered.length === 0 ? (
+                                  <div className="px-2 py-2 text-[11px] text-gray-400">
+                                    {customerOrders.length === 0 ? '暂无订单数据，请先创建客户订单' : '无匹配订单'}
+                                  </div>
+                                ) : filtered.slice(0, 10).map(o => {
                                   const undeliveredCount = (o.customer_order_items || []).filter(i => Number(i.quantity) - Number(i.delivered_qty) > 0).length;
                                   return (
                                     <button key={o.id} type="button" className="w-full text-left px-2 py-1 hover:bg-gray-100 text-xs border-b border-gray-50 last:border-0"
@@ -1066,7 +1067,7 @@ export default function DeliveryPage() {
                                   );
                                 })}
                               </div>
-                            ) : null;
+                            );
                           })()}
                         </div>
                       ) : (
