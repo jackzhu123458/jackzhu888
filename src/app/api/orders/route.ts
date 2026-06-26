@@ -11,30 +11,34 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const keyword = searchParams.get('keyword');
 
-    let query = supabase
-      .from('customer_orders')
-      .select(`
+    const baseSelect = (withSchedules: boolean) => `
         *,
         customers(id, name, code, contact, phone),
         customer_order_items(
           *,
-          products(id, code, name, spec, unit, category),
-          customer_order_schedules(*)
+          products(id, code, name, spec, unit, category)${withSchedules ? ',\n          customer_order_schedules(*)' : ''}
         )
-      `)
-      .order('created_at', { ascending: false });
+      `;
 
-    if (customerId) {
-      query = query.eq('customer_id', customerId);
-    }
-    if (status) {
-      query = query.eq('status', status);
-    }
-    if (keyword) {
-      query = query.or(`order_no.ilike.%${keyword}%,remark.ilike.%${keyword}%`);
-    }
+    const buildQuery = (withSchedules: boolean) => {
+      let q = supabase
+        .from('customer_orders')
+        .select(baseSelect(withSchedules))
+        .order('created_at', { ascending: false });
+      if (customerId) q = q.eq('customer_id', customerId);
+      if (status) q = q.eq('status', status);
+      if (keyword) q = q.or(`order_no.ilike.%${keyword}%,remark.ilike.%${keyword}%`);
+      return q;
+    };
 
-    const { data, error } = await query;
+    let { data, error } = (await buildQuery(true)) as { data: Array<Record<string, unknown>> | null; error: { message?: string } | null };
+    // 兼容 NAS 部署：customer_order_schedules 表/关系缺失时降级查询
+    if (error && /customer_order_schedules|schema cache|relation/i.test(error.message || '')) {
+      console.warn('[orders GET] schedules join failed, fallback without schedules:', error.message);
+      const retry = (await buildQuery(false)) as { data: Array<Record<string, unknown>> | null; error: { message?: string } | null };
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
@@ -43,7 +47,7 @@ export async function GET(request: NextRequest) {
     // 为每个 customer_order_item 补充已开送货单数量
     // 查询所有相关订单的 delivery_note_items
     if (data && data.length > 0) {
-      const orderItemIds = data.flatMap((o: Record<string, unknown>) =>
+      const orderItemIds = data.flatMap((o) =>
         ((o.customer_order_items as Array<Record<string, unknown>>) || []).map((i: Record<string, unknown>) => i.id as string)
       ).filter(Boolean);
 
@@ -65,9 +69,9 @@ export async function GET(request: NextRequest) {
 
         // 将 delivery_note_qty 附加到每个 item
         for (const order of data) {
-          const items = (order as Record<string, unknown>).customer_order_items as Array<Record<string, unknown>> || [];
+          const items = (order.customer_order_items as Array<Record<string, unknown>>) || [];
           for (const item of items) {
-            (item as Record<string, unknown>).delivery_note_qty = deliveryQtyMap.get(item.id as string) || 0;
+            item.delivery_note_qty = deliveryQtyMap.get(item.id as string) || 0;
           }
         }
       }

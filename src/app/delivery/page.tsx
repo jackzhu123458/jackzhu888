@@ -978,10 +978,9 @@ export default function DeliveryPage() {
                               setShowItemOrderDropdown(prev => ({ ...prev, [idx]: true }));
                             }}
                             onBlur={() => setTimeout(() => {
+                              // 仅关闭下拉，不清 search/expanded 状态，避免与异步 expandOrderForItem 竞速
                               setShowItemOrderDropdown(prev => ({ ...prev, [idx]: false }));
-                              setItemOrderSearches(prev => { const next = { ...prev }; delete next[idx]; return next; });
-                              setExpandedOrderForItem(prev => { const next = { ...prev }; delete next[idx]; return next; });
-                            }, 200)}
+                            }, 250)}
                             placeholder="输入订单号"
                           />
                           {showItemOrderDropdown[idx] && (() => {
