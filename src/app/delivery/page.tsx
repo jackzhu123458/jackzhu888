@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { translateUnit } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -108,6 +108,20 @@ export default function DeliveryPage() {
   const [shipDialogOpen, setShipDialogOpen] = useState(false);
   const [itemSearches, setItemSearches] = useState<Record<number, string>>({});
   const [itemOrderSearches, setItemOrderSearches] = useState<Record<number, string>>({});
+  // 行级订单号 input refs，用于自动新增行后聚焦
+  const itemOrderInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
+  const [pendingFocusRowIdx, setPendingFocusRowIdx] = useState<number | null>(null);
+  useEffect(() => {
+    if (pendingFocusRowIdx == null) return;
+    const el = itemOrderInputRefs.current[pendingFocusRowIdx];
+    if (el) {
+      el.focus();
+      // 把光标置于文末
+      const len = el.value.length;
+      try { el.setSelectionRange(len, len); } catch { /* noop */ }
+      setPendingFocusRowIdx(null);
+    }
+  }, [pendingFocusRowIdx, form.delivery_note_items.length]);
   const [showItemOrderDropdown, setShowItemOrderDropdown] = useState<Record<number, boolean>>({});
   // 每行选中订单后展开的订单（二级下拉，展示订单下未交付物料）
   const [expandedOrderForItem, setExpandedOrderForItem] = useState<Record<number, CustomerOrder | null>>({});
@@ -968,6 +982,7 @@ export default function DeliveryPage() {
                         <div className="relative">
                           <div className="flex items-center gap-1">
                             <Input
+                              ref={(el) => { itemOrderInputRefs.current[idx] = el; }}
                               className="h-6 text-xs font-mono flex-1"
                               value={item.customer_order || ''}
                               onChange={(e) => {
@@ -1167,7 +1182,34 @@ export default function DeliveryPage() {
                   <tr className="border-b border-[#E5E7EB] h-8">
                     <td className="py-1 px-2 text-gray-300">{form.delivery_note_items.length + 1}</td>
                     <td className="py-2 px-2">
-                      <Input className="h-6 text-xs" placeholder="输入订单号" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setForm(prev => ({ ...prev, delivery_note_items: [...prev.delivery_note_items, { product_id: '', quantity: 0, unit_price: 0, per_box_qty: 0, remark: '' }] })); } }} />
+                      <Input
+                        className="h-6 text-xs"
+                        placeholder="输入订单号（自动新增行）"
+                        value=""
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (!val) return;
+                          const newIdx = form.delivery_note_items.length;
+                          setForm(prev => ({
+                            ...prev,
+                            delivery_note_items: [
+                              ...prev.delivery_note_items,
+                              { product_id: '', quantity: 0, unit_price: 0, per_box_qty: 0, remark: '', customer_order: val },
+                            ],
+                          }));
+                          setItemOrderSearches(prev => ({ ...prev, [newIdx]: val }));
+                          setShowItemOrderDropdown(prev => ({ ...prev, [newIdx]: true }));
+                          setIsFormDirty(true);
+                          // 新增行后自动 focus 到新行的订单号输入框
+                          setPendingFocusRowIdx(newIdx);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            setForm(prev => ({ ...prev, delivery_note_items: [...prev.delivery_note_items, { product_id: '', quantity: 0, unit_price: 0, per_box_qty: 0, remark: '' }] }));
+                          }
+                        }}
+                      />
                     </td>
                     <td className="py-2 px-2">
                       <div className="relative">
