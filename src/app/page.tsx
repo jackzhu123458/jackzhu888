@@ -328,7 +328,7 @@ export default function DashboardPage() {
                 const maxQty = data.topProducts[0]?.total_quantity || 1;
                 const pct = Math.round((p.total_quantity / maxQty) * 100);
                 return (
-                  <div key={p.id} className="flex items-center gap-3">
+                  <div key={`top-prod-${p.id}-${idx}`} className="flex items-center gap-3">
                     <span className={`text-xs font-mono w-5 text-right ${idx < 3 ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
                       {idx + 1}
                     </span>
@@ -358,8 +358,8 @@ export default function DashboardPage() {
             <div className="p-8 text-center text-sm text-gray-400">暂无数据</div>
           ) : (
             <div className="p-3 space-y-2">
-              {data.inventoryByWarehouse.map(wh => (
-                <div key={wh.warehouse_id} className="flex items-center justify-between text-sm">
+              {data.inventoryByWarehouse.map((wh, whIdx) => (
+                <div key={`wh-${wh.warehouse_id}-${whIdx}`} className="flex items-center justify-between text-sm">
                   <span className="text-gray-700 truncate">{wh.warehouse_name}</span>
                   <div className="flex items-center gap-3 ml-2">
                     <span className="font-mono text-gray-900">{formatNumber(wh.quantity)}</span>
@@ -383,13 +383,13 @@ export default function DashboardPage() {
             <div className="p-8 text-center text-sm text-gray-400">暂无生产中订单</div>
           ) : (
             <div className="divide-y divide-gray-50">
-              {data.inProgressProduction.map(po => {
+              {data.inProgressProduction.map((po, poIdx) => {
                 const prod = getRelName(po.products);
                 const cust = getRelName(po.customers);
                 const isUrgent = now > 0 && po.due_date && new Date(po.due_date).getTime() - now < 3 * 86400000;
                 const isOverdue = now > 0 && po.due_date && new Date(po.due_date).getTime() < now;
                 return (
-                  <div key={po.id} className="px-4 py-2.5 flex items-center justify-between">
+                  <div key={`po-${po.id}-${poIdx}`} className="px-4 py-2.5 flex items-center justify-between">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-mono text-gray-900">{po.order_no}</span>
@@ -569,10 +569,10 @@ function GanttChart({ orders }: { orders: DashboardData['ganttOrders'] }) {
               </div>
             </div>
             {/* Orders in this customer group */}
-            {customerOrders.map(order => {
+            {customerOrders.map((order, ordIdx) => {
               const bar = getBarStyle(order);
               return (
-                <div key={order.id} className="flex border-b border-gray-50 hover:bg-gray-50/50">
+                <div key={`ord-${order.id}-${ordIdx}`} className="flex border-b border-gray-50 hover:bg-gray-50/50">
                   <div className="flex-shrink-0 border-r border-gray-200 px-3 py-1.5" style={{ width: leftColWidth }}>
                     <div className="text-xs text-gray-900 truncate" title={order.product_name}>
                       {order.product_name || order.order_no}
