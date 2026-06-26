@@ -65,6 +65,7 @@ import type {
   DeliveryNote,
   CategoryGroup,
   CompanyInfo,
+  OrderItem,
 } from './types';
 import {
   resolveProduct,
@@ -619,20 +620,88 @@ export default function DeliveryPage() {
   const selectedCategories = parseCategories(form.delivery_category);
 
   /* ─── Inline product search result list (reusable) ─── */
-  const ProductSearchDropdown = ({ query, onSelect }: { query: string; onSelect: (p: Product) => void }) => {
+  /* 当传入 rowIdx 时，每个产品下方追加 "涉及该产品的待交订单" 按钮，点击直接填整行 */
+  const ProductSearchDropdown = ({
+    query,
+    onSelect,
+    rowIdx,
+  }: {
+    query: string;
+    onSelect: (p: Product) => void;
+    rowIdx?: number;
+  }) => {
     const results = searchDeliveryProducts(query);
+    /* 为每个产品聚合：该产品在哪些活跃订单里待交 */
+    const buildOrdersForProduct = (pid: string) => {
+      const list: Array<{ order: CustomerOrder; item: OrderItem; pending: number }> = [];
+      for (const o of customerOrders) {
+        const items = (o.customer_order_items || []) as OrderItem[];
+        for (const it of items) {
+          if (it.product_id !== pid) continue;
+          const pending = Number(it.quantity || 0) - Number(it.delivered_qty || 0);
+          if (pending > 0) list.push({ order: o, item: it, pending });
+        }
+      }
+      return list.slice(0, 6);
+    };
     return (
-      <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-48 overflow-y-auto">
+      <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-50 max-h-64 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {results.length === 0 ? (
           <div className="px-3 py-2 text-xs text-gray-400">无匹配物料</div>
         ) : (
-          results.map(p => (
-            <button key={p.id} className="w-full text-left px-2 py-1.5 text-xs hover:bg-blue-50" onClick={() => onSelect(p)}>
-              <span className="font-mono">{p.code}</span>
-              <span className="ml-1 text-gray-500">{p.name}</span>
-              {p.spec && <span className="ml-1 text-gray-400">{p.spec}</span>}
-            </button>
-          ))
+          results.map(p => {
+            const orders = rowIdx !== undefined ? buildOrdersForProduct(p.id) : [];
+            const inv = orderInventoryMap[p.id];
+            const totalQty = Number(inv?.quantity || 0);
+            return (
+              <div key={p.id} className="border-b border-gray-100 last:border-0">
+                <button
+                  className="w-full text-left px-2 py-1.5 text-xs hover:bg-blue-50 flex items-center justify-between"
+                  onMouseDown={(e) => { e.preventDefault(); onSelect(p); }}
+                >
+                  <span className="flex items-center gap-1 min-w-0">
+                    <span className="font-mono">{p.code}</span>
+                    <span className="text-gray-500 truncate">{p.name}</span>
+                    {p.spec && <span className="text-gray-400 truncate">{p.spec}</span>}
+                  </span>
+                  <span className="text-[10px] text-gray-400 shrink-0 ml-2">
+                    {totalQty > 0 ? `库存 ${totalQty}` : <span className="text-red-500">未入库</span>}
+                  </span>
+                </button>
+                {rowIdx !== undefined && orders.length > 0 && (
+                  <div className="bg-gray-50 px-2 py-1 space-y-0.5">
+                    <div className="text-[10px] text-gray-500">涉及订单（点击直接填行）</div>
+                    {orders.map(({ order, item, pending }) => {
+                      const ownReserved = Number(item.reserved_qty || 0);
+                      const reservedAll = Number(inv?.reserved_qty || 0);
+                      const otherReserved = Math.max(0, reservedAll - ownReserved);
+                      const available = Math.max(0, totalQty - otherReserved);
+                      const enough = available >= pending;
+                      return (
+                        <button
+                          key={`${order.id}-${item.id}`}
+                          className="w-full text-left text-[11px] px-2 py-1 rounded hover:bg-blue-100 flex items-center justify-between"
+                          onMouseDown={(e) => { e.preventDefault(); selectOrderItemForRow(rowIdx, order, item); }}
+                        >
+                          <span className="flex items-center gap-1 min-w-0">
+                            <span className="font-mono text-blue-700">{order.order_no}</span>
+                            <span className="text-gray-500 truncate">{order.customers?.name || ''}</span>
+                          </span>
+                          <span className="text-[10px] shrink-0 ml-2">
+                            <span className="text-gray-600">待交{pending}</span>
+                            <span className="mx-1 text-gray-300">·</span>
+                            <span className={enough ? 'text-green-600' : 'text-red-500'}>
+                              {enough ? `可发${available}` : `欠${pending - available}`}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
     );
@@ -1165,7 +1234,7 @@ export default function DeliveryPage() {
                             }}
                             onBlur={() => setTimeout(() => { setItemSearches(prev => { const next = { ...prev }; delete next[idx]; return next; }); }, 200)}
                           />
-                          {itemSearches[idx] !== undefined && !item.product_id && <ProductSearchDropdown query={itemSearches[idx]} onSelect={(p) => selectProductForItem(idx, p)} />}
+                          {itemSearches[idx] !== undefined && !item.product_id && <ProductSearchDropdown query={itemSearches[idx]} rowIdx={idx} onSelect={(p) => selectProductForItem(idx, p)} />}
                         </div>
                       ) : (
                         <span className="font-mono text-[#111827]">{item.product?.code || '-'}</span>
